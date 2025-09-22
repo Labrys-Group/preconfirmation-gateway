@@ -1,4 +1,4 @@
-use preconfirmation_gateway::config::{Config, DatabaseConfig, LoggingConfig, ServerConfig};
+use preconfirmation_gateway::config::{Config, DatabaseConfig, LoggingConfig, ServerConfig, ValidationConfig};
 use std::io::Write;
 use tempfile::NamedTempFile;
 
@@ -69,6 +69,9 @@ url = "postgresql://test/testdb"
 level = "debug"
 enable_method_tracing = false
 traced_methods = ["test_method"]
+
+[validation]
+slasher_address = "0x0000000000000000000000000000000000000000"
 "#;
 	temp_file.write_all(config_content.as_bytes()).expect("Failed to write to temp file");
 
@@ -133,6 +136,9 @@ url = "postgresql://custom/db"
 level = "info"
 enable_method_tracing = true
 traced_methods = []
+
+[validation]
+slasher_address = "0x0000000000000000000000000000000000000000"
 "#;
 	temp_file.write_all(config_content.as_bytes()).expect("Failed to write to temp file");
 
@@ -170,10 +176,44 @@ url = "postgresql://localhost/preconfirmation_gateway"
 level = "info"
 enable_method_tracing = true
 traced_methods = ["fee"]
+
+[validation]
+slasher_address = "0x0000000000000000000000000000000000000000"
 "#;
 	temp_file.write_all(config_content.as_bytes()).expect("Failed to write to temp file");
 
 	let config = Config::load_from_file(temp_file.path()).expect("Should load config ignoring extra fields");
 	assert_eq!(config.server.host, "127.0.0.1");
 	assert_eq!(config.server.port, 8080);
+}
+
+#[test]
+fn test_validation_config_default() {
+	let validation_config = ValidationConfig::default();
+	assert_eq!(validation_config.slasher_address, "0x0000000000000000000000000000000000000000");
+}
+
+#[test]
+fn test_config_with_custom_slasher_address() {
+	let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+	let config_content = r#"
+[server]
+host = "127.0.0.1"
+port = 8080
+
+[database]
+url = "postgresql://localhost/preconfirmation_gateway"
+
+[logging]
+level = "info"
+enable_method_tracing = true
+traced_methods = ["commitmentRequest"]
+
+[validation]
+slasher_address = "0x1234567890123456789012345678901234567890"
+"#;
+	temp_file.write_all(config_content.as_bytes()).expect("Failed to write to temp file");
+
+	let config = Config::load_from_file(temp_file.path()).expect("Should load config with custom slasher");
+	assert_eq!(config.validation.slasher_address, "0x1234567890123456789012345678901234567890");
 }

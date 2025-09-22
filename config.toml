@@ -19,7 +19,11 @@ enable_method_tracing = true      # Enable detailed tracing for specific RPC met
 # List of RPC methods to trace in detail
 traced_methods = [
     "commitmentRequest",
-    "commitmentResult", 
+    "commitmentResult",
     "slots",
     "fee"
 ]
+
+[validation]
+# Validation configuration
+slasher_address = "0x0000000000000000000000000000000000000000"  # Ethereum address that must match request slasher

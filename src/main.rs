@@ -17,8 +17,8 @@ async fn main() -> anyhow::Result<()> {
 	db::test_connection(&db_pool).await?;
 	let db_context = types::DatabaseContext::new(db_pool);
 
-	// Create RPC context with database context
-	let rpc_context = types::RpcContext::new(db_context);
+	// Create RPC context with database context and config
+	let rpc_context = types::RpcContext::new(db_context, config.clone());
 
 	server::run_server(rpc_context, &config).await?;
 

@@ -1,8 +1,31 @@
 use jsonrpsee::Extensions;
 use jsonrpsee::core::RpcResult;
 use tracing::{info, instrument};
+use ethabi::{ParamType, decode};
 
 use super::super::types::{Commitment, CommitmentRequest, FeeInfo, RpcContext, SignedCommitment, SlotInfoResponse};
+
+fn validate_inclusion_payload(payload: &[u8]) -> Result<(), String> {
+	// Define the ABI types for InclusionPayload struct:
+	// tx_hash: Bytes32, nonce: uint256, gas_limit: uint256, slot: uint64
+	let types = vec![
+		ParamType::FixedBytes(32), // tx_hash (Bytes32)
+		ParamType::Uint(256),      // nonce (uint256)
+		ParamType::Uint(256),      // gas_limit (uint256)
+		ParamType::Uint(64),       // slot (uint64)
+	];
+
+	match decode(&types, payload) {
+		Ok(tokens) => {
+			if tokens.len() != 4 {
+				return Err("Invalid payload: expected 4 fields".to_string());
+			}
+			// Additional validation could be added here (e.g., check specific field values)
+			Ok(())
+		}
+		Err(e) => Err(format!("Failed to decode InclusionPayload: {}", e)),
+	}
+}
 
 #[instrument(name = "commitment_request", skip(_context, _extensions))]
 pub fn commitment_request_handler(
@@ -12,6 +35,21 @@ pub fn commitment_request_handler(
 ) -> RpcResult<SignedCommitment> {
 	info!("Processing commitment request");
 	let request: CommitmentRequest = params.parse()?;
+
+	// Validate commitment_type is 1
+	if request.commitment_type != 1 {
+		return Err(jsonrpsee::types::error::ErrorCode::InvalidParams.into());
+	}
+
+	// Validate payload is properly encoded InclusionPayload
+	if let Err(_e) = validate_inclusion_payload(&request.payload) {
+		return Err(jsonrpsee::types::error::ErrorCode::InvalidParams.into());
+	}
+
+	// Validate slasher address matches configured address
+	if request.slasher != _context.config.validation.slasher_address {
+		return Err(jsonrpsee::types::error::ErrorCode::InvalidParams.into());
+	}
 
 	// Database is now available via _context.database
 	// Example usage: _context.database.with_client(|client| { /* database operations */ }).await?;
