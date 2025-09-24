@@ -2,6 +2,9 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use secp256k1::SecretKey;
+
+use crate::crypto;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -9,6 +12,8 @@ pub struct Config {
 	pub database: DatabaseConfig,
 	pub logging: LoggingConfig,
 	pub validation: ValidationConfig,
+	#[serde(skip)]
+	pub signing: SigningConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +39,13 @@ pub struct ValidationConfig {
 	pub slasher_address: String,
 }
 
+/// Signing configuration loaded from environment variables
+/// This is kept separate from TOML config for security
+#[derive(Debug, Clone)]
+pub struct SigningConfig {
+	pub private_key: SecretKey,
+}
+
 impl Default for Config {
 	fn default() -> Self {
 		Self {
@@ -41,6 +53,7 @@ impl Default for Config {
 			database: DatabaseConfig::default(),
 			logging: LoggingConfig::default(),
 			validation: ValidationConfig::default(),
+			signing: SigningConfig::default(),
 		}
 	}
 }
@@ -80,9 +93,41 @@ impl Default for ValidationConfig {
 	}
 }
 
+impl Default for SigningConfig {
+	fn default() -> Self {
+		Self {
+			// Default development private key (same as in .env.example)
+			private_key: crypto::parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
+				.expect("Failed to parse default private key"),
+		}
+	}
+}
+
+impl SigningConfig {
+	/// Load signing configuration from environment variables
+	pub fn load() -> Result<Self> {
+		let private_key_hex = std::env::var("COMMITTER_PRIVATE_KEY")
+			.context("COMMITTER_PRIVATE_KEY environment variable not set")?;
+
+		let private_key = crypto::parse_private_key(&private_key_hex)
+			.context("Invalid private key in COMMITTER_PRIVATE_KEY")?;
+
+		Ok(Self { private_key })
+	}
+}
+
 impl Config {
 	pub fn load() -> Result<Self> {
-		Self::load_from_file("config.toml")
+		let mut config = Self::load_from_file("config.toml")?;
+
+		// Load signing config from environment variables
+		config.signing = SigningConfig::load()
+			.unwrap_or_else(|_| {
+				tracing::warn!("Failed to load signing config from environment, using defaults");
+				SigningConfig::default()
+			});
+
+		Ok(config)
 	}
 
 	pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {

@@ -1,9 +1,11 @@
+use std::sync::Arc;
 use jsonrpsee::Extensions;
 use jsonrpsee::core::RpcResult;
 use tracing::{info, instrument};
 use ethabi::{ParamType, decode};
 
 use super::super::types::{Commitment, CommitmentRequest, FeeInfo, RpcContext, SignedCommitment, SlotInfoResponse};
+use crate::crypto::{generate_request_hash, sign_commitment};
 
 fn validate_inclusion_payload(payload: &[u8]) -> Result<(), String> {
 	// Define the ABI types for InclusionPayload struct:
@@ -27,11 +29,11 @@ fn validate_inclusion_payload(payload: &[u8]) -> Result<(), String> {
 	}
 }
 
-#[instrument(name = "commitment_request", skip(_context, _extensions))]
-pub fn commitment_request_handler(
-	params: jsonrpsee::types::Params<'_>,
-	_context: &RpcContext,
-	_extensions: &Extensions,
+#[instrument(name = "commitment_request", skip(context, _extensions))]
+pub async fn commitment_request_handler(
+	params: jsonrpsee::types::Params<'static>,
+	context: Arc<RpcContext>,
+	_extensions: Extensions,
 ) -> RpcResult<SignedCommitment> {
 	info!("Processing commitment request");
 	let request: CommitmentRequest = params.parse()?;
@@ -47,55 +49,69 @@ pub fn commitment_request_handler(
 	}
 
 	// Validate slasher address matches configured address
-	if request.slasher != _context.config.validation.slasher_address {
+	if request.slasher != context.config.validation.slasher_address {
 		return Err(jsonrpsee::types::error::ErrorCode::InvalidParams.into());
 	}
 
-	// Database is now available via _context.database
-	// Example usage: _context.database.with_client(|client| { /* database operations */ }).await?;
-	// Or use the convenience method: _context.with_database(|client| { /* database operations */ }).await?;
-	// Or get direct client access: _context.database_client();
-	// TODO: Implement actual commitment logic
+	// Generate request hash
+	let request_hash = generate_request_hash(&request)
+		.map_err(|_| jsonrpsee::types::error::ErrorCode::InternalError)?;
+
+	// Check if commitment already exists to prevent duplicates
+	if context.database.commitment_exists(&request_hash).await
+		.map_err(|_| jsonrpsee::types::error::ErrorCode::InternalError)? {
+		return Err(jsonrpsee::types::error::ErrorCode::InvalidRequest.into());
+	}
+
+	// Create commitment with real request hash
 	let commitment = Commitment {
 		commitment_type: request.commitment_type,
 		payload: request.payload,
-		request_hash: "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+		request_hash: request_hash.clone(),
 		slasher: request.slasher,
 	};
 
+	// Sign the commitment
+	let signature = sign_commitment(&commitment, &context.config.signing.private_key)
+		.map_err(|_| jsonrpsee::types::error::ErrorCode::InternalError)?;
+
 	let signed_commitment = SignedCommitment {
 		commitment,
-		signature: "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000".to_string(),
+		signature,
 	};
 
-	info!("Commitment request processed successfully");
+	// Save to database
+	context.database.save_commitment(&signed_commitment).await
+		.map_err(|_| jsonrpsee::types::error::ErrorCode::InternalError)?;
+
+	info!("Commitment request processed and saved successfully");
 	Ok(signed_commitment)
 }
 
-#[instrument(name = "commitment_result", skip(_context, _extensions))]
-pub fn commitment_result_handler(
-	params: jsonrpsee::types::Params<'_>,
-	_context: &RpcContext,
-	_extensions: &Extensions,
+#[instrument(name = "commitment_result", skip(context, _extensions))]
+pub async fn commitment_result_handler(
+	params: jsonrpsee::types::Params<'static>,
+	context: Arc<RpcContext>,
+	_extensions: Extensions,
 ) -> RpcResult<SignedCommitment> {
 	info!("Processing commitment result request");
 	let request_hash: String = params.one()?;
 
-	// TODO: Implement actual commitment retrieval logic
-	let commitment = Commitment {
-		commitment_type: 1,
-		payload: vec![],
-		request_hash,
-		slasher: "0x0000000000000000000000000000000000000000".to_string(),
-	};
-
-	let signed_commitment = SignedCommitment {
-		commitment,
-		signature: "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000".to_string(),
-	};
-
-	info!("Commitment result request processed successfully");
-	Ok(signed_commitment)
+	// Retrieve commitment from database
+	match context.database.get_commitment_by_hash(&request_hash).await {
+		Ok(Some(signed_commitment)) => {
+			info!("Commitment result request processed successfully");
+			Ok(signed_commitment)
+		}
+		Ok(None) => {
+			info!("Commitment not found for hash: {}", request_hash);
+			Err(jsonrpsee::types::error::ErrorCode::InvalidRequest.into())
+		}
+		Err(e) => {
+			info!("Database error retrieving commitment: {}", e);
+			Err(jsonrpsee::types::error::ErrorCode::InternalError.into())
+		}
+	}
 }
 
 #[instrument(name = "slots", skip(_context, _extensions))]

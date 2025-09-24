@@ -1,4 +1,5 @@
 mod config;
+mod crypto;
 mod db;
 mod rpc;
 mod server;
@@ -15,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
 	// Initialize database connection pool
 	let db_pool = db::create_pool(&config).await?;
 	db::test_connection(&db_pool).await?;
-	let db_context = types::DatabaseContext::new(db_pool);
+	let db_context = db::DatabaseContext::new(db_pool);
 
 	// Create RPC context with database context and config
 	let rpc_context = types::RpcContext::new(db_context, config.clone());
