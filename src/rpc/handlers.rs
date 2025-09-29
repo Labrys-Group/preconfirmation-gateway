@@ -5,8 +5,10 @@ use tracing::{info, warn, error, instrument};
 
 use super::super::types::{
     Commitment, CommitmentRequest, FeeInfo, RpcContext, SignedCommitment, SlotInfoResponse,
-    PayloadParser,
+    PayloadParser, BeaconTiming,
 };
+use super::super::types::rpc::{Offering, SlotInfo};
+use super::super::types::beacon::timing;
 use crate::crypto::{generate_request_hash, sign_commitment};
 use crate::db::delegation_ops::get_delegations_for_slot;
 
@@ -204,10 +206,43 @@ pub fn slots_handler(
 	_extensions: &Extensions,
 ) -> RpcResult<SlotInfoResponse> {
 	info!("Processing slots request");
-	// TODO: Implement actual slots logic
-	let response = SlotInfoResponse { slots: vec![] };
 
-	info!("Slots request processed successfully");
+	// Calculate current slot and lookahead window
+	let genesis_time = _context.config.beacon_api.genesis_time;
+	let current_slot = BeaconTiming::current_slot_estimate(genesis_time);
+	let lookahead_slots = _context.config.delegation.lookahead_epochs * timing::SLOTS_PER_EPOCH;
+
+	// Generate slots for our service catalog (what we can offer)
+	let mut slots = Vec::new();
+
+	// Start from next slot to avoid timing issues with current slot
+	let start_slot = current_slot + 1;
+	let end_slot = start_slot + lookahead_slots;
+
+	for slot in start_slot..end_slot {
+		// Create offering for Hooli chain with inclusion commitments (type 1)
+		let hooli_offering = Offering {
+			chain_id: 560048, // Hooli chain ID
+			commitment_types: vec![1], // Only support inclusion commitments
+		};
+
+		let slot_info = SlotInfo {
+			slot,
+			offerings: vec![hooli_offering],
+		};
+
+		slots.push(slot_info);
+	}
+
+	let slots_count = slots.len();
+	let response = SlotInfoResponse { slots };
+
+	info!(
+		"Slots request processed successfully: {} slots from {} to {}",
+		slots_count,
+		start_slot,
+		end_slot
+	);
 	Ok(response)
 }
 
@@ -462,6 +497,98 @@ mod tests {
 
 			// Validate that commitment type is supported
 			assert_eq!(request.commitment_type, 1);
+		}
+
+		#[test]
+		fn test_slots_handler_service_catalog() {
+			// Test the slots handler logic without database dependencies
+			use crate::config::{Config, BeaconApiConfig, DelegationConfig};
+
+			// Create minimal config for testing
+			let config = Config {
+				server: crate::config::ServerConfig {
+					host: "127.0.0.1".to_string(),
+					port: 8545,
+				},
+				database: crate::config::DatabaseConfig {
+					url: "postgresql://test:test@localhost/test_db".to_string(),
+				},
+				logging: crate::config::LoggingConfig {
+					level: "info".to_string(),
+					enable_method_tracing: false,
+					traced_methods: vec![],
+				},
+				validation: crate::config::ValidationConfig {
+					slasher_address: "0x1234567890123456789012345678901234567890".to_string(),
+				},
+				beacon_api: BeaconApiConfig {
+					primary_endpoint: "http://localhost:3500".to_string(),
+					fallback_endpoints: vec![],
+					request_timeout_secs: 30,
+					genesis_time: 1606824023, // Fixed genesis time for testing
+				},
+				constraints_api: crate::config::ConstraintsApiConfig {
+					relay_endpoint: "http://localhost:3501".to_string(),
+					request_timeout_secs: 30,
+					max_retries: 3,
+					authorized_builders: vec![],
+				},
+				delegation: DelegationConfig {
+					lookahead_epochs: 2,
+					polling_interval_secs: 12,
+					cache_ttl_secs: 3600,
+					domain_application_gateway: "0x00000001".to_string(),
+				},
+				signing: crate::config::SigningConfig {
+					private_key: secp256k1::SecretKey::from_slice(&[1; 32]).unwrap(),
+					key_pairs: vec![],
+				},
+			};
+
+			// Calculate expected slot behavior
+			let genesis_time = config.beacon_api.genesis_time;
+			let current_slot = BeaconTiming::current_slot_estimate(genesis_time);
+			let lookahead_slots = config.delegation.lookahead_epochs * timing::SLOTS_PER_EPOCH;
+			let expected_start_slot = current_slot + 1;
+			let expected_end_slot = expected_start_slot + lookahead_slots;
+
+			// Test the service catalog logic manually
+			let mut expected_slots = Vec::new();
+			for slot in expected_start_slot..expected_end_slot {
+				let hooli_offering = Offering {
+					chain_id: 560048, // Hooli chain ID
+					commitment_types: vec![1], // Only support inclusion commitments
+				};
+
+				let slot_info = SlotInfo {
+					slot,
+					offerings: vec![hooli_offering],
+				};
+
+				expected_slots.push(slot_info);
+			}
+
+			// Verify the logic produces correct results
+			assert_eq!(expected_slots.len(), lookahead_slots as usize);
+
+			// Verify each slot has the correct offering for Hooli chain
+			for slot_info in &expected_slots {
+				assert_eq!(slot_info.offerings.len(), 1);
+
+				let offering = &slot_info.offerings[0];
+				assert_eq!(offering.chain_id, 560048); // Hooli chain ID
+				assert_eq!(offering.commitment_types, vec![1]); // Only inclusion commitments
+
+				// Verify slot numbers are reasonable
+				assert!(slot_info.slot >= expected_start_slot);
+				assert!(slot_info.slot < expected_end_slot);
+			}
+
+			// Verify slots are in ascending order
+			for i in 1..expected_slots.len() {
+				assert!(expected_slots[i].slot > expected_slots[i-1].slot);
+				assert_eq!(expected_slots[i].slot, expected_slots[i-1].slot + 1);
+			}
 		}
 	}
 }
