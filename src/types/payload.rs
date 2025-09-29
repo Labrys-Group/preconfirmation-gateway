@@ -1,0 +1,382 @@
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+
+/// Parser and utilities for commitment payloads
+pub struct PayloadParser;
+
+/// Structured representation of an inclusion preconfirmation payload
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InclusionPayload {
+    /// The slot number for which inclusion is being preconfirmed
+    pub slot: u64,
+    /// The transaction data to be included
+    pub tx_data: Vec<u8>,
+    /// Optional metadata about the inclusion request
+    pub metadata: Option<InclusionMetadata>,
+}
+
+/// Additional metadata for inclusion payloads
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InclusionMetadata {
+    /// Gas limit for the transaction
+    pub gas_limit: Option<u64>,
+    /// Maximum fee per gas
+    pub max_fee_per_gas: Option<u64>,
+    /// Maximum priority fee per gas
+    pub max_priority_fee_per_gas: Option<u64>,
+    /// Nonce for the transaction
+    pub nonce: Option<u64>,
+}
+
+/// Execution preconfirmation payload (for future use)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExecutionPayload {
+    /// The slot number for execution preconfirmation
+    pub slot: u64,
+    /// The transaction to execute
+    pub transaction: Vec<u8>,
+    /// Expected state root after execution
+    pub expected_state_root: [u8; 32],
+}
+
+/// Generic payload wrapper that can handle different commitment types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
+pub enum CommitmentPayload {
+    /// Inclusion preconfirmation (commitment_type = 1)
+    Inclusion(InclusionPayload),
+    /// Execution preconfirmation (commitment_type = 2, for future use)
+    Execution(ExecutionPayload),
+    /// Unknown or custom payload type
+    Raw(Vec<u8>),
+}
+
+impl PayloadParser {
+    /// Extract slot number from a raw payload based on commitment type
+    pub fn extract_slot(commitment_type: u64, payload: &[u8]) -> Result<u64> {
+        match commitment_type {
+            1 => Self::extract_slot_from_inclusion_payload(payload),
+            2 => Self::extract_slot_from_execution_payload(payload),
+            _ => Err(anyhow::anyhow!(
+                "Unknown commitment type {} for slot extraction",
+                commitment_type
+            )),
+        }
+    }
+
+    /// Parse an inclusion payload from raw bytes
+    pub fn parse_inclusion_payload(payload: &[u8]) -> Result<InclusionPayload> {
+        // Try JSON parsing first (most flexible)
+        if let Ok(parsed) = serde_json::from_slice::<InclusionPayload>(payload) {
+            return Ok(parsed);
+        }
+
+        // Try RLP decoding for Ethereum-style encoding
+        Self::parse_inclusion_payload_rlp(payload)
+            .context("Failed to parse inclusion payload as both JSON and RLP")
+    }
+
+    /// Parse an execution payload from raw bytes
+    pub fn parse_execution_payload(payload: &[u8]) -> Result<ExecutionPayload> {
+        // Try JSON parsing first
+        if let Ok(parsed) = serde_json::from_slice::<ExecutionPayload>(payload) {
+            return Ok(parsed);
+        }
+
+        // Fallback to RLP or other encoding
+        Err(anyhow::anyhow!("Failed to parse execution payload"))
+    }
+
+    /// Extract slot from inclusion payload
+    fn extract_slot_from_inclusion_payload(payload: &[u8]) -> Result<u64> {
+        // First try to parse as structured payload
+        if let Ok(inclusion_payload) = Self::parse_inclusion_payload(payload) {
+            return Ok(inclusion_payload.slot);
+        }
+
+        // Fallback: try to extract slot from raw bytes assuming common formats
+        Self::extract_slot_from_raw_bytes(payload)
+    }
+
+    /// Extract slot from execution payload
+    fn extract_slot_from_execution_payload(payload: &[u8]) -> Result<u64> {
+        if let Ok(execution_payload) = Self::parse_execution_payload(payload) {
+            return Ok(execution_payload.slot);
+        }
+
+        // Fallback to raw byte extraction
+        Self::extract_slot_from_raw_bytes(payload)
+    }
+
+    /// Parse inclusion payload using RLP encoding
+    fn parse_inclusion_payload_rlp(payload: &[u8]) -> Result<InclusionPayload> {
+        use rlp::Rlp;
+
+        let rlp = Rlp::new(payload);
+
+        // Expect RLP list with at least [slot, tx_data]
+        if !rlp.is_list() || rlp.item_count()? < 2 {
+            return Err(anyhow::anyhow!("Invalid RLP structure for inclusion payload"));
+        }
+
+        let slot: u64 = rlp.val_at(0)
+            .context("Failed to decode slot from RLP")?;
+
+        let tx_data: Vec<u8> = rlp.val_at(1)
+            .context("Failed to decode tx_data from RLP")?;
+
+        // Optional metadata (if present)
+        let metadata = if rlp.item_count()? > 2 {
+            // Try to decode metadata if present
+            match rlp.at(2) {
+                Ok(metadata_rlp) if metadata_rlp.is_list() => {
+                    Some(Self::parse_metadata_from_rlp(&metadata_rlp)?)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        Ok(InclusionPayload {
+            slot,
+            tx_data,
+            metadata,
+        })
+    }
+
+    /// Parse metadata from RLP
+    fn parse_metadata_from_rlp(rlp: &rlp::Rlp) -> Result<InclusionMetadata> {
+        let metadata = InclusionMetadata {
+            gas_limit: if rlp.item_count()? > 0 {
+                rlp.val_at(0).ok()
+            } else {
+                None
+            },
+            max_fee_per_gas: if rlp.item_count()? > 1 {
+                rlp.val_at(1).ok()
+            } else {
+                None
+            },
+            max_priority_fee_per_gas: if rlp.item_count()? > 2 {
+                rlp.val_at(2).ok()
+            } else {
+                None
+            },
+            nonce: if rlp.item_count()? > 3 {
+                rlp.val_at(3).ok()
+            } else {
+                None
+            },
+        };
+
+        Ok(metadata)
+    }
+
+    /// Extract slot from raw bytes using common patterns
+    fn extract_slot_from_raw_bytes(payload: &[u8]) -> Result<u64> {
+        // Try to parse as little-endian u64 at the beginning
+        if payload.len() >= 8 {
+            let slot_bytes = &payload[0..8];
+            let slot = u64::from_le_bytes(
+                slot_bytes.try_into()
+                    .context("Failed to convert bytes to u64")?
+            );
+            return Ok(slot);
+        }
+
+        // Try big-endian
+        if payload.len() >= 8 {
+            let slot_bytes = &payload[0..8];
+            let slot = u64::from_be_bytes(
+                slot_bytes.try_into()
+                    .context("Failed to convert bytes to u64")?
+            );
+            // Sanity check: slot should be reasonable (not too large)
+            if slot < 1_000_000_000 { // Arbitrary reasonable upper bound
+                return Ok(slot);
+            }
+        }
+
+        Err(anyhow::anyhow!("Could not extract slot from raw payload bytes"))
+    }
+
+    /// Encode an inclusion payload to bytes
+    pub fn encode_inclusion_payload(payload: &InclusionPayload) -> Result<Vec<u8>> {
+        // Default to JSON encoding for flexibility
+        serde_json::to_vec(payload)
+            .context("Failed to encode inclusion payload as JSON")
+    }
+
+    /// Encode an inclusion payload to RLP bytes
+    pub fn encode_inclusion_payload_rlp(payload: &InclusionPayload) -> Result<Vec<u8>> {
+        use rlp::RlpStream;
+
+        let mut stream = RlpStream::new_list(if payload.metadata.is_some() { 3 } else { 2 });
+
+        stream.append(&payload.slot);
+        stream.append(&payload.tx_data);
+
+        if let Some(ref metadata) = payload.metadata {
+            let mut metadata_stream = RlpStream::new_list(4);
+            metadata_stream.append(&metadata.gas_limit.unwrap_or(0));
+            metadata_stream.append(&metadata.max_fee_per_gas.unwrap_or(0));
+            metadata_stream.append(&metadata.max_priority_fee_per_gas.unwrap_or(0));
+            metadata_stream.append(&metadata.nonce.unwrap_or(0));
+            stream.append_raw(&metadata_stream.out(), 1);
+        }
+
+        Ok(stream.out().to_vec())
+    }
+}
+
+impl InclusionPayload {
+    /// Create a new inclusion payload
+    pub fn new(slot: u64, tx_data: Vec<u8>) -> Self {
+        Self {
+            slot,
+            tx_data,
+            metadata: None,
+        }
+    }
+
+    /// Create a new inclusion payload with metadata
+    pub fn with_metadata(slot: u64, tx_data: Vec<u8>, metadata: InclusionMetadata) -> Self {
+        Self {
+            slot,
+            tx_data,
+            metadata: Some(metadata),
+        }
+    }
+
+    /// Get the slot number
+    pub fn slot(&self) -> u64 {
+        self.slot
+    }
+
+    /// Get the transaction data
+    pub fn tx_data(&self) -> &[u8] {
+        &self.tx_data
+    }
+
+    /// Validate the payload structure
+    pub fn validate(&self) -> Result<()> {
+        if self.tx_data.is_empty() {
+            return Err(anyhow::anyhow!("Transaction data cannot be empty"));
+        }
+
+        // Add more validation as needed
+        if self.slot == 0 {
+            return Err(anyhow::anyhow!("Slot cannot be zero"));
+        }
+
+        Ok(())
+    }
+}
+
+impl ExecutionPayload {
+    /// Create a new execution payload
+    pub fn new(slot: u64, transaction: Vec<u8>, expected_state_root: [u8; 32]) -> Self {
+        Self {
+            slot,
+            transaction,
+            expected_state_root,
+        }
+    }
+
+    /// Get the slot number
+    pub fn slot(&self) -> u64 {
+        self.slot
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_slot_from_json_inclusion_payload() {
+        let payload = InclusionPayload::new(12345, vec![1, 2, 3, 4]);
+        let encoded = PayloadParser::encode_inclusion_payload(&payload).unwrap();
+
+        let extracted_slot = PayloadParser::extract_slot(1, &encoded).unwrap();
+        assert_eq!(extracted_slot, 12345);
+    }
+
+    #[test]
+    fn test_extract_slot_from_rlp_inclusion_payload() {
+        let payload = InclusionPayload::new(67890, vec![5, 6, 7, 8]);
+        let encoded = PayloadParser::encode_inclusion_payload_rlp(&payload).unwrap();
+
+        let extracted_slot = PayloadParser::extract_slot(1, &encoded).unwrap();
+        assert_eq!(extracted_slot, 67890);
+    }
+
+    #[test]
+    fn test_extract_slot_from_raw_bytes_le() {
+        let slot = 42u64;
+        let mut payload = slot.to_le_bytes().to_vec();
+        payload.extend_from_slice(&[1, 2, 3, 4]); // Additional data
+
+        let extracted_slot = PayloadParser::extract_slot(1, &payload).unwrap();
+        assert_eq!(extracted_slot, slot);
+    }
+
+    #[test]
+    fn test_parse_inclusion_payload_json() {
+        let payload = InclusionPayload::new(123, vec![0xaa, 0xbb, 0xcc]);
+        let encoded = serde_json::to_vec(&payload).unwrap();
+
+        let parsed = PayloadParser::parse_inclusion_payload(&encoded).unwrap();
+        assert_eq!(parsed.slot, 123);
+        assert_eq!(parsed.tx_data, vec![0xaa, 0xbb, 0xcc]);
+    }
+
+    #[test]
+    fn test_parse_inclusion_payload_rlp() {
+        let payload = InclusionPayload::new(456, vec![0xdd, 0xee, 0xff]);
+        let encoded = PayloadParser::encode_inclusion_payload_rlp(&payload).unwrap();
+
+        let parsed = PayloadParser::parse_inclusion_payload(&encoded).unwrap();
+        assert_eq!(parsed.slot, 456);
+        assert_eq!(parsed.tx_data, vec![0xdd, 0xee, 0xff]);
+    }
+
+    #[test]
+    fn test_inclusion_payload_with_metadata() {
+        let metadata = InclusionMetadata {
+            gas_limit: Some(21000),
+            max_fee_per_gas: Some(1000000000),
+            max_priority_fee_per_gas: Some(1000000),
+            nonce: Some(42),
+        };
+
+        let payload = InclusionPayload::with_metadata(789, vec![0x11, 0x22], metadata.clone());
+
+        assert_eq!(payload.slot, 789);
+        assert_eq!(payload.metadata, Some(metadata));
+    }
+
+    #[test]
+    fn test_payload_validation() {
+        // Valid payload
+        let valid_payload = InclusionPayload::new(100, vec![1, 2, 3]);
+        assert!(valid_payload.validate().is_ok());
+
+        // Invalid: empty tx data
+        let invalid_payload = InclusionPayload::new(100, vec![]);
+        assert!(invalid_payload.validate().is_err());
+
+        // Invalid: zero slot
+        let invalid_slot_payload = InclusionPayload::new(0, vec![1, 2, 3]);
+        assert!(invalid_slot_payload.validate().is_err());
+    }
+
+    #[test]
+    fn test_unknown_commitment_type() {
+        let payload = vec![1, 2, 3, 4];
+        let result = PayloadParser::extract_slot(999, &payload);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Unknown commitment type"));
+    }
+}

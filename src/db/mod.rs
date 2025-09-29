@@ -3,6 +3,7 @@
 //! This module provides database connectivity and operations for the preconfirmation gateway.
 //! It uses SQLx for compile-time checked SQL queries and async database operations.
 
+pub mod delegation_ops;
 pub mod operations;
 
 use std::env;
@@ -95,6 +96,15 @@ impl DatabaseContext {
 		Self { pool }
 	}
 
+	/// Create a database context for testing (without actual connection)
+	#[cfg(test)]
+	pub fn new_for_testing() -> Self {
+		// Create a fake pool that won't actually connect
+		let pool = PgPool::connect_lazy("postgresql://test:test@localhost/test_db")
+			.expect("Failed to create test pool");
+		Self { pool }
+	}
+
 	/// Get reference to the connection pool
 	pub fn pool(&self) -> &PgPool {
 		&self.pool
@@ -124,5 +134,67 @@ impl DatabaseContext {
 	/// Get commitment statistics
 	pub async fn get_stats(&self) -> Result<operations::CommitmentStats> {
 		operations::get_commitment_stats(&self.pool).await
+	}
+
+	// Delegation operations
+
+	/// Save a delegation to the database
+	pub async fn save_delegation(
+		&self,
+		signed_delegation: &crate::types::SignedDelegation,
+	) -> Result<uuid::Uuid> {
+		delegation_ops::save_delegation(&self.pool, signed_delegation).await
+	}
+
+	/// Get delegations for a specific slot
+	pub async fn get_delegations_for_slot(
+		&self,
+		slot: u64,
+	) -> Result<Vec<crate::types::SignedDelegation>> {
+		delegation_ops::get_delegations_for_slot(&self.pool, slot).await
+	}
+
+	/// Check if delegation exists for slot and committer
+	pub async fn delegation_exists_for_slot_and_committer(
+		&self,
+		slot: u64,
+		committer_address: &str,
+	) -> Result<bool> {
+		delegation_ops::delegation_exists_for_slot_and_committer(&self.pool, slot, committer_address).await
+	}
+
+	/// Get delegation by proposer and slot
+	pub async fn get_delegation_by_proposer_slot(
+		&self,
+		proposer_pubkey: &crate::types::BlsPublicKey,
+		slot: u64,
+	) -> Result<Option<crate::types::SignedDelegation>> {
+		delegation_ops::get_delegation_by_proposer_slot(&self.pool, proposer_pubkey, slot).await
+	}
+
+	/// Get delegations by delegate pubkey
+	pub async fn get_delegations_by_delegate(
+		&self,
+		delegate_pubkey: &crate::types::BlsPublicKey,
+	) -> Result<Vec<crate::types::SignedDelegation>> {
+		delegation_ops::get_delegations_by_delegate(&self.pool, delegate_pubkey).await
+	}
+
+	/// Batch save delegations
+	pub async fn save_delegations_batch(
+		&self,
+		delegations: &[crate::types::SignedDelegation],
+	) -> Result<Vec<uuid::Uuid>> {
+		delegation_ops::save_delegations_batch(&self.pool, delegations).await
+	}
+
+	/// Get delegation statistics
+	pub async fn get_delegation_stats(&self) -> Result<delegation_ops::DelegationStats> {
+		delegation_ops::get_delegation_stats(&self.pool).await
+	}
+
+	/// Deactivate expired delegations
+	pub async fn deactivate_expired_delegations(&self, current_slot: u64) -> Result<u64> {
+		delegation_ops::deactivate_expired_delegations(&self.pool, current_slot).await
 	}
 }

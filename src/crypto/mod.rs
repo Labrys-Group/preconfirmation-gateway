@@ -1,9 +1,12 @@
-//! Cryptographic utilities for ECDSA signing and hashing
+//! Cryptographic utilities for ECDSA and BLS signing
 //!
-//! This module implements the Gateway specification for commitment signing:
+//! This module implements the Gateway specification for cryptographic operations:
 //! - Keccak256 hashing
 //! - ABI encoding of commitment structures
-//! - ECDSA signing using secp256k1
+//! - ECDSA signing using secp256k1 for commitments
+//! - BLS signing for constraint messages and delegation verification
+
+pub mod bls;
 
 use anyhow::{Context, Result};
 use ethabi::{encode, Token};
@@ -11,6 +14,9 @@ use secp256k1::{ecdsa::Signature, Message, PublicKey, SecretKey, Secp256k1};
 use tiny_keccak::{Hasher, Keccak};
 
 use crate::types::{Commitment, CommitmentRequest};
+
+// Re-export BLS functionality for convenience
+pub use bls::{BlsManager, keys as bls_keys};
 
 /// Compute Keccak256 hash of input bytes
 pub fn keccak256(input: &[u8]) -> [u8; 32] {
@@ -130,7 +136,7 @@ fn parse_ethereum_address(address_str: &str) -> Result<ethabi::Address> {
 }
 
 /// Parse hex string (with or without 0x prefix) to bytes
-fn parse_hex_bytes(hex_str: &str, expected_len: usize) -> Result<Vec<u8>> {
+pub fn parse_hex_bytes(hex_str: &str, expected_len: usize) -> Result<Vec<u8>> {
 	let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
 	let bytes = hex::decode(hex_str)
 		.context("Invalid hex string")?;
@@ -140,6 +146,22 @@ fn parse_hex_bytes(hex_str: &str, expected_len: usize) -> Result<Vec<u8>> {
 	}
 
 	Ok(bytes)
+}
+
+/// Derive Ethereum address from ECDSA private key
+pub fn ecdsa_to_address(private_key: &SecretKey) -> Result<String> {
+	let secp = Secp256k1::new();
+	let public_key = PublicKey::from_secret_key(&secp, private_key);
+
+	// Get uncompressed public key (65 bytes: 0x04 + 32 + 32)
+	let public_key_bytes = public_key.serialize_uncompressed();
+
+	// Skip the 0x04 prefix and hash the remaining 64 bytes
+	let hash = keccak256(&public_key_bytes[1..]);
+
+	// Take last 20 bytes and format as hex address
+	let address_bytes = &hash[12..];
+	Ok(format!("0x{}", hex::encode(address_bytes)))
 }
 
 #[cfg(test)]
