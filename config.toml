@@ -28,6 +28,41 @@ traced_methods = [
 # Validation configuration
 slasher_address = "0x0000000000000000000000000000000000000000"  # Ethereum address that must match request slasher
 
+[beacon_api]
+# Beacon API configuration for validator duties and timing
+primary_endpoint = "https://ethereum-beacon-api.alchemy.com"
+fallback_endpoints = []
+request_timeout_secs = 30
+genesis_time = 1606824023  # Ethereum mainnet genesis time
+
+[constraints_api]
+# Constraints API configuration for relay communication
+relay_endpoint = "http://localhost:3501"
+request_timeout_secs = 30
+max_retries = 3
+authorized_builders = []
+
+[delegation]
+# Delegation management configuration
+lookahead_epochs = 2
+polling_interval_secs = 12
+cache_ttl_secs = 3600
+domain_application_gateway = "0x00000001"
+
+[reth]
+# Reth node configuration for gas price oracle
+endpoint = "http://localhost:8545"  # Reth node RPC endpoint
+request_timeout_secs = 10
+max_retries = 3
+
+[reth.fee_config]
+# Dynamic fee calculation parameters
+scaling_factor = 2.0          # Exponential scaling factor (k) in pricing formula
+default_gas_limit = 30000000  # Default gas limit for calculations (30M gas)
+min_fee_multiplier = 1.0      # Minimum fee multiplier (prevents zero fees)
+max_fee_multiplier = 100.0    # Maximum fee multiplier (caps extreme pricing)
+cache_ttl_secs = 60          # Fee cache TTL in seconds
+
 # Signing configuration
 # IMPORTANT: The ECDSA private key is loaded from the COMMITTER_PRIVATE_KEY environment variable
 # This is not stored in this config file for security reasons.

@@ -11,6 +11,8 @@ use super::super::types::rpc::{Offering, SlotInfo};
 use super::super::types::beacon::timing;
 use crate::crypto::{generate_request_hash, sign_commitment};
 use crate::db::delegation_ops::get_delegations_for_slot;
+use crate::api::reth::RethApiClient;
+use crate::services::fee_pricing::FeePricingEngine;
 
 /// Validate payload and extract slot number
 fn validate_and_extract_slot(commitment_type: u64, payload: &[u8]) -> Result<u64, String> {
@@ -246,19 +248,70 @@ pub fn slots_handler(
 	Ok(response)
 }
 
-#[instrument(name = "fee", skip(_context, _extensions))]
-pub fn fee_handler(
+#[instrument(name = "fee", skip(context, _extensions))]
+pub async fn fee_handler(
 	params: jsonrpsee::types::Params<'_>,
-	_context: &RpcContext,
-	_extensions: &Extensions,
+	context: Arc<RpcContext>,
+	_extensions: Extensions,
 ) -> RpcResult<FeeInfo> {
-	info!("Processing fee request");
+	info!("Processing fee request with dynamic pricing");
 	let request: CommitmentRequest = params.parse()?;
 
-	// TODO: Implement actual fee calculation logic
-	let fee_info = FeeInfo { fee_payload: vec![0u8; 32], commitment_type: request.commitment_type };
+	// Validate commitment_type
+	if request.commitment_type != 1 {
+		warn!("Invalid commitment type for fee calculation: {}", request.commitment_type);
+		return Err(jsonrpsee::types::error::ErrorCode::InvalidParams.into());
+	}
 
-	info!("Fee request processed successfully");
+	// Extract slot from payload for fee calculation
+	let slot = validate_and_extract_slot(request.commitment_type, &request.payload)
+		.map_err(|e| {
+			warn!("Payload validation failed during fee calculation: {}", e);
+			jsonrpsee::types::error::ErrorCode::InvalidParams
+		})?;
+
+	info!("Calculating fee for slot {} with commitment type {}", slot, request.commitment_type);
+
+	// Check if the slot is within acceptable range for fee calculation
+	if !context.fee_engine.is_slot_acceptable_for_fees(slot) {
+		warn!("Slot {} is outside acceptable range for fee calculation", slot);
+		return Err(jsonrpsee::types::error::ErrorCode::InvalidParams.into());
+	}
+
+	// Calculate dynamic fee using the pricing engine
+	let fee_calculation = context.fee_engine
+		.calculate_fee_for_commitment(
+			request.commitment_type,
+			&request.payload,
+			slot,
+		)
+		.await
+		.map_err(|e| {
+			error!("Failed to calculate fee for slot {}: {}", slot, e);
+			jsonrpsee::types::error::ErrorCode::InternalError
+		})?;
+
+	// Encode the fee calculation result as opaque payload bytes
+	// Using a simple binary format: [total_cost (8 bytes) | final_price (8 bytes) | estimated_gas (8 bytes) | congestion_ratio (8 bytes)]
+	let mut fee_payload = Vec::with_capacity(32);
+	fee_payload.extend_from_slice(&fee_calculation.total_cost.to_le_bytes());
+	fee_payload.extend_from_slice(&fee_calculation.final_price.to_le_bytes());
+	fee_payload.extend_from_slice(&fee_calculation.estimated_gas.to_le_bytes());
+	fee_payload.extend_from_slice(&((fee_calculation.congestion_ratio * 1_000_000.0) as u64).to_le_bytes());
+
+	let fee_info = FeeInfo {
+		fee_payload,
+		commitment_type: request.commitment_type,
+	};
+
+	info!(
+		"Fee calculation completed for slot {}: total_cost={} wei, price={} wei/gas, congestion={:.2}%",
+		slot,
+		fee_calculation.total_cost,
+		fee_calculation.final_price,
+		fee_calculation.congestion_ratio * 100.0
+	);
+
 	Ok(fee_info)
 }
 
@@ -313,6 +366,7 @@ mod tests {
 				cache_ttl_secs: 3600,
 				domain_application_gateway: "0x00000001".to_string(),
 			},
+			reth: crate::config::RethConfig::default(),
 			signing: crate::config::SigningConfig {
 				private_key,
 				key_pairs: vec![
@@ -332,7 +386,18 @@ mod tests {
 			.expect("Failed to create test pool");
 		let database = DatabaseContext::new(pool);
 
-		Arc::new(RpcContext { database, config })
+		// For testing purposes, create a minimal fee engine
+		use crate::api::reth::{RethApiClient, RethApiConfig};
+		use crate::services::fee_pricing::FeePricingEngine;
+
+		let reth_client = Arc::new(
+			RethApiClient::new(RethApiConfig::default()).unwrap()
+		);
+		let database_arc = Arc::new(database.clone());
+		let config_arc = Arc::new(config.clone());
+		let fee_engine = Arc::new(FeePricingEngine::new(reth_client, database_arc, config_arc.clone()));
+
+		Arc::new(RpcContext::new(database, config, fee_engine))
 	}
 
 	#[test]
@@ -539,6 +604,7 @@ mod tests {
 					cache_ttl_secs: 3600,
 					domain_application_gateway: "0x00000001".to_string(),
 				},
+				reth: crate::config::RethConfig::default(),
 				signing: crate::config::SigningConfig {
 					private_key: secp256k1::SecretKey::from_slice(&[1; 32]).unwrap(),
 					key_pairs: vec![],

@@ -38,10 +38,24 @@ impl TestHelpers {
 
         let database = crate::db::DatabaseContext::new(pool);
 
-        Arc::new(RpcContext {
-            database,
-            config: (*config).clone(),
-        })
+        // Create a minimal fee engine for testing
+        let reth_config = crate::api::reth::RethApiConfig {
+            endpoint: "http://localhost:8545".to_string(),
+            request_timeout_secs: 30,
+            max_retries: 3,
+        };
+        let reth_client = Arc::new(
+            crate::api::reth::RethApiClient::new(reth_config).unwrap()
+        );
+        let database_arc = Arc::new(database.clone());
+        let config_arc = config.clone();
+        let fee_engine = Arc::new(crate::services::fee_pricing::FeePricingEngine::new(
+            reth_client,
+            database_arc,
+            config_arc.clone(),
+        ));
+
+        Arc::new(RpcContext::new(database, (*config).clone(), fee_engine))
     }
 
     /// Measure the execution time of an async operation

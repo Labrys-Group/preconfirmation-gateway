@@ -16,6 +16,7 @@ pub struct Config {
 	pub beacon_api: BeaconApiConfig,
 	pub constraints_api: ConstraintsApiConfig,
 	pub delegation: DelegationConfig,
+	pub reth: RethConfig,
 	#[serde(skip)]
 	pub signing: SigningConfig,
 }
@@ -82,6 +83,34 @@ pub struct DelegationConfig {
 	pub domain_application_gateway: String,
 }
 
+/// Configuration for Reth node integration and fee oracle
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RethConfig {
+	/// Reth node RPC endpoint
+	pub endpoint: String,
+	/// Request timeout in seconds
+	pub request_timeout_secs: u64,
+	/// Maximum retries for failed requests
+	pub max_retries: u32,
+	/// Fee calculation parameters
+	pub fee_config: FeeConfig,
+}
+
+/// Configuration for dynamic fee calculation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeeConfig {
+	/// Exponential scaling factor (k) in pricing formula
+	pub scaling_factor: f64,
+	/// Default gas limit for calculations (30M gas)
+	pub default_gas_limit: u64,
+	/// Minimum fee multiplier (prevents zero fees)
+	pub min_fee_multiplier: f64,
+	/// Maximum fee multiplier (caps extreme pricing)
+	pub max_fee_multiplier: f64,
+	/// Fee cache TTL in seconds
+	pub cache_ttl_secs: u64,
+}
+
 /// Signing configuration loaded from environment variables
 /// This is kept separate from TOML config for security
 #[derive(Debug, Clone)]
@@ -117,6 +146,7 @@ impl Default for Config {
 			beacon_api: BeaconApiConfig::default(),
 			constraints_api: ConstraintsApiConfig::default(),
 			delegation: DelegationConfig::default(),
+			reth: RethConfig::default(),
 			signing: SigningConfig::default(),
 		}
 	}
@@ -326,5 +356,28 @@ impl Config {
 
 	pub fn database_url(&self) -> &str {
 		&self.database.url
+	}
+}
+
+impl Default for RethConfig {
+	fn default() -> Self {
+		Self {
+			endpoint: "http://localhost:8545".to_string(),
+			request_timeout_secs: 10,
+			max_retries: 3,
+			fee_config: FeeConfig::default(),
+		}
+	}
+}
+
+impl Default for FeeConfig {
+	fn default() -> Self {
+		Self {
+			scaling_factor: 2.0,          // k=2 provides reasonable exponential scaling
+			default_gas_limit: 30_000_000, // 30M gas typical block limit
+			min_fee_multiplier: 1.0,       // Never less than base price
+			max_fee_multiplier: 100.0,     // Cap at 100x base price
+			cache_ttl_secs: 60,           // Cache fees for 1 minute
+		}
 	}
 }

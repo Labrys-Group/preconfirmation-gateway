@@ -306,6 +306,7 @@ pub fn create_test_config() -> Config {
             cache_ttl_secs: 300,
             domain_application_gateway: "0x00000002".to_string(),
         },
+        reth: crate::config::RethConfig::default(),
         signing: crate::config::SigningConfig {
             private_key: secp256k1::SecretKey::from_slice(&[1u8; 32]).unwrap(),
             key_pairs: vec![],

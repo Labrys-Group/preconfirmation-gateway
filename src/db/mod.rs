@@ -5,6 +5,7 @@
 
 pub mod delegation_ops;
 pub mod operations;
+pub mod slot_congestion_ops;
 
 use std::env;
 
@@ -196,5 +197,54 @@ impl DatabaseContext {
 	/// Deactivate expired delegations
 	pub async fn deactivate_expired_delegations(&self, current_slot: u64) -> Result<u64> {
 		delegation_ops::deactivate_expired_delegations(&self.pool, current_slot).await
+	}
+
+	// Slot congestion operations
+
+	/// Get or create slot congestion tracking record
+	pub async fn get_or_create_slot_congestion(
+		&self,
+		slot: u64,
+		base_gas_price: u64,
+		total_gas_limit: u64,
+		genesis_time: u64,
+	) -> Result<slot_congestion_ops::SlotCongestion> {
+		slot_congestion_ops::get_or_create_slot_congestion(
+			&self.pool,
+			slot,
+			base_gas_price,
+			total_gas_limit,
+			genesis_time,
+		).await
+	}
+
+	/// Update slot congestion with additional gas usage
+	pub async fn update_slot_congestion_gas_usage(
+		&self,
+		slot: u64,
+		additional_gas: u64,
+		scaling_factor: f64,
+	) -> Result<slot_congestion_ops::SlotCongestion> {
+		slot_congestion_ops::update_slot_congestion_gas_usage(
+			&self.pool,
+			slot,
+			additional_gas,
+			scaling_factor,
+		).await
+	}
+
+	/// Get current gas price for a slot
+	pub async fn get_current_gas_price_for_slot(&self, slot: u64) -> Result<Option<u64>> {
+		slot_congestion_ops::get_current_gas_price_for_slot(&self.pool, slot).await
+	}
+
+	/// Get congestion statistics
+	pub async fn get_congestion_stats(&self) -> Result<slot_congestion_ops::CongestionStats> {
+		slot_congestion_ops::get_congestion_stats(&self.pool).await
+	}
+
+	/// Cleanup old slot congestion records
+	pub async fn cleanup_old_slot_congestion(&self, hours_to_keep: u32) -> Result<u64> {
+		slot_congestion_ops::cleanup_old_slot_congestion(&self.pool, hours_to_keep).await
 	}
 }
