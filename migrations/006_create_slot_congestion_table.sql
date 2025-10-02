@@ -8,11 +8,11 @@ CREATE TABLE slot_congestion (
     -- Gas usage tracking
     preconfirmed_gas BIGINT NOT NULL DEFAULT 0,
     total_gas_limit BIGINT NOT NULL DEFAULT 30000000,
-    gas_used_ratio DECIMAL(5,4) NOT NULL DEFAULT 0.0000,
+    gas_used_ratio DOUBLE PRECISION NOT NULL DEFAULT 0.0,
 
     -- Fee calculation metadata
     base_gas_price BIGINT NOT NULL,
-    calculated_fee_multiplier DECIMAL(10,6) NOT NULL DEFAULT 1.0,
+    calculated_fee_multiplier DOUBLE PRECISION NOT NULL DEFAULT 1.0,
     current_tx_price BIGINT NOT NULL,
 
     -- Timestamp tracking

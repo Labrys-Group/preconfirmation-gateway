@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\t\tINSERT INTO delegations (\n\t\t\t\tid,\n\t\t\t\tproposer_pubkey,\n\t\t\t\tdelegate_pubkey,\n\t\t\t\tcommitter_address,\n\t\t\t\tslot_number,\n\t\t\t\tsignature,\n\t\t\t\tis_active\n\t\t\t)\n\t\t\tVALUES ($1, $2, $3, $4, $5, $6, $7)\n\t\t\tON CONFLICT (proposer_pubkey, slot_number) DO NOTHING\n\t\t\tRETURNING id\n\t\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "Bytea",
+        "Varchar",
+        "Int8",
+        "Bytea",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bb1fe4452a95b60bd3a36afbe881f4d84c6c60f73b5faf7fcd67075af759ca1c"
+}

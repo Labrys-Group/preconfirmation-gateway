@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM slot_congestion WHERE slot_start_time < $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamp"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fa40d9fe21cbe044de30fea05d296433642c9875a3187098e12e6c036d8ebc19"
+}

@@ -5,27 +5,16 @@ use serde::{Deserialize, Serialize};
 pub struct PayloadParser;
 
 /// Structured representation of an inclusion preconfirmation payload
+/// Matches the on-chain InclusionPayload struct:
+/// - slot: uint64
+/// - signed_tx: Bytes (full signed transaction, from which tx_hash/nonce/gas_limit are derivable)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InclusionPayload {
     /// The slot number for which inclusion is being preconfirmed
     pub slot: u64,
-    /// The transaction data to be included
-    pub tx_data: Vec<u8>,
-    /// Optional metadata about the inclusion request
-    pub metadata: Option<InclusionMetadata>,
-}
-
-/// Additional metadata for inclusion payloads
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct InclusionMetadata {
-    /// Gas limit for the transaction
-    pub gas_limit: Option<u64>,
-    /// Maximum fee per gas
-    pub max_fee_per_gas: Option<u64>,
-    /// Maximum priority fee per gas
-    pub max_priority_fee_per_gas: Option<u64>,
-    /// Nonce for the transaction
-    pub nonce: Option<u64>,
+    /// The full signed transaction to be included (RLP-encoded Ethereum transaction)
+    /// This can be decoded to extract tx_hash, nonce, gas_limit, and other fields
+    pub signed_tx: Vec<u8>,
 }
 
 /// Execution preconfirmation payload (for future use)
@@ -114,63 +103,21 @@ impl PayloadParser {
 
         let rlp = Rlp::new(payload);
 
-        // Expect RLP list with at least [slot, tx_data]
-        if !rlp.is_list() || rlp.item_count()? < 2 {
-            return Err(anyhow::anyhow!("Invalid RLP structure for inclusion payload"));
+        // Expect RLP list with [slot, signed_tx]
+        if !rlp.is_list() || rlp.item_count()? != 2 {
+            return Err(anyhow::anyhow!("Invalid RLP structure for inclusion payload - expected [slot, signed_tx]"));
         }
 
         let slot: u64 = rlp.val_at(0)
             .context("Failed to decode slot from RLP")?;
 
-        let tx_data: Vec<u8> = rlp.val_at(1)
-            .context("Failed to decode tx_data from RLP")?;
-
-        // Optional metadata (if present)
-        let metadata = if rlp.item_count()? > 2 {
-            // Try to decode metadata if present
-            match rlp.at(2) {
-                Ok(metadata_rlp) if metadata_rlp.is_list() => {
-                    Some(Self::parse_metadata_from_rlp(&metadata_rlp)?)
-                }
-                _ => None,
-            }
-        } else {
-            None
-        };
+        let signed_tx: Vec<u8> = rlp.val_at(1)
+            .context("Failed to decode signed_tx from RLP")?;
 
         Ok(InclusionPayload {
             slot,
-            tx_data,
-            metadata,
+            signed_tx,
         })
-    }
-
-    /// Parse metadata from RLP
-    fn parse_metadata_from_rlp(rlp: &rlp::Rlp) -> Result<InclusionMetadata> {
-        let metadata = InclusionMetadata {
-            gas_limit: if rlp.item_count()? > 0 {
-                rlp.val_at(0).ok()
-            } else {
-                None
-            },
-            max_fee_per_gas: if rlp.item_count()? > 1 {
-                rlp.val_at(1).ok()
-            } else {
-                None
-            },
-            max_priority_fee_per_gas: if rlp.item_count()? > 2 {
-                rlp.val_at(2).ok()
-            } else {
-                None
-            },
-            nonce: if rlp.item_count()? > 3 {
-                rlp.val_at(3).ok()
-            } else {
-                None
-            },
-        };
-
-        Ok(metadata)
     }
 
     /// Extract slot from raw bytes using common patterns
@@ -212,19 +159,9 @@ impl PayloadParser {
     pub fn encode_inclusion_payload_rlp(payload: &InclusionPayload) -> Result<Vec<u8>> {
         use rlp::RlpStream;
 
-        let mut stream = RlpStream::new_list(if payload.metadata.is_some() { 3 } else { 2 });
-
+        let mut stream = RlpStream::new_list(2);
         stream.append(&payload.slot);
-        stream.append(&payload.tx_data);
-
-        if let Some(ref metadata) = payload.metadata {
-            let mut metadata_stream = RlpStream::new_list(4);
-            metadata_stream.append(&metadata.gas_limit.unwrap_or(0));
-            metadata_stream.append(&metadata.max_fee_per_gas.unwrap_or(0));
-            metadata_stream.append(&metadata.max_priority_fee_per_gas.unwrap_or(0));
-            metadata_stream.append(&metadata.nonce.unwrap_or(0));
-            stream.append_raw(&metadata_stream.out(), 1);
-        }
+        stream.append(&payload.signed_tx);
 
         Ok(stream.out().to_vec())
     }
@@ -232,20 +169,10 @@ impl PayloadParser {
 
 impl InclusionPayload {
     /// Create a new inclusion payload
-    pub fn new(slot: u64, tx_data: Vec<u8>) -> Self {
+    pub fn new(slot: u64, signed_tx: Vec<u8>) -> Self {
         Self {
             slot,
-            tx_data,
-            metadata: None,
-        }
-    }
-
-    /// Create a new inclusion payload with metadata
-    pub fn with_metadata(slot: u64, tx_data: Vec<u8>, metadata: InclusionMetadata) -> Self {
-        Self {
-            slot,
-            tx_data,
-            metadata: Some(metadata),
+            signed_tx,
         }
     }
 
@@ -254,23 +181,39 @@ impl InclusionPayload {
         self.slot
     }
 
-    /// Get the transaction data
-    pub fn tx_data(&self) -> &[u8] {
-        &self.tx_data
+    /// Get the signed transaction bytes
+    pub fn signed_tx(&self) -> &[u8] {
+        &self.signed_tx
     }
 
     /// Validate the payload structure
     pub fn validate(&self) -> Result<()> {
-        if self.tx_data.is_empty() {
-            return Err(anyhow::anyhow!("Transaction data cannot be empty"));
+        if self.signed_tx.is_empty() {
+            return Err(anyhow::anyhow!("Signed transaction cannot be empty"));
         }
 
-        // Add more validation as needed
         if self.slot == 0 {
             return Err(anyhow::anyhow!("Slot cannot be zero"));
         }
 
         Ok(())
+    }
+
+    /// Decode the signed transaction to extract transaction hash
+    /// This is a helper for deriving fields from the signed_tx
+    pub fn tx_hash(&self) -> Result<[u8; 32]> {
+        use tiny_keccak::{Hasher, Keccak};
+
+        if self.signed_tx.is_empty() {
+            return Err(anyhow::anyhow!("Cannot compute tx_hash of empty transaction"));
+        }
+
+        let mut hasher = Keccak::v256();
+        let mut hash = [0u8; 32];
+        hasher.update(&self.signed_tx);
+        hasher.finalize(&mut hash);
+
+        Ok(hash)
     }
 }
 
@@ -329,7 +272,7 @@ mod tests {
 
         let parsed = PayloadParser::parse_inclusion_payload(&encoded).unwrap();
         assert_eq!(parsed.slot, 123);
-        assert_eq!(parsed.tx_data, vec![0xaa, 0xbb, 0xcc]);
+        assert_eq!(parsed.signed_tx, vec![0xaa, 0xbb, 0xcc]);
     }
 
     #[test]
@@ -339,22 +282,16 @@ mod tests {
 
         let parsed = PayloadParser::parse_inclusion_payload(&encoded).unwrap();
         assert_eq!(parsed.slot, 456);
-        assert_eq!(parsed.tx_data, vec![0xdd, 0xee, 0xff]);
+        assert_eq!(parsed.signed_tx, vec![0xdd, 0xee, 0xff]);
     }
 
     #[test]
-    fn test_inclusion_payload_with_metadata() {
-        let metadata = InclusionMetadata {
-            gas_limit: Some(21000),
-            max_fee_per_gas: Some(1000000000),
-            max_priority_fee_per_gas: Some(1000000),
-            nonce: Some(42),
-        };
+    fn test_tx_hash_derivation() {
+        let signed_tx = vec![0xf8, 0x6c, 0x01, 0x85, 0x04, 0xa8, 0x17, 0xc8, 0x00]; // Sample signed tx bytes
+        let payload = InclusionPayload::new(789, signed_tx.clone());
 
-        let payload = InclusionPayload::with_metadata(789, vec![0x11, 0x22], metadata.clone());
-
-        assert_eq!(payload.slot, 789);
-        assert_eq!(payload.metadata, Some(metadata));
+        let tx_hash = payload.tx_hash().unwrap();
+        assert_eq!(tx_hash.len(), 32); // Should be 32 bytes
     }
 
     #[test]

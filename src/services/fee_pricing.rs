@@ -145,21 +145,35 @@ impl FeePricingEngine {
     ) -> Result<u64> {
         match commitment_type {
             1 => {
-                // Inclusion commitment - estimate based on payload size
-                // This is a simplified estimation - in production, you'd parse
-                // the inclusion payload to get actual transaction gas limits
-                let base_gas = 21_000; // Base transaction cost
-                let data_gas = payload.len() as u64 * 16; // 16 gas per byte of data
-                let estimation_overhead = 10_000; // Buffer for execution overhead
+                // Inclusion commitment - parse the payload to extract signed_tx and derive gas limit
+                use crate::types::payload::PayloadParser;
 
-                let total_estimated = base_gas + data_gas + estimation_overhead;
+                match PayloadParser::parse_inclusion_payload(payload) {
+                    Ok(inclusion_payload) => {
+                        // The signed_tx is an RLP-encoded Ethereum transaction
+                        // For now, we'll use a simplified estimation based on the signed tx size
+                        // In production, you'd fully decode the transaction to get the actual gas_limit field
 
-                debug!(
-                    "Estimated gas for inclusion commitment: {} (base) + {} (data) + {} (overhead) = {}",
-                    base_gas, data_gas, estimation_overhead, total_estimated
-                );
+                        let signed_tx = inclusion_payload.signed_tx();
+                        let base_gas = 21_000; // Base transaction cost
+                        let data_gas = signed_tx.len() as u64 * 16; // 16 gas per byte
+                        let estimation_overhead = 10_000; // Buffer for execution overhead
 
-                Ok(total_estimated)
+                        let total_estimated = base_gas + data_gas + estimation_overhead;
+
+                        debug!(
+                            "Estimated gas for inclusion commitment with {} byte signed tx: {} (base) + {} (data) + {} (overhead) = {}",
+                            signed_tx.len(), base_gas, data_gas, estimation_overhead, total_estimated
+                        );
+
+                        Ok(total_estimated)
+                    }
+                    Err(_) => {
+                        // Fallback: if we can't parse, use a conservative estimate
+                        warn!("Could not parse inclusion payload, using fallback gas estimate");
+                        Ok(50_000)
+                    }
+                }
             }
             2 => {
                 // Execution commitment - would need more sophisticated analysis

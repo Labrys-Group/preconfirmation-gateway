@@ -86,7 +86,7 @@ pub async fn get_or_create_slot_congestion(
     // Create new record
     let congestion = SlotCongestion::new(slot, base_gas_price, total_gas_limit, slot_start_time);
 
-    let slot_start_time_chrono = sqlx::types::chrono::DateTime::from_timestamp(
+    let slot_start_time_chrono = sqlx::types::chrono::NaiveDateTime::from_timestamp_opt(
         slot_start_timestamp as i64, 0
     ).ok_or_else(|| anyhow::anyhow!("Invalid slot start timestamp"))?;
 
@@ -102,9 +102,9 @@ pub async fn get_or_create_slot_congestion(
         slot as i64,
         congestion.preconfirmed_gas as i64,
         congestion.total_gas_limit as i64,
-        congestion.gas_used_ratio as f64,
+        congestion.gas_used_ratio,
         congestion.base_gas_price as i64,
-        congestion.calculated_fee_multiplier as f64,
+        congestion.calculated_fee_multiplier,
         congestion.current_tx_price as i64,
         slot_start_time_chrono
     )
@@ -127,8 +127,8 @@ pub async fn get_slot_congestion(
     let row = sqlx::query!(
         r#"
         SELECT
-            id, slot, preconfirmed_gas, total_gas_limit, gas_used_ratio,
-            base_gas_price, calculated_fee_multiplier, current_tx_price,
+            id, slot, preconfirmed_gas, total_gas_limit,
+            gas_used_ratio, base_gas_price, calculated_fee_multiplier, current_tx_price,
             slot_start_time, last_updated, created_at
         FROM slot_congestion
         WHERE slot = $1
@@ -229,7 +229,7 @@ pub async fn cleanup_old_slot_congestion(
     let cutoff_time = SystemTime::now() - Duration::from_secs(hours_to_keep as u64 * 3600);
     let cutoff_timestamp = cutoff_time.duration_since(UNIX_EPOCH)?.as_secs() as i64;
 
-    let cutoff_chrono = sqlx::types::chrono::DateTime::from_timestamp(cutoff_timestamp, 0)
+    let cutoff_chrono = sqlx::types::chrono::NaiveDateTime::from_timestamp_opt(cutoff_timestamp, 0)
         .ok_or_else(|| anyhow::anyhow!("Invalid cutoff timestamp"))?;
 
     let result = sqlx::query!(
@@ -262,10 +262,10 @@ pub async fn get_congestion_stats(pool: &PgPool) -> Result<CongestionStats> {
     let stats = sqlx::query!(
         r#"
         SELECT
-            COUNT(*) as total_slots,
-            AVG(gas_used_ratio) as avg_congestion,
-            AVG(calculated_fee_multiplier) as avg_multiplier,
-            MAX(gas_used_ratio) as max_congestion
+            COUNT(*) as "total_slots!",
+            COALESCE(AVG(gas_used_ratio), 0.0) as "avg_congestion!",
+            COALESCE(AVG(calculated_fee_multiplier), 1.0) as "avg_multiplier!",
+            COALESCE(MAX(gas_used_ratio), 0.0) as "max_congestion!"
         FROM slot_congestion
         WHERE slot_start_time > NOW() - INTERVAL '24 hours'
         "#
@@ -274,10 +274,10 @@ pub async fn get_congestion_stats(pool: &PgPool) -> Result<CongestionStats> {
     .await
     .context("Failed to get congestion statistics")?;
 
-    let highest_congestion_slot = if stats.max_congestion.unwrap_or(0.0) > 0.0 {
+    let highest_congestion_slot = if stats.max_congestion > 0.0 {
         let row = sqlx::query!(
             "SELECT slot FROM slot_congestion WHERE gas_used_ratio = $1 LIMIT 1",
-            stats.max_congestion.unwrap_or(0.0)
+            stats.max_congestion
         )
         .fetch_optional(pool)
         .await
@@ -289,11 +289,11 @@ pub async fn get_congestion_stats(pool: &PgPool) -> Result<CongestionStats> {
     };
 
     Ok(CongestionStats {
-        total_slots_tracked: stats.total_slots.unwrap_or(0) as u64,
-        current_average_congestion: stats.avg_congestion.unwrap_or(0.0),
+        total_slots_tracked: stats.total_slots as u64,
+        current_average_congestion: stats.avg_congestion,
         highest_congestion_slot,
-        highest_congestion_ratio: stats.max_congestion.unwrap_or(0.0),
-        average_fee_multiplier: stats.avg_multiplier.unwrap_or(1.0),
+        highest_congestion_ratio: stats.max_congestion,
+        average_fee_multiplier: stats.avg_multiplier,
     })
 }
 
