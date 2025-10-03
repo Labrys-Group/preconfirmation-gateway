@@ -49,9 +49,41 @@ async fn create_test_context() -> Arc<RpcContext> {
 	let db_context = DatabaseContext::new(pool);
 
 	// Load config (uses TEST environment variables if available)
-	let config = Config::load().expect("Failed to load test config");
+	// If loading fails due to beacon endpoint validation, use default with test endpoint
+	let mut config = match Config::load() {
+		Ok(c) => c,
+		Err(_) => {
+			let mut c = Config::default();
+			// Set a valid test beacon endpoint
+			c.beacon_api.primary_endpoint = "http://localhost:5051".to_string();
+			c
+		}
+	};
 
-	Arc::new(RpcContext::new(db_context, config))
+	// Ensure beacon endpoint is valid for testing
+	if config.beacon_api.primary_endpoint.contains("${BEACON_API_ENDPOINT}") ||
+	   config.beacon_api.primary_endpoint.contains("YOUR_API_KEY") {
+		config.beacon_api.primary_endpoint = "http://localhost:5051".to_string();
+	}
+
+	// Create fee engine for testing
+	use preconfirmation_gateway::api::reth::{RethApiClient, RethApiConfig};
+	use preconfirmation_gateway::services::fee_pricing::FeePricingEngine;
+
+	let reth_client = Arc::new(
+		RethApiClient::new(RethApiConfig::default()).unwrap()
+	);
+	let database_arc = Arc::new(db_context.clone());
+	let config_arc = Arc::new(config.clone());
+	let fee_engine = Arc::new(FeePricingEngine::new(reth_client, database_arc, config_arc.clone()));
+
+	// Create beacon API client for testing
+	use preconfirmation_gateway::api::beacon::BeaconApiClient;
+	let beacon_client = Arc::new(
+		BeaconApiClient::new(config.beacon_api.clone()).unwrap()
+	);
+
+	Arc::new(RpcContext::new(db_context, config, fee_engine, beacon_client))
 }
 
 /// Helper function to create a valid ABI-encoded InclusionPayload with unique nonce

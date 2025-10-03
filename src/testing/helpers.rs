@@ -55,7 +55,12 @@ impl TestHelpers {
             config_arc.clone(),
         ));
 
-        Arc::new(RpcContext::new(database, (*config).clone(), fee_engine))
+        // Create beacon API client for testing
+        let beacon_client = Arc::new(
+            crate::api::beacon::BeaconApiClient::new(config.beacon_api.clone()).unwrap()
+        );
+
+        Arc::new(RpcContext::new(database, (*config).clone(), fee_engine, beacon_client))
     }
 
     /// Measure the execution time of an async operation

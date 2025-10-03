@@ -30,7 +30,10 @@ slasher_address = "0x0000000000000000000000000000000000000000"  # Ethereum addre
 
 [beacon_api]
 # Beacon API configuration for validator duties and timing
-primary_endpoint = "https://ethereum-beacon-api.alchemy.com"
+# IMPORTANT: The primary_endpoint MUST be configured with a valid beacon API endpoint
+# Set via BEACON_API_ENDPOINT environment variable or update this value directly
+# Example: https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY
+primary_endpoint = "${BEACON_API_ENDPOINT}"  # REQUIRED - will fail on startup if not set
 fallback_endpoints = []
 request_timeout_secs = 30
 genesis_time = 1606824023  # Ethereum mainnet genesis time

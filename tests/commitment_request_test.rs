@@ -3,6 +3,7 @@ use preconfirmation_gateway::{CommitmentRequest, DatabaseContext, RpcContext, co
 use serde_json::json;
 use ethabi::{ParamType, encode, Token};
 use tokio_postgres::NoTls;
+use std::sync::Arc;
 
 // Create a mock context with custom validation config
 fn create_mock_context(slasher_address: &str) -> RpcContext {
@@ -17,8 +18,27 @@ fn create_mock_context(slasher_address: &str) -> RpcContext {
 	// Create config with custom slasher address
 	let mut config = Config::default();
 	config.validation.slasher_address = slasher_address.to_string();
+	// Set a valid beacon endpoint for testing
+	config.beacon_api.primary_endpoint = "http://localhost:5051".to_string();
 
-	RpcContext::new(db_context, config)
+	// Create fee engine for testing
+	use preconfirmation_gateway::api::reth::{RethApiClient, RethApiConfig};
+	use preconfirmation_gateway::services::fee_pricing::FeePricingEngine;
+
+	let reth_client = Arc::new(
+		RethApiClient::new(RethApiConfig::default()).unwrap()
+	);
+	let database_arc = Arc::new(db_context.clone());
+	let config_arc = Arc::new(config.clone());
+	let fee_engine = Arc::new(FeePricingEngine::new(reth_client, database_arc, config_arc.clone()));
+
+	// Create beacon API client for testing
+	use preconfirmation_gateway::api::beacon::BeaconApiClient;
+	let beacon_client = Arc::new(
+		BeaconApiClient::new(config.beacon_api.clone()).unwrap()
+	);
+
+	RpcContext::new(db_context, config, fee_engine, beacon_client)
 }
 
 // Helper function to create a valid ABI-encoded InclusionPayload

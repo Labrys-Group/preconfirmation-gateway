@@ -11,8 +11,6 @@ use super::super::types::rpc::{Offering, SlotInfo};
 use super::super::types::beacon::timing;
 use crate::crypto::{generate_request_hash, sign_commitment};
 use crate::db::delegation_ops::get_delegations_for_slot;
-use crate::api::reth::RethApiClient;
-use crate::services::fee_pricing::FeePricingEngine;
 
 /// Validate payload and extract slot number
 fn validate_and_extract_slot(commitment_type: u64, payload: &[u8]) -> Result<u64, String> {
@@ -31,16 +29,65 @@ async fn verify_delegation_authority(
         .map_err(|e| format!("Failed to query delegations for slot {}: {}", slot, e))?;
 
     // Check if we have any delegation for this slot and committer
-    let has_delegation = delegations.iter().any(|delegation| {
+    let matching_delegation = delegations.iter().find(|delegation| {
         delegation.message.committer == committer_address &&
         delegation.is_valid_for_slot(slot)
     });
 
-    if !has_delegation {
-        return Err(format!(
-            "No valid delegation found for slot {} and committer {}. Cannot sign commitment without delegation authority.",
-            slot, committer_address
-        ));
+    let delegation = match matching_delegation {
+        Some(d) => d,
+        None => {
+            return Err(format!(
+                "No valid delegation found for slot {} and committer {}. Cannot sign commitment without delegation authority.",
+                slot, committer_address
+            ));
+        }
+    };
+
+    // CRITICAL SECURITY: Verify that the proposer in the delegation is actually
+    // the scheduled validator for this slot according to the beacon chain
+    match context.beacon_client.get_proposer_for_slot(slot).await {
+        Ok(Some(proposer_duty)) => {
+            // Parse the beacon API's public key from hex string
+            let scheduled_proposer = match proposer_duty.parse_pubkey() {
+                Ok(pubkey) => pubkey,
+                Err(e) => {
+                    return Err(format!(
+                        "Failed to parse proposer public key from beacon API for slot {}: {}",
+                        slot, e
+                    ));
+                }
+            };
+
+            let delegation_proposer = &delegation.message.proposer;
+
+            if scheduled_proposer.0 != delegation_proposer.0 {
+                return Err(format!(
+                    "Delegation proposer mismatch for slot {}: delegation claims proposer 0x{}, but beacon chain shows 0x{}. Rejecting potentially fraudulent delegation.",
+                    slot,
+                    hex::encode(delegation_proposer.0),
+                    hex::encode(scheduled_proposer.0)
+                ));
+            }
+
+            info!(
+                "Beacon validation passed: proposer 0x{} is confirmed for slot {}",
+                hex::encode(scheduled_proposer.0),
+                slot
+            );
+        }
+        Ok(None) => {
+            return Err(format!(
+                "No proposer scheduled for slot {} according to beacon chain. Cannot validate delegation authority.",
+                slot
+            ));
+        }
+        Err(e) => {
+            return Err(format!(
+                "Failed to query beacon chain for slot {}: {}. Cannot validate delegation without beacon chain confirmation.",
+                slot, e
+            ));
+        }
     }
 
     info!(
@@ -379,6 +426,7 @@ mod tests {
 
 		// For testing purposes, create a minimal fee engine
 		use crate::api::reth::{RethApiClient, RethApiConfig};
+		use crate::api::beacon::BeaconApiClient;
 		use crate::services::fee_pricing::FeePricingEngine;
 
 		let reth_client = Arc::new(
@@ -388,7 +436,12 @@ mod tests {
 		let config_arc = Arc::new(config.clone());
 		let fee_engine = Arc::new(FeePricingEngine::new(reth_client, database_arc, config_arc.clone()));
 
-		Arc::new(RpcContext::new(database, config, fee_engine))
+		// Create beacon API client for testing
+		let beacon_client = Arc::new(
+			BeaconApiClient::new(config.beacon_api.clone()).unwrap()
+		);
+
+		Arc::new(RpcContext::new(database, config, fee_engine, beacon_client))
 	}
 
 	#[test]

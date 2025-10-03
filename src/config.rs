@@ -297,7 +297,46 @@ impl Config {
 				SigningConfig::default()
 			});
 
+		// Validate beacon API endpoint is properly configured
+		Self::validate_beacon_endpoint(&config.beacon_api.primary_endpoint)?;
+
 		Ok(config)
+	}
+
+	/// Validate that the beacon API endpoint is properly configured
+	fn validate_beacon_endpoint(endpoint: &str) -> Result<()> {
+		if endpoint.is_empty() {
+			anyhow::bail!(
+				"Beacon API endpoint is empty. Please set BEACON_API_ENDPOINT environment variable or configure primary_endpoint in config.toml"
+			);
+		}
+
+		// Check for common placeholder values that indicate the endpoint is not configured
+		let placeholder_indicators = [
+			"${BEACON_API_ENDPOINT}",
+			"YOUR_API_KEY",
+			"YOUR_PROJECT_ID",
+			"REPLACE_ME",
+		];
+
+		for placeholder in &placeholder_indicators {
+			if endpoint.contains(placeholder) {
+				anyhow::bail!(
+					"Beacon API endpoint contains placeholder '{}'. Please set BEACON_API_ENDPOINT environment variable with a valid endpoint. Example: https://eth-mainnet.g.alchemy.com/v2/YOUR_ACTUAL_KEY",
+					placeholder
+				);
+			}
+		}
+
+		// Basic URL validation
+		if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
+			anyhow::bail!(
+				"Beacon API endpoint must be a valid HTTP/HTTPS URL, got: {}",
+				endpoint
+			);
+		}
+
+		Ok(())
 	}
 
 	pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {

@@ -39,12 +39,17 @@ async fn main() -> anyhow::Result<()> {
 		)
 	);
 
-	// Create RPC context with database context, config, and fee engine
-	let rpc_context = types::RpcContext::new(db_context.clone(), config.clone(), fee_engine);
-
-	// Initialize API clients for background services
+	// Initialize beacon API client (needed for RPC context and background services)
 	let beacon_client = std::sync::Arc::new(
 		api::beacon::BeaconApiClient::new(config.beacon_api.clone())?
+	);
+
+	// Create RPC context with database context, config, fee engine, and beacon client
+	let rpc_context = types::RpcContext::new(
+		db_context.clone(),
+		config.clone(),
+		fee_engine,
+		beacon_client.clone(),
 	);
 	let constraints_client = std::sync::Arc::new(
 		api::constraints::ConstraintsApiClient::new(config.constraints_api.clone())?
