@@ -314,8 +314,13 @@ pub async fn get_congestion_stats(pool: &PgPool) -> Result<CongestionStats> {
 
     let highest_congestion_slot = if stats.max_congestion > 0.0 {
         let row = sqlx::query!(
-            "SELECT slot FROM slot_congestion WHERE gas_used_ratio = $1 LIMIT 1",
-            stats.max_congestion
+            r#"
+            SELECT slot, gas_used_ratio
+            FROM slot_congestion
+            WHERE slot_start_time > NOW() - INTERVAL '24 hours'
+            ORDER BY gas_used_ratio DESC
+            LIMIT 1
+            "#
         )
         .fetch_optional(pool)
         .await
