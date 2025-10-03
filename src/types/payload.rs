@@ -78,23 +78,14 @@ impl PayloadParser {
 
     /// Extract slot from inclusion payload
     fn extract_slot_from_inclusion_payload(payload: &[u8]) -> Result<u64> {
-        // First try to parse as structured payload
-        if let Ok(inclusion_payload) = Self::parse_inclusion_payload(payload) {
-            return Ok(inclusion_payload.slot);
-        }
-
-        // Fallback: try to extract slot from raw bytes assuming common formats
-        Self::extract_slot_from_raw_bytes(payload)
+        let inclusion_payload = Self::parse_inclusion_payload(payload)?;
+        Ok(inclusion_payload.slot)
     }
 
     /// Extract slot from execution payload
     fn extract_slot_from_execution_payload(payload: &[u8]) -> Result<u64> {
-        if let Ok(execution_payload) = Self::parse_execution_payload(payload) {
-            return Ok(execution_payload.slot);
-        }
-
-        // Fallback to raw byte extraction
-        Self::extract_slot_from_raw_bytes(payload)
+        let execution_payload = Self::parse_execution_payload(payload)?;
+        Ok(execution_payload.slot)
     }
 
     /// Parse inclusion payload using RLP encoding
@@ -118,34 +109,6 @@ impl PayloadParser {
             slot,
             signed_tx,
         })
-    }
-
-    /// Extract slot from raw bytes using common patterns
-    fn extract_slot_from_raw_bytes(payload: &[u8]) -> Result<u64> {
-        // Try to parse as little-endian u64 at the beginning
-        if payload.len() >= 8 {
-            let slot_bytes = &payload[0..8];
-            let slot = u64::from_le_bytes(
-                slot_bytes.try_into()
-                    .context("Failed to convert bytes to u64")?
-            );
-            return Ok(slot);
-        }
-
-        // Try big-endian
-        if payload.len() >= 8 {
-            let slot_bytes = &payload[0..8];
-            let slot = u64::from_be_bytes(
-                slot_bytes.try_into()
-                    .context("Failed to convert bytes to u64")?
-            );
-            // Sanity check: slot should be reasonable (not too large)
-            if slot < 1_000_000_000 { // Arbitrary reasonable upper bound
-                return Ok(slot);
-            }
-        }
-
-        Err(anyhow::anyhow!("Could not extract slot from raw payload bytes"))
     }
 
     /// Encode an inclusion payload to bytes
@@ -253,16 +216,6 @@ mod tests {
 
         let extracted_slot = PayloadParser::extract_slot(1, &encoded).unwrap();
         assert_eq!(extracted_slot, 67890);
-    }
-
-    #[test]
-    fn test_extract_slot_from_raw_bytes_le() {
-        let slot = 42u64;
-        let mut payload = slot.to_le_bytes().to_vec();
-        payload.extend_from_slice(&[1, 2, 3, 4]); // Additional data
-
-        let extracted_slot = PayloadParser::extract_slot(1, &payload).unwrap();
-        assert_eq!(extracted_slot, slot);
     }
 
     #[test]

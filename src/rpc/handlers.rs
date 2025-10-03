@@ -387,10 +387,10 @@ mod tests {
 	// Helper to create a test RPC context with minimal configuration
 	fn create_test_context() -> Arc<RpcContext> {
 		use crate::crypto::parse_private_key;
-		use crate::crypto::bls_keys;
+		use crate::crypto::bls::keys;
 
 		let private_key = parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80").unwrap();
-		let bls_key = bls_keys::parse_private_key("0x1234567890123456789012345678901234567890123456789012345678901234").unwrap();
+		let bls_key = keys::parse_private_key("0x1234567890123456789012345678901234567890123456789012345678901234").unwrap();
 
 		let config = Config {
 			server: crate::config::ServerConfig {
