@@ -7,7 +7,6 @@ use tokio::time::timeout;
 use crate::config::Config;
 use crate::testing::mocks::{MockDatabase, MockConstraintsApiClient, MockBeaconApiClient};
 use crate::types::{RpcContext, CommitmentRequest, SignedCommitment};
-use crate::rpc::handlers::commitment_request_handler;
 
 /// Test helper utilities
 pub struct TestHelpers;
@@ -272,7 +271,7 @@ impl TestHelpers {
 
     /// Simulate a commitment request for testing
     async fn simulate_commitment_request(
-        context: Arc<RpcContext>,
+        _context: Arc<RpcContext>,
         request: CommitmentRequest,
     ) -> Result<SignedCommitment> {
         // For load testing, we need a fast simulation that exercises the core logic

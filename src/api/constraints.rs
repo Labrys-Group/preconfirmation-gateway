@@ -7,7 +7,7 @@
 
 use anyhow::{Context, Result};
 use reqwest::{Client, StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::time::Duration;
 use tracing::{debug, error, warn};
 
@@ -33,8 +33,6 @@ pub struct DelegationsResponse {
 pub struct ConstraintSubmissionResponse {
 	/// Success status
 	pub success: bool,
-	/// Optional message from relay
-	pub message: Option<String>,
 	/// Submission ID for tracking
 	pub submission_id: Option<String>,
 }
@@ -44,7 +42,6 @@ pub struct ConstraintSubmissionResponse {
 pub struct ConstraintsApiError {
 	pub error: String,
 	pub code: Option<u32>,
-	pub details: Option<String>,
 }
 
 impl ConstraintsApiClient {
@@ -106,29 +103,6 @@ impl ConstraintsApiClient {
 				);
 			}
 		}
-	}
-
-	/// Retrieve delegations for multiple slots
-	pub async fn get_delegations_for_slots(&self, slots: &[u64]) -> Result<Vec<SignedDelegation>> {
-		let mut all_delegations = Vec::new();
-
-		for &slot in slots {
-			match self.get_delegations_for_slot(slot).await {
-				Ok(mut delegations) => {
-					all_delegations.append(&mut delegations);
-				}
-				Err(e) => {
-					error!(
-						slot = slot,
-						error = %e,
-						"Failed to retrieve delegations for slot"
-					);
-					// Continue with other slots even if one fails
-				}
-			}
-		}
-
-		Ok(all_delegations)
 	}
 
 	/// Submit signed constraints to the relay
@@ -263,36 +237,6 @@ impl ConstraintsApiClient {
 		Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Unknown submission error")))
 	}
 
-	/// Health check to verify constraints API connectivity
-	pub async fn health_check(&self) -> Result<()> {
-		let endpoint = "health";
-		let url = self.build_url(endpoint);
-
-		debug!(url = %url, "Performing constraints API health check");
-
-		match self.client
-			.get(&url)
-			.header("User-Agent", "preconfirmation-gateway/0.1.0")
-			.send()
-			.await
-		{
-			Ok(response) => {
-				if response.status().is_success() {
-					debug!("Constraints API health check passed");
-					Ok(())
-				} else {
-					let status = response.status();
-					let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-					anyhow::bail!("Constraints API unhealthy: HTTP {} - {}", status, error_text);
-				}
-			}
-			Err(e) => {
-				error!(error = %e, "Constraints API health check failed");
-				Err(e.into())
-			}
-		}
-	}
-
 	/// Build full URL from endpoint
 	fn build_url(&self, endpoint: &str) -> String {
 		let base = &self.config.relay_endpoint;
@@ -301,17 +245,6 @@ impl ConstraintsApiClient {
 		} else {
 			format!("{}/{}", base, endpoint)
 		}
-	}
-
-	/// Get authorized builders from configuration
-	pub fn get_authorized_builders(&self) -> &[String] {
-		&self.config.authorized_builders
-	}
-
-	/// Check if constraint submission is within timing window
-	pub fn is_within_submission_window(&self, slot: u64, genesis_time: u64) -> bool {
-		use crate::types::beacon::BeaconTiming;
-		BeaconTiming::is_within_constraint_window(genesis_time, slot)
 	}
 }
 
@@ -354,17 +287,6 @@ mod tests {
 
 		let url_with_slash = client_with_slash.build_url("test/endpoint");
 		assert_eq!(url_with_slash, "https://relay.example.com/test/endpoint");
-	}
-
-	#[test]
-	fn test_authorized_builders() {
-		let config = create_test_config();
-		let client = ConstraintsApiClient::new(config).unwrap();
-
-		let builders = client.get_authorized_builders();
-		assert_eq!(builders.len(), 2);
-		assert_eq!(builders[0], "0x1234");
-		assert_eq!(builders[1], "0x5678");
 	}
 
 	// Integration tests would require actual relay endpoints

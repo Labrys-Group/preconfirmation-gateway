@@ -3,14 +3,13 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tracing::{debug, warn, error};
+use tracing::{debug, warn};
 
 /// Reth RPC client for gas price oracle functionality
 #[derive(Clone, Debug)]
 pub struct RethApiClient {
     client: Client,
     endpoint: String,
-    request_timeout: Duration,
 }
 
 /// Gas price information from Reth node
@@ -22,22 +21,6 @@ pub struct GasPriceInfo {
     pub block_number: u64,
     /// Timestamp when this data was retrieved
     pub timestamp: u64,
-}
-
-/// Fee history response from eth_feeHistory
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FeeHistory {
-    /// Block base fees per gas (including next block)
-    #[serde(rename = "baseFeePerGas")]
-    pub base_fee_per_gas: Vec<String>,
-    /// Gas used ratios for each block
-    #[serde(rename = "gasUsedRatio")]
-    pub gas_used_ratio: Vec<f64>,
-    /// Oldest block number in the range
-    #[serde(rename = "oldestBlock")]
-    pub oldest_block: String,
-    /// Priority fee percentiles (optional)
-    pub reward: Option<Vec<Vec<String>>>,
 }
 
 /// Configuration for Reth API client
@@ -72,7 +55,6 @@ impl RethApiClient {
         Ok(Self {
             client,
             endpoint: config.endpoint,
-            request_timeout: Duration::from_secs(config.request_timeout_secs),
         })
     }
 
@@ -113,38 +95,6 @@ impl RethApiClient {
 
         debug!("Retrieved gas price: {} wei at block {}", gas_price, block_number);
         Ok(gas_price_info)
-    }
-
-    /// Get fee history using eth_feeHistory
-    pub async fn get_fee_history(
-        &self,
-        block_count: u64,
-        newest_block: &str,
-        reward_percentiles: Option<&[f64]>,
-    ) -> Result<FeeHistory> {
-        debug!("Fetching fee history from Reth node: {} blocks from {}", block_count, newest_block);
-
-        let percentiles = reward_percentiles.map(|p| p.iter().collect::<Vec<_>>());
-
-        let payload = json!({
-            "jsonrpc": "2.0",
-            "method": "eth_feeHistory",
-            "params": [
-                format!("0x{:x}", block_count),
-                newest_block,
-                percentiles
-            ],
-            "id": 2
-        });
-
-        let response = self.make_rpc_call(payload).await
-            .context("Failed to get fee history from Reth node")?;
-
-        let fee_history: FeeHistory = serde_json::from_value(response["result"].clone())
-            .context("Failed to parse fee history response")?;
-
-        debug!("Retrieved fee history for {} blocks", fee_history.base_fee_per_gas.len());
-        Ok(fee_history)
     }
 
     /// Get current block number
@@ -217,17 +167,6 @@ impl RethApiClient {
         Err(anyhow::anyhow!(
             "Failed to connect to Reth node after {} attempts", max_retries
         ))
-    }
-
-    /// Test the connection to the Reth node
-    pub async fn test_connection(&self) -> Result<()> {
-        debug!("Testing connection to Reth node: {}", self.endpoint);
-
-        let block_number = self.get_block_number().await
-            .context("Failed to test Reth node connection")?;
-
-        debug!("Successfully connected to Reth node, current block: {}", block_number);
-        Ok(())
     }
 }
 

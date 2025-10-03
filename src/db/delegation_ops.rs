@@ -4,7 +4,7 @@
 //! messages according to the Gateway specification.
 
 use anyhow::{Context, Result};
-use sqlx::{types::chrono, PgPool, Row};
+use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::types::delegation::{BlsPublicKey, BlsSignature, DelegationMessage, SignedDelegation};

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Slot congestion data for fee calculation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,7 +59,7 @@ impl SlotCongestion {
         }
 
         // Apply bounds checking
-        self.calculated_fee_multiplier = self.calculated_fee_multiplier.max(1.0).min(100.0);
+        self.calculated_fee_multiplier = self.calculated_fee_multiplier.clamp(1.0, 100.0);
 
         // Calculate final transaction price
         self.current_tx_price = (self.base_gas_price as f64 * self.calculated_fee_multiplier) as u64;
@@ -86,9 +86,9 @@ pub async fn get_or_create_slot_congestion(
     // Create new record
     let congestion = SlotCongestion::new(slot, base_gas_price, total_gas_limit, slot_start_time);
 
-    let slot_start_time_chrono = sqlx::types::chrono::NaiveDateTime::from_timestamp_opt(
+    let slot_start_time_chrono = sqlx::types::chrono::DateTime::from_timestamp(
         slot_start_timestamp as i64, 0
-    ).ok_or_else(|| anyhow::anyhow!("Invalid slot start timestamp"))?;
+    ).ok_or_else(|| anyhow::anyhow!("Invalid slot start timestamp"))?.naive_utc();
 
     let id = sqlx::query!(
         r#"
@@ -229,8 +229,8 @@ pub async fn cleanup_old_slot_congestion(
     let cutoff_time = SystemTime::now() - Duration::from_secs(hours_to_keep as u64 * 3600);
     let cutoff_timestamp = cutoff_time.duration_since(UNIX_EPOCH)?.as_secs() as i64;
 
-    let cutoff_chrono = sqlx::types::chrono::NaiveDateTime::from_timestamp_opt(cutoff_timestamp, 0)
-        .ok_or_else(|| anyhow::anyhow!("Invalid cutoff timestamp"))?;
+    let cutoff_chrono = sqlx::types::chrono::DateTime::from_timestamp(cutoff_timestamp, 0)
+        .ok_or_else(|| anyhow::anyhow!("Invalid cutoff timestamp"))?.naive_utc();
 
     let result = sqlx::query!(
         "DELETE FROM slot_congestion WHERE slot_start_time < $1",

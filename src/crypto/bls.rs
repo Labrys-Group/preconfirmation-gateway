@@ -13,7 +13,7 @@ use blst::{
 };
 use ethabi::{encode, Token};
 
-use crate::types::delegation::{BlsPublicKey as GatewayBlsPublicKey, BlsSignature as GatewayBlsSignature, ConstraintsMessage, DelegationMessage, SignedDelegation};
+use crate::types::delegation::{ConstraintsMessage, DelegationMessage, SignedDelegation};
 use super::keccak256;
 
 /// Domain separation constants
@@ -163,7 +163,6 @@ impl BlsManager {
 /// Utility functions for BLS key management
 pub mod keys {
 	use super::*;
-	use rand::Rng;
 
 	/// Generate a new BLS key pair
 	pub fn generate_keypair() -> (BlsSecretKey, BlsPublicKey) {
@@ -217,7 +216,7 @@ pub mod keys {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::types::delegation::{Constraint, ConstraintsMessage, DelegationMessage};
+	use crate::types::delegation::{BlsPublicKey as GatewayBlsPublicKey, Constraint, ConstraintsMessage, DelegationMessage};
 
 	#[test]
 	fn test_domain_parsing() {

@@ -8,6 +8,7 @@ use secp256k1::SecretKey;
 use crate::crypto;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Config {
 	pub server: ServerConfig,
 	pub database: DatabaseConfig,
@@ -125,21 +126,6 @@ pub struct SigningConfig {
 	pub committer_address: String,
 }
 
-impl Default for Config {
-	fn default() -> Self {
-		Self {
-			server: ServerConfig::default(),
-			database: DatabaseConfig::default(),
-			logging: LoggingConfig::default(),
-			validation: ValidationConfig::default(),
-			beacon_api: BeaconApiConfig::default(),
-			constraints_api: ConstraintsApiConfig::default(),
-			delegation: DelegationConfig::default(),
-			reth: RethConfig::default(),
-			signing: SigningConfig::default(),
-		}
-	}
-}
 
 impl Default for ServerConfig {
 	fn default() -> Self {

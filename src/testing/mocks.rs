@@ -20,6 +20,12 @@ pub struct MockBeaconApiClient {
     pub should_fail: bool,
 }
 
+impl Default for MockBeaconApiClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockBeaconApiClient {
     pub fn new() -> Self {
         Self {
@@ -64,6 +70,12 @@ pub struct MockConstraintsApiClient {
     pub should_fail: bool,
     /// Mock responses for constraint submission
     pub submission_responses: Arc<RwLock<Vec<ConstraintSubmissionResponse>>>,
+}
+
+impl Default for MockConstraintsApiClient {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MockConstraintsApiClient {
@@ -133,7 +145,6 @@ impl MockConstraintsApiClient {
             // Default mock response
             Ok(ConstraintSubmissionResponse {
                 success: true,
-                message: Some("Mock constraint submission successful".to_string()),
                 submission_id: Some("test_submission_id".to_string()),
             })
         }
@@ -172,6 +183,12 @@ pub struct MockDatabase {
     pub latency_ms: u64,
     /// Simulate database failures
     pub should_fail: bool,
+}
+
+impl Default for MockDatabase {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MockDatabase {

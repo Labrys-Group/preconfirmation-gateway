@@ -2,6 +2,7 @@ pub mod api;
 pub mod config;
 pub mod crypto;
 pub mod db;
+pub mod metrics;
 pub mod rpc;
 pub mod server;
 pub mod services;

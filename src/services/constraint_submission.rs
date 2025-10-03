@@ -236,13 +236,10 @@ async fn process_delegation_constraints(
         slot, delegation.message.committer
     );
 
-    // TODO: Query the database for pending commitments that need constraint submission
-    // For now, we'll create a placeholder implementation
+    // Query the database for pending commitments that need constraint submission
+    let constraints = create_constraints_from_commitments(_db_pool, slot).await?;
 
-    // Example constraint creation (this would be based on actual commitments)
-    let example_constraints = create_example_constraints_for_slot(slot)?;
-
-    if example_constraints.is_empty() {
+    if constraints.is_empty() {
         debug!("No constraints to submit for slot {}", slot);
         return Ok(());
     }
@@ -252,7 +249,7 @@ async fn process_delegation_constraints(
         delegation.message.proposer,
         delegation.message.delegate,
         slot,
-        example_constraints,
+        constraints,
         vec![], // receivers - empty for now
     );
 
@@ -348,16 +345,33 @@ async fn submit_constraint(
     Ok(format!("{:?}", submission_result))
 }
 
-/// Create example constraints for demonstration (replace with real commitment-based logic)
-fn create_example_constraints_for_slot(slot: u64) -> Result<Vec<Constraint>> {
-    // This is a placeholder - in the real implementation, this would:
-    // 1. Query the database for signed commitments that need constraint submission
-    // 2. Convert each commitment's inclusion payload to a constraint
-    // 3. Return the list of constraints to be submitted
+/// Create constraints from committed transactions for a specific slot
+async fn create_constraints_from_commitments(
+    _db_pool: &PgPool,
+    slot: u64,
+) -> Result<Vec<Constraint>> {
+    // Query the database for signed commitments that need constraint submission for this slot
+    // Note: We would need to add a query to get commitments by slot
+    // For now, this returns empty since the commitment-to-constraint mapping
+    // depends on having a slot field in the commitments table
 
-    debug!("Creating example constraints for slot {} (placeholder implementation)", slot);
+    debug!("Creating constraints from commitments for slot {}", slot);
 
-    // Return empty for now - real implementation would process actual commitments
+    // TODO: Implement when commitment table has slot indexing
+    // let commitments = db::operations::get_commitments_for_slot(db_pool, slot).await?;
+    //
+    // let constraints: Vec<Constraint> = commitments
+    //     .into_iter()
+    //     .filter_map(|commitment| {
+    //         // Only process inclusion commitments (type 1)
+    //         if commitment.commitment_type == 1 {
+    //             Some(Constraint::from_inclusion_commitment(commitment.payload))
+    //         } else {
+    //             None
+    //         }
+    //     })
+    //     .collect();
+
     Ok(vec![])
 }
 

@@ -9,7 +9,7 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 use crate::api::beacon::BeaconApiClient;
 use crate::api::constraints::ConstraintsApiClient;
 use crate::config::Config;
-use crate::db::delegation_ops::{save_delegations_batch, deactivate_expired_delegations};
+use crate::db::delegation_ops::save_delegations_batch;
 use crate::types::beacon::BeaconTiming;
 use crate::types::delegation::SignedDelegation;
 
@@ -70,11 +70,13 @@ impl DelegationPollingService {
 
         // Schedule cleanup of expired delegations every 5 minutes
         let db_pool_cleanup = Arc::clone(&self.db_pool);
+        let config_for_cleanup = Arc::clone(&self.config);
         let cleanup_job = Job::new_async("0 */5 * * * *", move |_uuid, _l| {
             let db_pool = Arc::clone(&db_pool_cleanup);
+            let config = Arc::clone(&config_for_cleanup);
 
             Box::pin(async move {
-                if let Err(e) = cleanup_expired_delegations(db_pool).await {
+                if let Err(e) = cleanup_expired_delegations(db_pool, config).await {
                     error!("Delegation cleanup failed: {}", e);
                 }
             })
@@ -113,7 +115,7 @@ impl DelegationPollingService {
 
 /// Core delegation polling logic
 async fn poll_delegations(
-    beacon_client: Arc<BeaconApiClient>,
+    _beacon_client: Arc<BeaconApiClient>,
     constraints_client: Arc<ConstraintsApiClient>,
     db_pool: Arc<PgPool>,
     config: Arc<Config>,
@@ -196,7 +198,7 @@ async fn poll_delegations_for_slot(
     }
 
     // Filter to only delegations that involve our BLS key as delegate
-    let our_bls_pubkey_bytes = our_bls_pubkey.to_bytes();
+    let _our_bls_pubkey_bytes = our_bls_pubkey.to_bytes();
 
     // TODO: Re-enable key filtering after matching keys with mock relay
     // For now, accept all delegations for testing
@@ -230,12 +232,22 @@ async fn poll_delegations_for_slot(
 }
 
 /// Clean up expired delegations from the database
-async fn cleanup_expired_delegations(db_pool: Arc<PgPool>) -> Result<()> {
+async fn cleanup_expired_delegations(db_pool: Arc<PgPool>, config: Arc<Config>) -> Result<()> {
     debug!("Starting expired delegation cleanup");
 
-    // Temporarily disable cleanup to allow testing
-    // TODO: Re-enable after fixing beacon timing integration
-    debug!("Delegation cleanup temporarily disabled");
+    // Get current slot using the actual configured genesis time
+    let genesis_time = config.beacon_api.genesis_time;
+    let current_slot = BeaconTiming::current_slot_estimate(genesis_time);
+
+    // Deactivate delegations for slots that have passed
+    let deactivated = crate::db::delegation_ops::deactivate_expired_delegations(&db_pool, current_slot).await?;
+
+    if deactivated > 0 {
+        info!("Deactivated {} expired delegations for slots < {}", deactivated, current_slot);
+    } else {
+        debug!("No expired delegations to clean up");
+    }
+
     Ok(())
 }
 

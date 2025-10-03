@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use reqwest::{Client, RequestBuilder};
 use serde::Deserialize;
 use std::time::Duration;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 use crate::config::BeaconApiConfig;
 use crate::types::beacon::{BeaconTiming, ProposerDutiesResponse, ValidatorDuty};
@@ -39,7 +39,7 @@ impl BeaconApiClient {
 		let endpoint = format!("eth/v1/validator/duties/proposer/{}", epoch);
 
 		// Try primary endpoint first, then fallbacks
-		let mut last_error = None;
+		let mut _last_error = None;
 
 		// Try primary endpoint
 		match self.make_request(&self.config.primary_endpoint, &endpoint).await {
@@ -51,7 +51,7 @@ impl BeaconApiClient {
 					error = %e,
 					"Primary beacon endpoint failed, trying fallbacks"
 				);
-				last_error = Some(e);
+				_last_error = Some(e);
 			}
 		}
 
@@ -73,62 +73,13 @@ impl BeaconApiClient {
 						error = %e,
 						"Fallback beacon endpoint failed"
 					);
-					last_error = Some(e);
+					_last_error = Some(e);
 				}
 			}
 		}
 
 		// All endpoints failed
-		Err(last_error.unwrap_or_else(|| anyhow::anyhow!("No beacon endpoints configured")))
-	}
-
-	/// Get proposer duties for multiple epochs (current + lookahead)
-	pub async fn get_proposer_duties_range(&self, start_epoch: u64, end_epoch: u64) -> Result<Vec<ValidatorDuty>> {
-		let mut all_duties = Vec::new();
-
-		for epoch in start_epoch..=end_epoch {
-			match self.get_proposer_duties(epoch).await {
-				Ok(response) => {
-					all_duties.extend(response.data);
-				}
-				Err(e) => {
-					error!(
-						epoch = epoch,
-						error = %e,
-						"Failed to retrieve proposer duties for epoch"
-					);
-					// Continue with other epochs even if one fails
-				}
-			}
-		}
-
-		Ok(all_duties)
-	}
-
-	/// Get current beacon state information
-	pub async fn get_beacon_state(&self) -> Result<BeaconStateResponse> {
-		let endpoint = "eth/v1/beacon/states/head";
-		self.make_request(&self.config.primary_endpoint, endpoint).await
-	}
-
-	/// Calculate which epochs to query based on current state and lookahead
-	pub async fn calculate_target_epochs(&self, lookahead_epochs: u64) -> Result<(u64, u64)> {
-		let current_slot = BeaconTiming::current_slot_estimate(self.config.genesis_time);
-		let current_epoch = BeaconTiming::slot_to_epoch(current_slot);
-
-		let start_epoch = current_epoch;
-		let end_epoch = current_epoch + lookahead_epochs;
-
-		debug!(
-			current_slot = current_slot,
-			current_epoch = current_epoch,
-			start_epoch = start_epoch,
-			end_epoch = end_epoch,
-			lookahead_epochs = lookahead_epochs,
-			"Calculated target epoch range for delegation polling"
-		);
-
-		Ok((start_epoch, end_epoch))
+		Err(_last_error.unwrap_or_else(|| anyhow::anyhow!("No beacon endpoints configured")))
 	}
 
 	/// Get proposer for a specific slot
@@ -181,43 +132,6 @@ impl BeaconApiClient {
 			.header("Content-Type", "application/json")
 			.header("User-Agent", "preconfirmation-gateway/0.1.0")
 	}
-
-	/// Health check method to verify connectivity
-	pub async fn health_check(&self) -> Result<()> {
-		let endpoint = "eth/v1/node/health";
-
-		// Just check if we can connect to the primary endpoint
-		match self.make_request::<serde_json::Value>(&self.config.primary_endpoint, endpoint).await {
-			Ok(_) => Ok(()),
-			Err(e) => {
-				error!(
-					endpoint = %self.config.primary_endpoint,
-					error = %e,
-					"Beacon API health check failed"
-				);
-				Err(e)
-			}
-		}
-	}
-}
-
-/// Response structure for beacon state queries
-#[derive(Debug, Clone, Deserialize)]
-pub struct BeaconStateResponse {
-	pub data: BeaconStateData,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct BeaconStateData {
-	pub slot: String,
-	pub finalized_checkpoint: Checkpoint,
-	pub current_justified_checkpoint: Checkpoint,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct Checkpoint {
-	pub epoch: String,
-	pub root: String,
 }
 
 #[cfg(test)]

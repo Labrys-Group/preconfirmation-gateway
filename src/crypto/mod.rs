@@ -16,7 +16,6 @@ use tiny_keccak::{Hasher, Keccak};
 use crate::types::{Commitment, CommitmentRequest};
 
 // Re-export BLS functionality for convenience
-pub use bls::{BlsManager, keys as bls_keys};
 
 /// Compute Keccak256 hash of input bytes
 pub fn keccak256(input: &[u8]) -> [u8; 32] {

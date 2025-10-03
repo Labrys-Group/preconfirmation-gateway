@@ -203,6 +203,22 @@ pub async fn commitment_request_handler(
 			jsonrpsee::types::error::ErrorCode::InternalError
 		})?;
 
+	// Track gas usage for congestion-based fee pricing
+	// Calculate fee to get gas estimation, then apply it to slot congestion
+	let fee_calc = context.fee_engine
+		.calculate_fee_for_commitment(request.commitment_type, &request.payload, slot)
+		.await
+		.map_err(|e| {
+			warn!("Failed to calculate fee for gas tracking: {}", e);
+			jsonrpsee::types::error::ErrorCode::InternalError
+		})?;
+
+	// Apply the gas usage to update slot congestion
+	if let Err(e) = context.fee_engine.apply_gas_usage_to_slot(slot, fee_calc.estimated_gas).await {
+		warn!("Failed to update slot congestion: {}", e);
+		// Don't fail the commitment, just log the warning
+	}
+
 	// Queue constraint submission for this commitment
 	// The background constraint submission service will automatically process
 	// signed commitments and create constraints for the relay within the 8-second deadline
