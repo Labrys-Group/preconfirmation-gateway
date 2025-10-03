@@ -27,5 +27,4 @@ scratch.md
 
 # Node.js (for mock relay testing)
 node_modules/
-package-lock.json
 *.log
