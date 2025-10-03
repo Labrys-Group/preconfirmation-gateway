@@ -74,29 +74,26 @@ pub async fn get_or_create_slot_congestion(
     total_gas_limit: u64,
     genesis_time: u64,
 ) -> Result<SlotCongestion> {
-    // First try to get existing record
-    if let Some(congestion) = get_slot_congestion(pool, slot).await? {
-        return Ok(congestion);
-    }
-
     // Calculate slot start time
     let slot_start_timestamp = genesis_time + (slot * 12); // 12-second slots
     let slot_start_time = UNIX_EPOCH + Duration::from_secs(slot_start_timestamp);
 
-    // Create new record
+    // Create new record struct (in memory)
     let congestion = SlotCongestion::new(slot, base_gas_price, total_gas_limit, slot_start_time);
 
     let slot_start_time_chrono = sqlx::types::chrono::DateTime::from_timestamp(
         slot_start_timestamp as i64, 0
     ).ok_or_else(|| anyhow::anyhow!("Invalid slot start timestamp"))?.naive_utc();
 
-    let id = sqlx::query!(
+    // Try to insert, but do nothing if a row for this slot already exists
+    let insert_result = sqlx::query!(
         r#"
         INSERT INTO slot_congestion (
             slot, preconfirmed_gas, total_gas_limit, gas_used_ratio,
             base_gas_price, calculated_fee_multiplier, current_tx_price, slot_start_time
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (slot) DO NOTHING
         RETURNING id
         "#,
         slot as i64,
@@ -108,15 +105,24 @@ pub async fn get_or_create_slot_congestion(
         congestion.current_tx_price as i64,
         slot_start_time_chrono
     )
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await
     .context("Failed to insert slot congestion record")?;
 
-    debug!("Created new slot congestion record for slot {} with ID {}", slot, id.id);
+    // If we got an id back, we won the race
+    if let Some(id_row) = insert_result {
+        debug!("Created new slot congestion record for slot {} with ID {}", slot, id_row.id);
+        let mut result = congestion;
+        result.id = Some(id_row.id);
+        return Ok(result);
+    }
 
-    let mut result = congestion;
-    result.id = Some(id.id);
-    Ok(result)
+    // Otherwise another task won the race—re-fetch the existing record
+    get_slot_congestion(pool, slot)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!(
+            "Slot congestion unexpectedly missing after insert for slot {}", slot
+        ))
 }
 
 /// Get slot congestion data for a specific slot
@@ -167,13 +173,42 @@ pub async fn update_slot_congestion_gas_usage(
     additional_gas: u64,
     scaling_factor: f64,
 ) -> Result<SlotCongestion> {
-    let mut congestion = get_slot_congestion(pool, slot).await?
-        .ok_or_else(|| anyhow::anyhow!("Slot congestion record not found for slot {}", slot))?;
+    let mut tx = pool.begin().await
+        .context("Failed to begin slot congestion update transaction")?;
 
-    // Update in memory
+    let row = sqlx::query!(
+        r#"
+        SELECT
+            id, slot, preconfirmed_gas, total_gas_limit,
+            gas_used_ratio, base_gas_price, calculated_fee_multiplier, current_tx_price,
+            slot_start_time, last_updated, created_at
+        FROM slot_congestion
+        WHERE slot = $1
+        FOR UPDATE
+        "#,
+        slot as i64
+    )
+    .fetch_optional(&mut *tx)
+    .await
+    .context("Failed to lock slot congestion row")?
+    .ok_or_else(|| anyhow::anyhow!("Slot congestion record not found for slot {}", slot))?;
+
+    let mut congestion = SlotCongestion {
+        id: Some(row.id),
+        slot: row.slot as u64,
+        preconfirmed_gas: row.preconfirmed_gas as u64,
+        total_gas_limit: row.total_gas_limit as u64,
+        gas_used_ratio: row.gas_used_ratio,
+        base_gas_price: row.base_gas_price as u64,
+        calculated_fee_multiplier: row.calculated_fee_multiplier,
+        current_tx_price: row.current_tx_price as u64,
+        slot_start_time: UNIX_EPOCH + Duration::from_secs(row.slot_start_time.and_utc().timestamp() as u64),
+        last_updated: row.last_updated.map(|dt| UNIX_EPOCH + Duration::from_secs(dt.and_utc().timestamp() as u64)),
+        created_at: row.created_at.map(|dt| UNIX_EPOCH + Duration::from_secs(dt.and_utc().timestamp() as u64)),
+    };
+
     congestion.add_gas_usage(additional_gas, scaling_factor);
 
-    // Update in database
     sqlx::query!(
         r#"
         UPDATE slot_congestion SET
@@ -190,9 +225,12 @@ pub async fn update_slot_congestion_gas_usage(
         congestion.calculated_fee_multiplier,
         congestion.current_tx_price as i64
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .context("Failed to update slot congestion")?;
+
+    tx.commit().await
+        .context("Failed to commit slot congestion update transaction")?;
 
     debug!(
         "Updated slot {} congestion: {}% full, {:.2}x multiplier, {} wei price",

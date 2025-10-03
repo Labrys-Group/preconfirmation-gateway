@@ -5,6 +5,7 @@
 
 use anyhow::{Context, Result};
 use sqlx::{types::chrono, PgPool};
+use std::convert::TryFrom;
 use uuid::Uuid;
 
 use crate::types::{Commitment, SignedCommitment};
@@ -19,6 +20,9 @@ pub async fn save_commitment(
 ) -> Result<Uuid> {
 	let id = Uuid::new_v4();
 	let commitment = &signed_commitment.commitment;
+
+	let commitment_type = i64::try_from(commitment.commitment_type)
+		.context("commitment_type exceeds i64::MAX")?;
 
 	let row = sqlx::query!(
 		r#"
@@ -35,7 +39,7 @@ pub async fn save_commitment(
 		"#,
 		id,
 		commitment.request_hash,
-		commitment.commitment_type as i64,
+		commitment_type,
 		commitment.payload,
 		commitment.slasher,
 		signed_commitment.signature
@@ -75,8 +79,11 @@ pub async fn get_commitment_by_hash(
 
 	match row {
 		Some(row) => {
+			let commitment_type = u64::try_from(row.commitment_type)
+				.context("stored commitment_type is negative")?;
+
 			let commitment = Commitment {
-				commitment_type: row.commitment_type as u64,
+				commitment_type,
 				payload: row.payload,
 				request_hash: row.request_hash,
 				slasher: row.slasher,

@@ -23,7 +23,7 @@ pub async fn create_pool(config: &Config) -> Result<PgPool> {
 	let database_url = env::var("DATABASE_URL")
 		.unwrap_or_else(|_| config.database_url().to_string());
 
-	info!("Connecting to database: {}", database_url);
+	info!("Connecting to database");
 
 	// Create database if it doesn't exist
 	if !Postgres::database_exists(&database_url).await.unwrap_or(false) {

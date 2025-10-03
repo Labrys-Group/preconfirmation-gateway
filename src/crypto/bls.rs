@@ -95,8 +95,8 @@ impl BlsManager {
 	/// ABI encode a delegation message for signing
 	fn abi_encode_delegation_message(&self, message: &DelegationMessage) -> Result<Vec<u8>> {
 		let tokens = vec![
-			Token::FixedBytes(message.proposer.0.to_vec()), // BLS public key (48 bytes)
-			Token::FixedBytes(message.delegate.0.to_vec()), // BLS public key (48 bytes)
+			Token::Bytes(message.proposer.0.to_vec()), // BLS public key (48 bytes)
+			Token::Bytes(message.delegate.0.to_vec()), // BLS public key (48 bytes)
 			Token::Address(self.parse_ethereum_address(&message.committer)?), // Ethereum address
 			Token::Uint(message.slot.into()), // Slot number
 		];
@@ -122,12 +122,12 @@ impl BlsManager {
 		let receiver_tokens: Vec<Token> = message
 			.receivers
 			.iter()
-			.map(|r| Token::FixedBytes(r.0.to_vec()))
+			.map(|r| Token::Bytes(r.0.to_vec()))
 			.collect();
 
 		let tokens = vec![
-			Token::FixedBytes(message.proposer.0.to_vec()), // BLS public key
-			Token::FixedBytes(message.delegate.0.to_vec()), // BLS public key
+			Token::Bytes(message.proposer.0.to_vec()), // BLS public key
+			Token::Bytes(message.delegate.0.to_vec()), // BLS public key
 			Token::Uint(message.slot.into()), // Slot number
 			Token::Array(constraint_tokens?), // Constraints array
 			Token::Array(receiver_tokens), // Receivers array

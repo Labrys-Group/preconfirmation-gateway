@@ -10,6 +10,7 @@ use tracing::{debug, warn};
 pub struct RethApiClient {
     client: Client,
     endpoint: String,
+    max_retries: u32,
 }
 
 /// Gas price information from Reth node
@@ -55,6 +56,7 @@ impl RethApiClient {
         Ok(Self {
             client,
             endpoint: config.endpoint,
+            max_retries: config.max_retries,
         })
     }
 
@@ -124,7 +126,7 @@ impl RethApiClient {
     /// Make a JSON-RPC call to the Reth node
     async fn make_rpc_call(&self, payload: Value) -> Result<Value> {
         let mut attempts = 0;
-        let max_retries = 3;
+        let max_retries = self.max_retries;
 
         while attempts < max_retries {
             match self.client

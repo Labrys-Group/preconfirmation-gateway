@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO slot_congestion (\n            slot, preconfirmed_gas, total_gas_limit, gas_used_ratio,\n            base_gas_price, calculated_fee_multiplier, current_tx_price, slot_start_time\n        )\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n        ON CONFLICT (slot) DO NOTHING\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8",
+        "Float8",
+        "Int8",
+        "Float8",
+        "Int8",
+        "Timestamp"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4e28dc4af47fbd3d09e746512612f4a582f669f47be3e8005f4576595fb9c772"
+}
