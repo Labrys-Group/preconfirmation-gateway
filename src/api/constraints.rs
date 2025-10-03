@@ -63,7 +63,7 @@ impl ConstraintsApiClient {
 	/// This is called proactively to fetch delegation authority from proposers
 	/// before commitment requests arrive for that slot.
 	pub async fn get_delegations_for_slot(&self, slot: u64) -> Result<Vec<SignedDelegation>> {
-		let endpoint = format!("constraints/v0/relay/delegations/{}", slot);
+		let endpoint = format!("constraints/v1/delegations/{}", slot);
 		let url = self.build_url(&endpoint);
 
 		debug!(slot = slot, url = %url, "Fetching delegations");

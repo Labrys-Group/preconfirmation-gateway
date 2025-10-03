@@ -191,13 +191,14 @@ async fn process_constraints_for_slot(
 
     // For each delegation, check if there are pending commitments that need constraint submission
     for delegation in delegations {
-        // Find the key pair that matches this delegation
-        let key_pair = config.signing.key_pairs
-            .iter()
-            .find(|kp| kp.bls_public_key.to_bytes() == delegation.message.delegate.0)
-            .ok_or_else(|| anyhow::anyhow!(
-                "No key pair found for delegate key in slot {} delegation", slot
-            ))?;
+        // Check if this delegation matches our BLS public key
+        if delegation.message.delegate.0 != config.signing.bls_public_key.to_bytes() {
+            debug!(
+                "Skipping delegation in slot {} - delegate key does not match our BLS public key",
+                slot
+            );
+            continue;
+        }
 
         // In a real implementation, we would query for pending commitments
         // that need to be converted to constraints for this slot/delegation
@@ -208,7 +209,7 @@ async fn process_constraints_for_slot(
             bls_manager,
             db_pool,
             &delegation,
-            key_pair,
+            &config.signing,
             slot,
         ).await {
             warn!(
@@ -227,7 +228,7 @@ async fn process_delegation_constraints(
     bls_manager: &BlsManager,
     _db_pool: &PgPool,
     delegation: &crate::types::delegation::SignedDelegation,
-    key_pair: &crate::config::KeyPair,
+    signing_config: &crate::config::SigningConfig,
     slot: u64,
 ) -> Result<()> {
     debug!(
@@ -256,7 +257,7 @@ async fn process_delegation_constraints(
     );
 
     // Sign the constraints message with our BLS key
-    let signature_bytes = bls_manager.sign_constraints_message(&constraints_message, &key_pair.bls_private_key)
+    let signature_bytes = bls_manager.sign_constraints_message(&constraints_message, &signing_config.bls_private_key)
         .context("Failed to sign constraints message")?;
 
     // Create SignedConstraints object
@@ -287,21 +288,22 @@ async fn submit_constraint(
     payload: Vec<u8>,
     committer_address: String,
 ) -> Result<String> {
-    // Find the appropriate key pair for this committer
-    let key_pair = config.signing.key_pairs
-        .iter()
-        .find(|kp| kp.committer_address == committer_address)
-        .ok_or_else(|| anyhow::anyhow!(
-            "No key pair found for committer address: {}", committer_address
-        ))?;
+    // Verify the committer address matches our configured address
+    if committer_address != config.signing.committer_address {
+        return Err(anyhow::anyhow!(
+            "Committer address {} does not match our configured address: {}",
+            committer_address,
+            config.signing.committer_address
+        ));
+    }
 
-    // Get delegation for this slot and key pair
+    // Get delegation for this slot
     let delegations = get_delegations_for_slot(db_pool, slot).await
         .context("Failed to get delegations for slot")?;
 
     let delegation = delegations
         .iter()
-        .find(|d| d.message.delegate.0 == key_pair.bls_public_key.to_bytes()
+        .find(|d| d.message.delegate.0 == config.signing.bls_public_key.to_bytes()
                  && d.message.committer == committer_address)
         .ok_or_else(|| anyhow::anyhow!(
             "No valid delegation found for slot {} and committer {}", slot, committer_address
@@ -320,7 +322,7 @@ async fn submit_constraint(
     );
 
     // Sign the constraints message
-    let signature_bytes = bls_manager.sign_constraints_message(&constraints_message, &key_pair.bls_private_key)
+    let signature_bytes = bls_manager.sign_constraints_message(&constraints_message, &config.signing.bls_private_key)
         .context("Failed to sign constraints message")?;
 
     // Create SignedConstraints object

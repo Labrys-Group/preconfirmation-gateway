@@ -115,17 +115,6 @@ pub struct FeeConfig {
 /// This is kept separate from TOML config for security
 #[derive(Debug, Clone)]
 pub struct SigningConfig {
-	/// Legacy single ECDSA private key (for backward compatibility)
-	pub private_key: SecretKey,
-	/// Multiple key pairs for delegation-based signing
-	pub key_pairs: Vec<KeyPair>,
-}
-
-/// A single key pair for delegation-based operations
-#[derive(Debug, Clone)]
-pub struct KeyPair {
-	/// Human-readable identifier
-	pub name: String,
 	/// ECDSA private key for commitment signing
 	pub ecdsa_private_key: SecretKey,
 	/// BLS private key for constraint signing
@@ -224,11 +213,24 @@ impl Default for DelegationConfig {
 
 impl Default for SigningConfig {
 	fn default() -> Self {
+		let ecdsa_private_key = crypto::parse_private_key(
+			"ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+		)
+			.expect("Failed to parse default private key");
+
+		let bls_key_bytes = [0x01u8; 32];
+		let bls_private_key = BlsSecretKey::from_bytes(&bls_key_bytes)
+			.expect("Failed to create default BLS private key");
+		let bls_public_key = bls_private_key.sk_to_pk();
+
+		let committer_address = crypto::ecdsa_to_address(&ecdsa_private_key)
+			.expect("Failed to derive default address");
+
 		Self {
-			// Default development private key (same as in .env.example)
-			private_key: crypto::parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
-				.expect("Failed to parse default private key"),
-			key_pairs: vec![],
+			ecdsa_private_key,
+			bls_private_key,
+			bls_public_key,
+			committer_address,
 		}
 	}
 }
@@ -236,64 +238,38 @@ impl Default for SigningConfig {
 impl SigningConfig {
 	/// Load signing configuration from environment variables
 	pub fn load() -> Result<Self> {
-		// Load legacy single key for backward compatibility
-		let private_key = if let Ok(private_key_hex) = std::env::var("COMMITTER_PRIVATE_KEY") {
+		// Load ECDSA private key
+		let ecdsa_private_key = if let Ok(private_key_hex) = std::env::var("ECDSA_PRIVATE_KEY") {
 			crypto::parse_private_key(&private_key_hex)
-				.context("Invalid private key in COMMITTER_PRIVATE_KEY")?
+				.context("Invalid ECDSA_PRIVATE_KEY")?
 		} else {
 			// Use default if not provided
 			crypto::parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
-				.expect("Failed to parse default private key")
+				.expect("Failed to parse default ECDSA private key")
 		};
 
-		// Load multiple key pairs from environment
-		let key_pairs = Self::load_key_pairs()?;
+		// Load BLS private key
+		let (bls_private_key, bls_public_key) = if let Ok(bls_hex) = std::env::var("BLS_PRIVATE_KEY") {
+			Self::parse_bls_key(&bls_hex)
+				.context("Invalid BLS_PRIVATE_KEY")?
+		} else {
+			// Use default if not provided
+			let bls_key_bytes = [0x01u8; 32];
+			let bls_private_key = BlsSecretKey::from_bytes(&bls_key_bytes)
+				.expect("Failed to create default BLS private key");
+			let bls_public_key = bls_private_key.sk_to_pk();
+			(bls_private_key, bls_public_key)
+		};
 
-		Ok(Self { private_key, key_pairs })
-	}
+		let committer_address = crypto::ecdsa_to_address(&ecdsa_private_key)
+			.context("Failed to derive committer address")?;
 
-	/// Load multiple key pairs from environment variables
-	/// Expected format: GATEWAY_KEY_PAIRS_COUNT=N
-	/// GATEWAY_KEY_PAIR_0_NAME=main
-	/// GATEWAY_KEY_PAIR_0_ECDSA=0x...
-	/// GATEWAY_KEY_PAIR_0_BLS=0x...
-	fn load_key_pairs() -> Result<Vec<KeyPair>> {
-		let count = std::env::var("GATEWAY_KEY_PAIRS_COUNT")
-			.unwrap_or_else(|_| "0".to_string())
-			.parse::<usize>()
-			.context("Invalid GATEWAY_KEY_PAIRS_COUNT")?;
-
-		let mut key_pairs = Vec::new();
-
-		for i in 0..count {
-			let name = std::env::var(format!("GATEWAY_KEY_PAIR_{}_NAME", i))
-				.unwrap_or_else(|_| format!("keypair_{}", i));
-
-			let ecdsa_hex = std::env::var(format!("GATEWAY_KEY_PAIR_{}_ECDSA", i))
-				.with_context(|| format!("Missing GATEWAY_KEY_PAIR_{}_ECDSA", i))?;
-
-			let bls_hex = std::env::var(format!("GATEWAY_KEY_PAIR_{}_BLS", i))
-				.with_context(|| format!("Missing GATEWAY_KEY_PAIR_{}_BLS", i))?;
-
-			let ecdsa_private_key = crypto::parse_private_key(&ecdsa_hex)
-				.with_context(|| format!("Invalid ECDSA key for pair {}", i))?;
-
-			let (bls_private_key, bls_public_key) = Self::parse_bls_key(&bls_hex)
-				.with_context(|| format!("Invalid BLS key for pair {}", i))?;
-
-			let committer_address = crypto::ecdsa_to_address(&ecdsa_private_key)
-				.with_context(|| format!("Failed to derive address for pair {}", i))?;
-
-			key_pairs.push(KeyPair {
-				name,
-				ecdsa_private_key,
-				bls_private_key,
-				bls_public_key,
-				committer_address,
-			});
-		}
-
-		Ok(key_pairs)
+		Ok(Self {
+			ecdsa_private_key,
+			bls_private_key,
+			bls_public_key,
+			committer_address,
+		})
 	}
 
 	/// Parse BLS private key and derive public key
@@ -307,18 +283,6 @@ impl SigningConfig {
 		let public_key = private_key.sk_to_pk();
 
 		Ok((private_key, public_key))
-	}
-
-	/// Find key pair by committer address
-	pub fn find_key_pair_by_address(&self, address: &str) -> Option<&KeyPair> {
-		self.key_pairs.iter().find(|kp| kp.committer_address == address)
-	}
-
-	/// Find key pair by BLS public key
-	pub fn find_key_pair_by_bls_pubkey(&self, pubkey: &[u8; 48]) -> Option<&KeyPair> {
-		self.key_pairs.iter().find(|kp| {
-			kp.bls_public_key.to_bytes().as_slice() == pubkey.as_slice()
-		})
 	}
 }
 

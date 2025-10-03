@@ -55,25 +55,15 @@ fn find_signing_key_for_committer<'a>(
     context: &'a RpcContext,
     committer_address: &str,
 ) -> Result<&'a secp256k1::SecretKey, String> {
-    // First try to find a key pair that matches the committer address
-    if let Some(key_pair) = context.config.signing.key_pairs
-        .iter()
-        .find(|kp| kp.committer_address == committer_address)
-    {
-        return Ok(&key_pair.ecdsa_private_key);
-    }
-
-    // Fallback to the legacy single key if the committer matches the configured address
-    if committer_address == context.config.validation.slasher_address {
-        return Ok(&context.config.signing.private_key);
+    // Check if the committer address matches our configured address
+    if committer_address == context.config.signing.committer_address {
+        return Ok(&context.config.signing.ecdsa_private_key);
     }
 
     Err(format!(
-        "No signing key found for committer address: {}. Available addresses: {:?}",
+        "No signing key found for committer address: {}. Available address: {}",
         committer_address,
-        context.config.signing.key_pairs.iter()
-            .map(|kp| &kp.committer_address)
-            .collect::<Vec<_>>()
+        context.config.signing.committer_address
     ))
 }
 
@@ -84,7 +74,14 @@ pub async fn commitment_request_handler(
 	_extensions: Extensions,
 ) -> RpcResult<SignedCommitment> {
 	info!("Processing commitment request with delegation-first security");
-	let request: CommitmentRequest = params.parse()?;
+
+	// Parse params as sequential values: commitment_type, payload, slasher
+	let (commitment_type, payload, slasher): (u64, Vec<u8>, String) = params.parse()?;
+	let request = CommitmentRequest {
+		commitment_type,
+		payload,
+		slasher,
+	};
 
 	// Validate commitment_type
 	if request.commitment_type != 1 {
@@ -368,16 +365,10 @@ mod tests {
 			},
 			reth: crate::config::RethConfig::default(),
 			signing: crate::config::SigningConfig {
-				private_key,
-				key_pairs: vec![
-					crate::config::KeyPair {
-						name: "test_key".to_string(),
-						ecdsa_private_key: parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80").unwrap(),
-						bls_private_key: bls_key.clone(),
-						bls_public_key: bls_key.sk_to_pk(),
-						committer_address: "0x1234567890123456789012345678901234567890".to_string(),
-					}
-				],
+				ecdsa_private_key: private_key,
+				bls_private_key: bls_key.clone(),
+				bls_public_key: bls_key.sk_to_pk(),
+				committer_address: "0x1234567890123456789012345678901234567890".to_string(),
 			},
 		};
 
@@ -605,10 +596,7 @@ mod tests {
 					domain_application_gateway: "0x00000001".to_string(),
 				},
 				reth: crate::config::RethConfig::default(),
-				signing: crate::config::SigningConfig {
-					private_key: secp256k1::SecretKey::from_slice(&[1; 32]).unwrap(),
-					key_pairs: vec![],
-				},
+				signing: crate::config::SigningConfig::default(),
 			};
 
 			// Calculate expected slot behavior
