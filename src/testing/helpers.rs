@@ -196,21 +196,36 @@ impl TestHelpers {
     /// Validate that constraint submission timing is correct
     pub fn validate_constraint_timing(
         commitment_slot: u64,
-        _submission_time: Instant,
+        submission_time: Instant,
         genesis_time: u64,
     ) -> Result<()> {
-        let current_time = std::time::SystemTime::now()
+        // Convert Instant to unix timestamp by calculating offset from now
+        let now_instant = Instant::now();
+        let now_system = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+            .unwrap();
+
+        let submission_unix = if submission_time <= now_instant {
+            // submission_time is in the past
+            let elapsed_since_submission = now_instant.duration_since(submission_time);
+            now_system.checked_sub(elapsed_since_submission)
+                .ok_or_else(|| anyhow::anyhow!("Submission time calculation underflow"))?
+                .as_secs()
+        } else {
+            // submission_time is in the future
+            let elapsed_until_submission = submission_time.duration_since(now_instant);
+            now_system.checked_add(elapsed_until_submission)
+                .ok_or_else(|| anyhow::anyhow!("Submission time calculation overflow"))?
+                .as_secs()
+        };
 
         let slot_start_time = genesis_time + (commitment_slot * 12);
         let submission_deadline = slot_start_time + 8; // 8-second deadline
 
-        if current_time > submission_deadline {
+        if submission_unix > submission_deadline {
             return Err(anyhow::anyhow!(
                 "Constraint submission too late: submitted at {}, deadline was {}",
-                current_time,
+                submission_unix,
                 submission_deadline
             ));
         }
