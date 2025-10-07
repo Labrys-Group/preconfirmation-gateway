@@ -4,6 +4,21 @@
 //! - ECDSA signing of commitments
 //! - Database storage and retrieval
 //! - End-to-end functionality
+//!
+//! ## Test Isolation
+//!
+//! Each test runs in its own isolated PostgreSQL database to prevent cross-test
+//! race conditions. The `TestFixture` creates a unique database per test using
+//! process ID and UUID for the database name (e.g., `test_12345_abc123...`).
+//!
+//! This isolation strategy:
+//! - Eliminates race conditions from concurrent test execution
+//! - Allows tests to run in parallel with --test-threads=N
+//! - Prevents DELETE FROM queries from affecting other running tests
+//! - Ensures each test starts with a clean schema
+//!
+//! Test databases are automatically cleaned up on test completion. If cleanup
+//! fails, run: `./scripts/cleanup_test_dbs.sh`
 
 use std::sync::Arc;
 use preconfirmation_gateway::{
@@ -15,8 +30,112 @@ use ethabi::{ParamType, encode, Token};
 use sqlx::PgPool;
 use secp256k1::Secp256k1;
 use tokio;
+use uuid::Uuid;
 
-/// Setup test database pool for integration tests
+/// Test fixture that provides isolated database per test using unique database names
+///
+/// Each test gets its own database to prevent cross-test race conditions.
+/// Test databases are named with process ID and UUID for uniqueness.
+///
+/// Note: Test databases are automatically cleaned up on drop via async task.
+/// If cleanup fails, you can manually remove them with:
+/// ```sql
+/// SELECT 'DROP DATABASE "' || datname || '";'
+/// FROM pg_database WHERE datname LIKE 'test_%';
+/// ```
+struct TestFixture {
+	pool: PgPool,
+	db_name: String,
+	admin_pool: PgPool,
+}
+
+impl TestFixture {
+	/// Create a new test fixture with a unique isolated database
+	async fn new() -> Self {
+		let base_url = std::env::var("TEST_DATABASE_URL")
+			.unwrap_or_else(|_| "postgresql://postgres:postgres@localhost:5432/postgres".to_string());
+
+		// Generate unique database name for this test
+		let db_name = format!("test_{}_{}",
+			std::process::id(),
+			Uuid::new_v4().to_string().replace('-', "_")
+		);
+
+		// Connect to postgres database to create test database
+		let admin_pool = sqlx::postgres::PgPoolOptions::new()
+			.max_connections(1)
+			.connect(&base_url)
+			.await
+			.expect("Failed to connect to admin database");
+
+		// Create the unique test database
+		let create_db_query = format!("CREATE DATABASE \"{}\"", db_name);
+		sqlx::query(&create_db_query)
+			.execute(&admin_pool)
+			.await
+			.expect("Failed to create test database");
+
+		// Build connection string for the test database
+		let test_db_url = if base_url.contains('?') {
+			base_url.rsplit_once('/').unwrap().0.to_string() + "/" + &db_name
+		} else {
+			base_url.rsplit_once('/').unwrap().0.to_string() + "/" + &db_name
+		};
+
+		// Connect to the test database
+		let pool = sqlx::postgres::PgPoolOptions::new()
+			.max_connections(5)
+			.connect(&test_db_url)
+			.await
+			.expect("Failed to connect to test database");
+
+		// Run migrations on the test database
+		sqlx::migrate!("./migrations")
+			.run(&pool)
+			.await
+			.expect("Failed to run migrations on test database");
+
+		Self { pool, db_name, admin_pool }
+	}
+
+	/// Get the pool for creating DatabaseContext
+	fn pool(&self) -> PgPool {
+		self.pool.clone()
+	}
+}
+
+impl Drop for TestFixture {
+	fn drop(&mut self) {
+		// Clean up test database - use Handle::current() from existing runtime
+		let db_name = self.db_name.clone();
+		let pool = self.pool.clone();
+		let admin_pool = self.admin_pool.clone();
+
+		// Block on cleanup using the current runtime handle
+		if let Ok(handle) = tokio::runtime::Handle::try_current() {
+			handle.spawn(async move {
+				// Close the pool first
+				pool.close().await;
+
+				// Force disconnect all connections
+				let force_disconnect = format!(
+					"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{}'",
+					db_name
+				);
+				let _ = sqlx::query(&force_disconnect).execute(&admin_pool).await;
+
+				// Small delay to ensure connections are terminated
+				tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+				// Drop the test database
+				let drop_db_query = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
+				let _ = sqlx::query(&drop_db_query).execute(&admin_pool).await;
+			});
+		}
+	}
+}
+
+/// Setup test database pool for integration tests (legacy - uses shared database)
 async fn setup_test_pool() -> PgPool {
 	let database_url = std::env::var("TEST_DATABASE_URL")
 		.unwrap_or_else(|_| "postgresql://postgres:postgres@localhost:5432/preconfirmation_gateway_test".to_string());
@@ -34,18 +153,11 @@ async fn setup_test_pool() -> PgPool {
 		.await
 		.expect("Failed to run test database migrations");
 
-	// Clean up any existing test data
-	sqlx::query("DELETE FROM commitments")
-		.execute(&pool)
-		.await
-		.expect("Failed to clean test database");
-
 	pool
 }
 
-/// Create test RPC context with database and signing configuration
-async fn create_test_context() -> Arc<RpcContext> {
-	let pool = setup_test_pool().await;
+/// Create test RPC context with a specific database pool
+async fn create_test_context_with_pool(pool: PgPool) -> Arc<RpcContext> {
 	let db_context = DatabaseContext::new(pool);
 
 	// Load config (uses TEST environment variables if available)
@@ -86,6 +198,12 @@ async fn create_test_context() -> Arc<RpcContext> {
 	Arc::new(RpcContext::new(db_context, config, fee_engine, beacon_client))
 }
 
+/// Create test RPC context with database and signing configuration (legacy - uses shared DB)
+async fn create_test_context() -> Arc<RpcContext> {
+	let pool = setup_test_pool().await;
+	create_test_context_with_pool(pool).await
+}
+
 /// Helper function to create a valid ABI-encoded InclusionPayload with unique nonce
 fn create_valid_payload() -> Vec<u8> {
 	use std::time::{SystemTime, UNIX_EPOCH};
@@ -114,7 +232,8 @@ fn create_payload_with_nonce(nonce: u64) -> Vec<u8> {
 
 #[tokio::test]
 async fn test_complete_commitment_flow() {
-	let context = create_test_context().await;
+	let fixture = TestFixture::new().await;
+	let context = create_test_context_with_pool(fixture.pool()).await;
 
 	let request = CommitmentRequest {
 		commitment_type: 1,
@@ -138,7 +257,7 @@ async fn test_complete_commitment_flow() {
 	};
 
 	// Sign the commitment
-	let signature = sign_commitment(&commitment, &context.config.signing.private_key).unwrap();
+	let signature = sign_commitment(&commitment, &context.config.signing.ecdsa_private_key).unwrap();
 
 	let signed_commitment = SignedCommitment {
 		commitment,
@@ -178,7 +297,8 @@ async fn test_complete_commitment_flow() {
 
 #[tokio::test]
 async fn test_duplicate_commitment_prevention() {
-	let context = create_test_context().await;
+	let fixture = TestFixture::new().await;
+	let context = create_test_context_with_pool(fixture.pool()).await;
 
 	let request = CommitmentRequest {
 		commitment_type: 1,
@@ -196,7 +316,7 @@ async fn test_duplicate_commitment_prevention() {
 		slasher: request.slasher.clone(),
 	};
 
-	let signature = sign_commitment(&commitment, &context.config.signing.private_key).unwrap();
+	let signature = sign_commitment(&commitment, &context.config.signing.ecdsa_private_key).unwrap();
 	let signed_commitment = SignedCommitment { commitment, signature };
 
 	// First save should succeed
@@ -210,7 +330,8 @@ async fn test_duplicate_commitment_prevention() {
 
 #[tokio::test]
 async fn test_commitment_result_not_found() {
-	let context = create_test_context().await;
+	let fixture = TestFixture::new().await;
+	let context = create_test_context_with_pool(fixture.pool()).await;
 
 	// Test retrieving non-existent commitment
 	let non_existent_hash = "0x1234567890123456789012345678901234567890123456789012345678901234";
@@ -222,7 +343,8 @@ async fn test_commitment_result_not_found() {
 
 #[tokio::test]
 async fn test_signature_verification() {
-	let context = create_test_context().await;
+	let fixture = TestFixture::new().await;
+	let context = create_test_context_with_pool(fixture.pool()).await;
 
 	let request = CommitmentRequest {
 		commitment_type: 1,
@@ -239,11 +361,11 @@ async fn test_signature_verification() {
 		slasher: request.slasher,
 	};
 
-	let signature = sign_commitment(&commitment, &context.config.signing.private_key).unwrap();
+	let signature = sign_commitment(&commitment, &context.config.signing.ecdsa_private_key).unwrap();
 
 	// Verify signature using crypto module
 	let secp = Secp256k1::new();
-	let public_key = context.config.signing.private_key.public_key(&secp);
+	let public_key = context.config.signing.ecdsa_private_key.public_key(&secp);
 
 	let is_valid = verify_commitment_signature(&commitment, &signature, &public_key)
 		.expect("Failed to verify signature");
@@ -253,7 +375,8 @@ async fn test_signature_verification() {
 
 #[tokio::test]
 async fn test_multiple_different_commitments() {
-	let context = create_test_context().await;
+	let fixture = TestFixture::new().await;
+	let context = create_test_context_with_pool(fixture.pool()).await;
 
 	// Create different payloads for different commitments
 	let payloads = vec![
@@ -281,7 +404,7 @@ async fn test_multiple_different_commitments() {
 			slasher: request.slasher,
 		};
 
-		let signature = sign_commitment(&commitment, &context.config.signing.private_key).unwrap();
+		let signature = sign_commitment(&commitment, &context.config.signing.ecdsa_private_key).unwrap();
 		let signed_commitment = SignedCommitment { commitment, signature };
 
 		let result = context.database.save_commitment(&signed_commitment).await;
@@ -319,8 +442,8 @@ fn create_payload_with_slot(slot: u64) -> Vec<u8> {
 
 #[tokio::test]
 async fn test_database_operations_directly() {
-	let pool = setup_test_pool().await;
-	let db_context = DatabaseContext::new(pool);
+	let fixture = TestFixture::new().await;
+	let db_context = DatabaseContext::new(fixture.pool());
 
 	// Create test commitment
 	let commitment = Commitment {
