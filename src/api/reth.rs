@@ -84,15 +84,23 @@ impl RethApiClient {
         ).context("Failed to parse gas price hex value")?;
 
         // Get current block number for context
-        let block_number = self.get_block_number().await.unwrap_or(0);
+        let block_number = match self.get_block_number().await {
+            Ok(num) => num,
+            Err(err) => {
+                warn!("Failed to get block number: {}", err);
+                0
+            }
+        };
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
 
         let gas_price_info = GasPriceInfo {
             gas_price,
             block_number,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
+            timestamp,
         };
 
         debug!("Retrieved gas price: {} wei at block {}", gas_price, block_number);
