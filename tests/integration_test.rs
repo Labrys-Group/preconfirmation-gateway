@@ -75,11 +75,18 @@ impl TestFixture {
 			.await
 			.expect("Failed to create test database");
 
-		// Build connection string for the test database
-		let test_db_url = if base_url.contains('?') {
-			base_url.rsplit_once('/').unwrap().0.to_string() + "/" + &db_name
-		} else {
-			base_url.rsplit_once('/').unwrap().0.to_string() + "/" + &db_name
+		// Build connection string for the test database, preserving query string
+		let test_db_url = {
+			// Split URL into base path and query/fragment
+			let (path_part, query_part) = if let Some(idx) = base_url.find('?') {
+				(&base_url[..idx], &base_url[idx..])
+			} else {
+				(base_url.as_str(), "")
+			};
+
+			// Replace database name in path while preserving query string
+			let base_path = path_part.rsplit_once('/').unwrap().0;
+			format!("{}/{}{}", base_path, db_name, query_part)
 		};
 
 		// Connect to the test database
