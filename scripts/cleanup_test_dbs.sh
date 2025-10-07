@@ -5,6 +5,7 @@
 # This script removes all databases matching that pattern.
 
 set -e
+set -o pipefail
 
 DATABASE_URL="${TEST_DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/postgres}"
 
