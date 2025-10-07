@@ -224,10 +224,10 @@ impl Default for SigningConfig {
 impl SigningConfig {
 	/// Load signing configuration from environment variables
 	pub fn load() -> Result<Self> {
-		// Load ECDSA private key
-		let ecdsa_private_key = if let Ok(private_key_hex) = std::env::var("ECDSA_PRIVATE_KEY") {
+		// Load ECDSA private key from COMMITTER_PRIVATE_KEY
+		let ecdsa_private_key = if let Ok(private_key_hex) = std::env::var("COMMITTER_PRIVATE_KEY") {
 			crypto::parse_private_key(&private_key_hex)
-				.context("Invalid ECDSA_PRIVATE_KEY")?
+				.context("Invalid COMMITTER_PRIVATE_KEY")?
 		} else {
 			// Use default if not provided
 			crypto::parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
