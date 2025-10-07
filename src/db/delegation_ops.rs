@@ -234,7 +234,7 @@ pub async fn delegation_exists_for_slot_and_committer(
 		r#"
 		SELECT EXISTS(
 			SELECT 1 FROM delegations
-			WHERE slot_number = $1 AND committer_address = $2 AND is_active = true
+			WHERE slot_number = $1 AND LOWER(committer_address) = LOWER($2) AND is_active = true
 		) as exists
 		"#,
 		slot as i64,
