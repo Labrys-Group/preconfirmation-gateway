@@ -160,11 +160,10 @@ mod tests {
 	#[test]
 	fn test_epoch_calculation() {
 		let config = create_test_config();
-		let client = BeaconApiClient::new(config).unwrap();
+		let _client = BeaconApiClient::new(config).unwrap();
 
 		// This test would need to be updated with actual network calls for integration testing
 		// For now, just verify the client can be created
-		assert!(true);
 	}
 
 	// Integration tests would go here, requiring actual beacon endpoints

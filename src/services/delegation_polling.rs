@@ -336,7 +336,7 @@ mod tests {
                 .expect("Failed to connect to test database")
         );
 
-        let mut service = DelegationPollingService::new(
+        let service = DelegationPollingService::new(
             beacon_client,
             constraints_client,
             db_pool,

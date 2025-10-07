@@ -347,32 +347,58 @@ async fn submit_constraint(
 
 /// Create constraints from committed transactions for a specific slot
 async fn create_constraints_from_commitments(
-    _db_pool: &PgPool,
+    db_pool: &PgPool,
     slot: u64,
 ) -> Result<Vec<Constraint>> {
-    // Query the database for signed commitments that need constraint submission for this slot
-    // Note: We would need to add a query to get commitments by slot
-    // For now, this returns empty since the commitment-to-constraint mapping
-    // depends on having a slot field in the commitments table
-
     debug!("Creating constraints from commitments for slot {}", slot);
 
-    // TODO: Implement when commitment table has slot indexing
-    // let commitments = db::operations::get_commitments_for_slot(db_pool, slot).await?;
-    //
-    // let constraints: Vec<Constraint> = commitments
-    //     .into_iter()
-    //     .filter_map(|commitment| {
-    //         // Only process inclusion commitments (type 1)
-    //         if commitment.commitment_type == 1 {
-    //             Some(Constraint::from_inclusion_commitment(commitment.payload))
-    //         } else {
-    //             None
-    //         }
-    //     })
-    //     .collect();
+    // Query the database for unprocessed commitments for this slot
+    let commitments = crate::db::operations::get_unprocessed_commitments_for_slot(db_pool, slot)
+        .await
+        .with_context(|| format!("Failed to get unprocessed commitments for slot {}", slot))?;
 
-    Ok(vec![])
+    if commitments.is_empty() {
+        debug!("No unprocessed commitments found for slot {}", slot);
+        return Ok(vec![]);
+    }
+
+    debug!("Found {} unprocessed commitments for slot {}", commitments.len(), slot);
+
+    // Convert commitments to constraints
+    let constraints: Vec<Constraint> = commitments
+        .iter()
+        .filter_map(|signed_commitment| {
+            let commitment = &signed_commitment.commitment;
+
+            // Only process inclusion commitments (type 1)
+            if commitment.commitment_type == 1 {
+                Some(Constraint::from_inclusion_commitment(commitment.payload.clone()))
+            } else {
+                warn!(
+                    "Skipping commitment with unsupported type {} for slot {}",
+                    commitment.commitment_type, slot
+                );
+                None
+            }
+        })
+        .collect();
+
+    // Mark the commitments as processed to prevent duplicate submissions
+    let request_hashes: Vec<String> = commitments
+        .iter()
+        .map(|sc| sc.commitment.request_hash.clone())
+        .collect();
+
+    if !request_hashes.is_empty() {
+        let marked = crate::db::operations::mark_commitments_as_processed(db_pool, &request_hashes)
+            .await
+            .context("Failed to mark commitments as processed")?;
+
+        debug!("Marked {} commitments as processed for slot {}", marked, slot);
+    }
+
+    info!("Created {} constraints from commitments for slot {}", constraints.len(), slot);
+    Ok(constraints)
 }
 
 #[cfg(test)]
@@ -398,7 +424,7 @@ mod tests {
                 .expect("Failed to connect to test database")
         );
 
-        let mut service = ConstraintSubmissionService::new(
+        let service = ConstraintSubmissionService::new(
             constraints_client,
             bls_manager,
             db_pool,
@@ -425,7 +451,7 @@ mod tests {
                 .expect("Failed to connect to test database")
         );
 
-        let mut service = ConstraintSubmissionService::new(
+        let service = ConstraintSubmissionService::new(
             constraints_client,
             bls_manager,
             db_pool,

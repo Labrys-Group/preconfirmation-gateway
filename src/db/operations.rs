@@ -8,12 +8,13 @@ use sqlx::{types::chrono, PgPool};
 use std::convert::TryFrom;
 use uuid::Uuid;
 
-use crate::types::{Commitment, SignedCommitment};
+use crate::types::{Commitment, SignedCommitment, PayloadParser};
 
 /// Save a signed commitment to the database
 ///
 /// This function stores a complete SignedCommitment with all its fields
 /// in the commitments table for later retrieval.
+/// It also extracts and stores the slot number from the payload for constraint submission queries.
 pub async fn save_commitment(
 	pool: &PgPool,
 	signed_commitment: &SignedCommitment,
@@ -24,6 +25,11 @@ pub async fn save_commitment(
 	let commitment_type = i64::try_from(commitment.commitment_type)
 		.context("commitment_type exceeds i64::MAX")?;
 
+	// Extract slot from payload for constraint submission queries
+	let slot_number = PayloadParser::extract_slot(commitment.commitment_type, &commitment.payload)
+		.ok()
+		.and_then(|slot| i64::try_from(slot).ok());
+
 	let row = sqlx::query!(
 		r#"
 		INSERT INTO commitments (
@@ -32,9 +38,10 @@ pub async fn save_commitment(
 			commitment_type,
 			payload,
 			slasher,
-			signature
+			signature,
+			slot_number
 		)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
 		"#,
 		id,
@@ -42,7 +49,8 @@ pub async fn save_commitment(
 		commitment_type,
 		commitment.payload,
 		commitment.slasher,
-		signed_commitment.signature
+		signed_commitment.signature,
+		slot_number
 	)
 	.fetch_one(pool)
 	.await
@@ -144,6 +152,86 @@ pub async fn get_commitment_stats(pool: &PgPool) -> Result<CommitmentStats> {
 		commitment_type_1_count: row.type_1_count.unwrap_or(0),
 		latest_created_at: row.latest_created_at,
 	})
+}
+
+/// Get unprocessed commitments for a specific slot
+///
+/// This is used by the constraint submission service to find commitments
+/// that need to be converted to constraints and submitted to the relay.
+pub async fn get_unprocessed_commitments_for_slot(
+	pool: &PgPool,
+	slot: u64,
+) -> Result<Vec<SignedCommitment>> {
+	let slot_i64 = i64::try_from(slot)
+		.context("slot exceeds i64::MAX")?;
+
+	let rows = sqlx::query!(
+		r#"
+		SELECT
+			request_hash,
+			commitment_type,
+			payload,
+			slasher,
+			signature,
+			created_at
+		FROM commitments
+		WHERE slot_number = $1
+		  AND constraint_processed = FALSE
+		ORDER BY created_at ASC
+		"#,
+		slot_i64
+	)
+	.fetch_all(pool)
+	.await
+	.context("Failed to query unprocessed commitments for slot")?;
+
+	let mut commitments = Vec::new();
+	for row in rows {
+		let commitment_type = u64::try_from(row.commitment_type)
+			.context("stored commitment_type is negative")?;
+
+		let commitment = Commitment {
+			commitment_type,
+			payload: row.payload,
+			request_hash: row.request_hash,
+			slasher: row.slasher,
+		};
+
+		let signed_commitment = SignedCommitment {
+			commitment,
+			signature: row.signature,
+		};
+
+		commitments.push(signed_commitment);
+	}
+
+	Ok(commitments)
+}
+
+/// Mark commitments as processed after they've been converted to constraints
+///
+/// This prevents duplicate constraint submissions for the same commitment.
+pub async fn mark_commitments_as_processed(
+	pool: &PgPool,
+	request_hashes: &[String],
+) -> Result<u64> {
+	if request_hashes.is_empty() {
+		return Ok(0);
+	}
+
+	let result = sqlx::query!(
+		r#"
+		UPDATE commitments
+		SET constraint_processed = TRUE
+		WHERE request_hash = ANY($1)
+		"#,
+		request_hashes
+	)
+	.execute(pool)
+	.await
+	.context("Failed to mark commitments as processed")?;
+
+	Ok(result.rows_affected())
 }
 
 #[cfg(test)]

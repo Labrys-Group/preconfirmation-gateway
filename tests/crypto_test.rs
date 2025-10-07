@@ -172,7 +172,7 @@ fn test_sign_commitment_deterministic() {
 
 #[test]
 fn test_sign_different_commitments() {
-	let mut commitment1 = test_commitment();
+	let commitment1 = test_commitment();
 	let mut commitment2 = test_commitment();
 	commitment2.payload = vec![6, 7, 8, 9, 10]; // Different payload
 

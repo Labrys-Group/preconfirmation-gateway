@@ -380,17 +380,6 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	#[ignore] // Ignore until we have test database setup
-	async fn test_save_and_retrieve_delegation() {
-		// This would require actual database connection
-		// let pool = setup_test_pool().await;
-		// let delegation = create_test_delegation();
-		// let id = save_delegation(&pool, &delegation).await.unwrap();
-		// assert!(!id.is_nil());
-		assert!(true); // Placeholder
-	}
-
 	#[test]
 	fn test_delegation_creation() {
 		let delegation = create_test_delegation();
