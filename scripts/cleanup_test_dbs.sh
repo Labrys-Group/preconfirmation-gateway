@@ -11,6 +11,17 @@ DATABASE_URL="${TEST_DATABASE_URL:-postgresql://postgres:postgres@localhost:5432
 
 echo "Cleaning up test databases..."
 
+# Terminate all connections to test databases
+echo "Terminating active connections to test databases..."
+psql "$DATABASE_URL" -c "
+  SELECT pg_terminate_backend(pid)
+  FROM pg_stat_activity
+  WHERE datname LIKE 'test_%' AND pid <> pg_backend_pid()
+" > /dev/null
+
+# Brief wait to ensure connections are terminated
+sleep 0.5
+
 # Get list of test databases and drop them
 psql "$DATABASE_URL" -t -c "
   SELECT 'DROP DATABASE \"' || datname || '\";'
