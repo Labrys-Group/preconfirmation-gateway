@@ -235,7 +235,9 @@ impl FeePricingEngine {
     pub async fn start_cache_refresh_service(&self) -> Result<()> {
         info!("Starting fee pricing cache refresh service");
 
-        let refresh_interval = Duration::from_secs(self.fee_config.cache_ttl_secs / 2);
+        // Clamp refresh interval to at least 1 second to avoid panic from Duration::from_secs(0)
+        let refresh_interval_secs = (self.fee_config.cache_ttl_secs / 2).max(1);
+        let refresh_interval = Duration::from_secs(refresh_interval_secs);
         let reth_client = Arc::clone(&self.reth_client);
 
         tokio::spawn(async move {
