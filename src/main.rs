@@ -1,12 +1,4 @@
-mod api;
-mod config;
-mod crypto;
-mod db;
-mod rpc;
-mod server;
-mod services;
-mod types;
-mod utils;
+use preconfirmation_gateway::{api, config, crypto, db, server, services, types};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

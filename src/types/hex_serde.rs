@@ -6,7 +6,7 @@
 /// # Usage
 /// ```
 /// use serde::{Deserialize, Serialize};
-/// use crate::types::hex_serde as hex_bytes;
+/// use preconfirmation_gateway::types::hex_serde as hex_bytes;
 ///
 /// #[derive(Serialize, Deserialize)]
 /// struct Example {
