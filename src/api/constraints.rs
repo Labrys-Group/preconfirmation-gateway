@@ -194,8 +194,10 @@ impl ConstraintsApiClient {
 								"Rate limited by constraints API, retrying"
 							);
 
-							// Wait before retry (exponential backoff)
-							let delay = Duration::from_millis(100 * (1 << attempt));
+							// Wait before retry (exponential backoff with overflow protection)
+							let shift = attempt.min(10); // Cap shift to prevent overflow
+							let delay_ms = 100u64.saturating_mul(1u64.saturating_shl(shift as u32));
+							let delay = Duration::from_millis(delay_ms.min(30_000)); // Max 30 seconds
 							tokio::time::sleep(delay).await;
 
 							last_error = Some(anyhow::anyhow!("Rate limited"));
@@ -248,8 +250,10 @@ impl ConstraintsApiClient {
 
 					last_error = Some(e.into());
 
-					// Wait before retry
-					let delay = Duration::from_millis(100 * (1 << attempt));
+					// Wait before retry (exponential backoff with overflow protection)
+					let shift = attempt.min(10); // Cap shift to prevent overflow
+					let delay_ms = 100u64.saturating_mul(1u64.saturating_shl(shift as u32));
+					let delay = Duration::from_millis(delay_ms.min(30_000)); // Max 30 seconds
 					tokio::time::sleep(delay).await;
 					continue;
 				}
