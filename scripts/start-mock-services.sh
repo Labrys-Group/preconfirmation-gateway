@@ -9,6 +9,9 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}Starting mock services for integration testing...${NC}\n"
 
+# Ensure logs directory exists for log redirection and PID files
+mkdir -p logs
+
 # Function to check if a port is in use
 port_in_use() {
   lsof -i ":$1" >/dev/null 2>&1

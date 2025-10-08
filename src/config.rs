@@ -223,29 +223,21 @@ impl Default for SigningConfig {
 
 impl SigningConfig {
 	/// Load signing configuration from environment variables
+	/// Fails if required environment variables are not set
 	pub fn load() -> Result<Self> {
-		// Load ECDSA private key from COMMITTER_PRIVATE_KEY
-		let ecdsa_private_key = if let Ok(private_key_hex) = std::env::var("COMMITTER_PRIVATE_KEY") {
-			crypto::parse_private_key(&private_key_hex)
-				.context("Invalid COMMITTER_PRIVATE_KEY")?
-		} else {
-			// Use default if not provided
-			crypto::parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
-				.expect("Failed to parse default ECDSA private key")
-		};
+		// Load ECDSA private key from COMMITTER_PRIVATE_KEY (required)
+		let private_key_hex = std::env::var("COMMITTER_PRIVATE_KEY")
+			.context("COMMITTER_PRIVATE_KEY environment variable is required. Set it to a valid ECDSA private key (64 hex characters)")?;
 
-		// Load BLS private key
-		let (bls_private_key, bls_public_key) = if let Ok(bls_hex) = std::env::var("BLS_PRIVATE_KEY") {
-			Self::parse_bls_key(&bls_hex)
-				.context("Invalid BLS_PRIVATE_KEY")?
-		} else {
-			// Use default if not provided
-			let bls_key_bytes = [0x01u8; 32];
-			let bls_private_key = BlsSecretKey::from_bytes(&bls_key_bytes)
-				.expect("Failed to create default BLS private key");
-			let bls_public_key = bls_private_key.sk_to_pk();
-			(bls_private_key, bls_public_key)
-		};
+		let ecdsa_private_key = crypto::parse_private_key(&private_key_hex)
+			.context("Invalid COMMITTER_PRIVATE_KEY format. Expected 64 hex characters (32 bytes)")?;
+
+		// Load BLS private key (required)
+		let bls_hex = std::env::var("BLS_PRIVATE_KEY")
+			.context("BLS_PRIVATE_KEY environment variable is required. Set it to a valid BLS private key (64 hex characters)")?;
+
+		let (bls_private_key, bls_public_key) = Self::parse_bls_key(&bls_hex)
+			.context("Invalid BLS_PRIVATE_KEY format. Expected 64 hex characters (32 bytes)")?;
 
 		let committer_address = crypto::ecdsa_to_address(&ecdsa_private_key)
 			.context("Failed to derive committer address")?;
@@ -279,15 +271,14 @@ impl Config {
 		// Substitute environment variables in configuration
 		Self::substitute_env_vars(&mut config)?;
 
-		// Load signing config from environment variables
+		// Load signing config from environment variables (fails if not provided)
 		config.signing = SigningConfig::load()
-			.unwrap_or_else(|_| {
-				tracing::warn!("Failed to load signing config from environment, using defaults");
-				SigningConfig::default()
-			});
+			.context("Failed to load signing configuration from environment variables. Please set COMMITTER_PRIVATE_KEY and BLS_PRIVATE_KEY")?;
 
-		// Validate beacon API endpoint is properly configured
+		// Validate all endpoints are properly configured
 		Self::validate_beacon_endpoint(&config.beacon_api.primary_endpoint)?;
+		Self::validate_endpoint(&config.reth.endpoint, "RETH_ENDPOINT", "Reth")?;
+		Self::validate_endpoint(&config.constraints_api.relay_endpoint, "CONSTRAINTS_API_ENDPOINT", "Constraints API")?;
 
 		Ok(config)
 	}
@@ -349,6 +340,46 @@ impl Config {
 		if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
 			anyhow::bail!(
 				"Beacon API endpoint must be a valid HTTP/HTTPS URL, got: {}",
+				endpoint
+			);
+		}
+
+		Ok(())
+	}
+
+	/// Validate that an endpoint is properly configured (generic validator)
+	fn validate_endpoint(endpoint: &str, env_var_name: &str, service_name: &str) -> Result<()> {
+		if endpoint.is_empty() {
+			anyhow::bail!(
+				"{} endpoint is empty. Please set {} environment variable or configure the endpoint in config.toml",
+				service_name,
+				env_var_name
+			);
+		}
+
+		// Check for common placeholder values that indicate the endpoint is not configured
+		let placeholder_indicators = [
+			format!("${{{}}}", env_var_name),
+			"REPLACE_ME".to_string(),
+			"example.com".to_string(),
+		];
+
+		for placeholder in &placeholder_indicators {
+			if endpoint.contains(placeholder) {
+				anyhow::bail!(
+					"{} endpoint contains placeholder '{}'. Please set {} environment variable with a valid endpoint",
+					service_name,
+					placeholder,
+					env_var_name
+				);
+			}
+		}
+
+		// Basic URL validation
+		if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
+			anyhow::bail!(
+				"{} endpoint must be a valid HTTP/HTTPS URL, got: {}",
+				service_name,
 				endpoint
 			);
 		}

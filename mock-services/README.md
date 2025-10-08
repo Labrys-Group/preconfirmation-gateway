@@ -110,9 +110,19 @@ Integration tests require cryptographic keys to be provided via environment vari
 #### Option 1: Environment Variables
 
 ```bash
-export ECDSA_PRIVATE_KEY_1="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-export BLS_PRIVATE_KEY_1="0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+# Generate or provide your own test keys
+export ECDSA_PRIVATE_KEY_1="<your_ecdsa_private_key>"  # 64 hex characters
+export BLS_PRIVATE_KEY_1="<your_bls_private_key>"      # 64 hex characters
 ./scripts/integration-test.sh
+```
+
+**Generating Test Keys:**
+```bash
+# For ECDSA (must match mock relay address 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266):
+# Use Hardhat account #0, or generate with: cast wallet new
+
+# For BLS:
+openssl rand -hex 32
 ```
 
 #### Option 2: Keys File (Recommended)
@@ -121,8 +131,9 @@ export BLS_PRIVATE_KEY_1="0x0000000000000000000000000000000000000000000000000000
 # Copy the example keys file
 cp test-keys.sh.example test-keys.sh
 
-# Edit with your keys (or leave defaults for local testing)
-# vim test-keys.sh
+# Edit test-keys.sh and replace placeholders with your actual keys
+# The file contains instructions for generating keys
+vim test-keys.sh
 
 # Set the keys file path and run tests
 export KEYS_FILE="test-keys.sh"
@@ -131,8 +142,10 @@ export KEYS_FILE="test-keys.sh"
 
 **Important Notes:**
 - The ECDSA key must correspond to address `0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` to match the mock relay configuration
+- **NEVER commit actual private keys to version control**
 - `test-keys.sh` is in `.gitignore` and should never be committed
 - For CI/CD, set keys as secrets in your pipeline configuration
+- The example file (`test-keys.sh.example`) contains only placeholders, not real keys
 
 ### Run Tests
 

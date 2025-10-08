@@ -98,6 +98,10 @@ fi
 
 echo -e "${GREEN}✓ Environment configured (keys loaded)${NC}\n"
 
+# Map test key variables to expected config variable names
+export COMMITTER_PRIVATE_KEY="${ECDSA_PRIVATE_KEY_1}"
+export BLS_PRIVATE_KEY="${BLS_PRIVATE_KEY_1}"
+
 # Step 4: Run database migrations
 echo -e "${BLUE}[4/8]${NC} Running database migrations..."
 sqlx migrate run > logs/migrations.log 2>&1

@@ -1,5 +1,6 @@
 use std::time::Duration;
 use anyhow::{Context, Result};
+use ethers_core::types::U256;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -16,12 +17,59 @@ pub struct RethApiClient {
 /// Gas price information from Reth node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GasPriceInfo {
-    /// Current gas price in wei
-    pub gas_price: u64,
+    /// Current gas price in wei (256-bit integer)
+    #[serde(with = "u256_serde")]
+    pub gas_price: U256,
     /// Latest block number
     pub block_number: u64,
     /// Timestamp when this data was retrieved
     pub timestamp: u64,
+}
+
+impl GasPriceInfo {
+    /// Safely convert gas price to u64, clamping to u64::MAX if too large
+    pub fn gas_price_as_u64_clamped(&self) -> u64 {
+        if self.gas_price > U256::from(u64::MAX) {
+            u64::MAX
+        } else {
+            self.gas_price.as_u64()
+        }
+    }
+
+    /// Try to convert gas price to u64, returning error if too large
+    pub fn gas_price_as_u64_checked(&self) -> Result<u64> {
+        if self.gas_price > U256::from(u64::MAX) {
+            Err(anyhow::anyhow!(
+                "Gas price {} exceeds u64::MAX ({})",
+                self.gas_price,
+                u64::MAX
+            ))
+        } else {
+            Ok(self.gas_price.as_u64())
+        }
+    }
+}
+
+/// Custom serde module for U256 serialization
+mod u256_serde {
+    use ethers_core::types::U256;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &U256, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&format!("0x{:x}", value))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<U256, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let s = s.strip_prefix("0x").unwrap_or(&s);
+        U256::from_str_radix(s, 16).map_err(serde::de::Error::custom)
+    }
 }
 
 /// Configuration for Reth API client
@@ -78,10 +126,10 @@ impl RethApiClient {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Invalid gas price response format"))?;
 
-        let gas_price = u64::from_str_radix(
+        let gas_price = U256::from_str_radix(
             gas_price_hex.strip_prefix("0x").unwrap_or(gas_price_hex),
             16
-        ).context("Failed to parse gas price hex value")?;
+        ).context("Failed to parse gas price as U256 hex value")?;
 
         // Get current block number for context
         let block_number = match self.get_block_number().await {
@@ -193,15 +241,48 @@ mod tests {
 
     #[tokio::test]
     async fn test_hex_parsing() {
-        // Test gas price hex parsing
-        let gas_price = u64::from_str_radix("1dcd6500", 16).unwrap();
-        assert_eq!(gas_price, 500000000); // 0.5 gwei
+        // Test gas price hex parsing with U256
+        let gas_price = U256::from_str_radix("1dcd6500", 16).unwrap();
+        assert_eq!(gas_price, U256::from(500000000u64)); // 0.5 gwei
 
-        let gas_price_with_prefix = u64::from_str_radix(
+        let gas_price_with_prefix = U256::from_str_radix(
             "0x1dcd6500".strip_prefix("0x").unwrap(),
             16
         ).unwrap();
-        assert_eq!(gas_price_with_prefix, 500000000);
+        assert_eq!(gas_price_with_prefix, U256::from(500000000u64));
+
+        // Test large values that exceed u64
+        let large_price = U256::from_str_radix(
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            16
+        ).unwrap();
+        assert!(large_price > U256::from(u64::MAX));
+    }
+
+    #[tokio::test]
+    async fn test_gas_price_conversion() {
+        // Test normal gas price that fits in u64
+        let normal_price = GasPriceInfo {
+            gas_price: U256::from(20_000_000_000u64), // 20 gwei
+            block_number: 100,
+            timestamp: 1234567890,
+        };
+        assert_eq!(normal_price.gas_price_as_u64_clamped(), 20_000_000_000u64);
+        assert_eq!(normal_price.gas_price_as_u64_checked().unwrap(), 20_000_000_000u64);
+
+        // Test gas price that exceeds u64::MAX
+        let huge_price = GasPriceInfo {
+            gas_price: U256::from_str_radix(
+                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                16
+            ).unwrap(),
+            block_number: 100,
+            timestamp: 1234567890,
+        };
+        // Should clamp to u64::MAX
+        assert_eq!(huge_price.gas_price_as_u64_clamped(), u64::MAX);
+        // Should return error
+        assert!(huge_price.gas_price_as_u64_checked().is_err());
     }
 
     #[tokio::test]

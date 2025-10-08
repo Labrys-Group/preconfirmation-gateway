@@ -69,9 +69,10 @@ impl FeePricingEngine {
 
         // 3. Get or create slot congestion tracking
         let genesis_time = self.config.beacon_api.genesis_time;
+        let gas_price_u64 = gas_price_info.gas_price_as_u64_clamped();
         let congestion = self.database.get_or_create_slot_congestion(
             slot,
-            gas_price_info.gas_price,
+            gas_price_u64,
             self.fee_config.default_gas_limit,
             genesis_time,
         ).await?;
@@ -84,7 +85,7 @@ impl FeePricingEngine {
 
         let fee_calculation = FeeCalculation {
             slot,
-            base_gas_price: gas_price_info.gas_price,
+            base_gas_price: gas_price_u64,
             congestion_ratio: projected_congestion.gas_used_ratio,
             fee_multiplier: projected_congestion.calculated_fee_multiplier,
             final_price: projected_congestion.current_tx_price,
@@ -258,7 +259,7 @@ impl FeePricingEngine {
         let current_slot = self.get_current_slot();
 
         let current_gas_price = match self.get_cached_gas_price().await {
-            Ok(info) => Some(info.gas_price),
+            Ok(info) => Some(info.gas_price_as_u64_clamped()),
             Err(_) => None,
         };
 

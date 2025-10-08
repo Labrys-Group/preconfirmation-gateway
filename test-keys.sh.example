@@ -12,10 +12,22 @@
 #   export KEYS_FILE="test-keys.sh"
 #   ./scripts/integration-test.sh
 
-# ECDSA private key for commitment signing
-# This key must correspond to the address configured in the mock relay
-# Default Hardhat account #0: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
-export ECDSA_PRIVATE_KEY_1="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+# ECDSA private key for commitment signing (64 hex characters)
+# IMPORTANT: Replace with your own key! DO NOT use these placeholder values.
+#
+# For local testing with mock relay, the key must correspond to address:
+# 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 (Hardhat default account #0)
+#
+# To generate a new key:
+#   - Use Hardhat: npx hardhat node (account #0)
+#   - Or use cast: cast wallet new
+#   - Or use any Ethereum key generation tool
+export ECDSA_PRIVATE_KEY_1="<YOUR_ECDSA_PRIVATE_KEY_HERE>"
 
-# BLS private key for constraint signing (96 hex characters)
-export BLS_PRIVATE_KEY_1="0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+# BLS private key for constraint signing (64 hex characters, 32 bytes)
+# IMPORTANT: Replace with your own key! DO NOT use this placeholder value.
+#
+# To generate a new BLS key, use a secure random generator:
+#   - openssl rand -hex 32
+#   - Or use: head -c 32 /dev/urandom | xxd -p -c 32
+export BLS_PRIVATE_KEY_1="<YOUR_BLS_PRIVATE_KEY_HERE>"
