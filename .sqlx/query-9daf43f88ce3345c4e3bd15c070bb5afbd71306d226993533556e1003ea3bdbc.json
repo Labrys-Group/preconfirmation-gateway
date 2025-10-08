@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tUPDATE commitments\n\t\tSET constraint_processed = TRUE\n\t\tWHERE request_hash = ANY($1)\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9daf43f88ce3345c4e3bd15c070bb5afbd71306d226993533556e1003ea3bdbc"
+}
