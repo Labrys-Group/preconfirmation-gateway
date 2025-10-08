@@ -83,6 +83,16 @@ impl FeePricingEngine {
             estimated_gas,
         )?;
 
+        // Calculate total cost with overflow checking
+        // Use checked_mul to detect overflow instead of silently wrapping
+        let total_cost = projected_congestion.current_tx_price
+            .checked_mul(estimated_gas)
+            .context(format!(
+                "Total cost calculation overflow: {} wei/gas * {} gas would exceed u64::MAX",
+                projected_congestion.current_tx_price,
+                estimated_gas
+            ))?;
+
         let fee_calculation = FeeCalculation {
             slot,
             base_gas_price: gas_price_u64,
@@ -90,7 +100,7 @@ impl FeePricingEngine {
             fee_multiplier: projected_congestion.calculated_fee_multiplier,
             final_price: projected_congestion.current_tx_price,
             estimated_gas,
-            total_cost: projected_congestion.current_tx_price * estimated_gas,
+            total_cost,
         };
 
         info!(
