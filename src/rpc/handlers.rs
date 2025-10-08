@@ -354,7 +354,11 @@ pub async fn fee_handler(
 	fee_payload.extend_from_slice(&fee_calculation.total_cost.to_le_bytes());
 	fee_payload.extend_from_slice(&fee_calculation.final_price.to_le_bytes());
 	fee_payload.extend_from_slice(&fee_calculation.estimated_gas.to_le_bytes());
-	fee_payload.extend_from_slice(&((fee_calculation.congestion_ratio * 1_000_000.0) as u64).to_le_bytes());
+
+	// Safely encode congestion ratio as parts-per-million (0.0-1.0 -> 0-1000000)
+	// Clamp to valid range and use saturating multiply to prevent overflow
+	let congestion_ppm = (fee_calculation.congestion_ratio.clamp(0.0, 1.0) * 1_000_000.0) as u64;
+	fee_payload.extend_from_slice(&congestion_ppm.to_le_bytes());
 
 	let fee_info = FeeInfo {
 		fee_payload,

@@ -2,6 +2,7 @@ pub mod beacon;
 pub mod context;
 pub mod database;
 pub mod delegation;
+pub mod hex_serde;
 pub mod payload;
 pub mod responses;
 pub mod rpc;

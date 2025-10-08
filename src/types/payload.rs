@@ -1,30 +1,11 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+// Import shared hex serde utilities
+use crate::types::hex_serde as hex_bytes;
+
 /// Parser and utilities for commitment payloads
 pub struct PayloadParser;
-
-/// Custom serde module for hex string <-> Vec<u8> conversion
-mod hex_bytes {
-	use serde::{Deserialize, Deserializer, Serializer};
-
-	pub fn serialize<S>(bytes: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: Serializer,
-	{
-		let hex_string = format!("0x{}", hex::encode(bytes));
-		serializer.serialize_str(&hex_string)
-	}
-
-	pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		let s = String::deserialize(deserializer)?;
-		let s = s.strip_prefix("0x").unwrap_or(&s);
-		hex::decode(s).map_err(serde::de::Error::custom)
-	}
-}
 
 /// Structured representation of an inclusion preconfirmation payload
 /// Matches the on-chain InclusionPayload struct:
