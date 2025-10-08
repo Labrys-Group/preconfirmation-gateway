@@ -20,7 +20,7 @@ cleanup() {
   echo -e "\n${BLUE}Cleaning up...${NC}"
   ./scripts/stop-mock-services.sh
   if [ -f "logs/gateway.pid" ]; then
-    kill $(cat logs/gateway.pid) 2>/dev/null || true
+    kill "$(cat logs/gateway.pid)" 2>/dev/null || true
     rm logs/gateway.pid
   fi
 }
