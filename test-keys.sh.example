@@ -1,0 +1,21 @@
+#!/bin/bash
+# Example test keys file for integration testing
+#
+# IMPORTANT: This is an EXAMPLE file containing test keys for local development.
+# Copy this file to test-keys.sh and update with your own test keys.
+#
+# DO NOT commit test-keys.sh to git - it is in .gitignore
+#
+# Usage:
+#   cp test-keys.sh.example test-keys.sh
+#   # Edit test-keys.sh with your keys
+#   export KEYS_FILE="test-keys.sh"
+#   ./scripts/integration-test.sh
+
+# ECDSA private key for commitment signing
+# This key must correspond to the address configured in the mock relay
+# Default Hardhat account #0: 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
+export ECDSA_PRIVATE_KEY_1="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+
+# BLS private key for constraint signing (96 hex characters)
+export BLS_PRIVATE_KEY_1="0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"

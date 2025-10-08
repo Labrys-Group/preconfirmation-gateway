@@ -103,7 +103,40 @@ export RETH_ENDPOINT="http://localhost:8545"
 
 ## Running Integration Tests
 
-Once all services are running, execute the full test suite:
+### Setup Test Keys
+
+Integration tests require cryptographic keys to be provided via environment variables or a keys file. **Keys are never hardcoded in scripts.**
+
+#### Option 1: Environment Variables
+
+```bash
+export ECDSA_PRIVATE_KEY_1="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+export BLS_PRIVATE_KEY_1="0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+./scripts/integration-test.sh
+```
+
+#### Option 2: Keys File (Recommended)
+
+```bash
+# Copy the example keys file
+cp test-keys.sh.example test-keys.sh
+
+# Edit with your keys (or leave defaults for local testing)
+# vim test-keys.sh
+
+# Set the keys file path and run tests
+export KEYS_FILE="test-keys.sh"
+./scripts/integration-test.sh
+```
+
+**Important Notes:**
+- The ECDSA key must correspond to address `0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` to match the mock relay configuration
+- `test-keys.sh` is in `.gitignore` and should never be committed
+- For CI/CD, set keys as secrets in your pipeline configuration
+
+### Run Tests
+
+Once keys are configured, execute the full test suite:
 
 ```bash
 ./scripts/integration-test.sh
@@ -111,11 +144,12 @@ Once all services are running, execute the full test suite:
 
 This will:
 1. Verify PostgreSQL is running
-2. Start all mock services
-3. Run database migrations
-4. Build and start the gateway
-5. Execute end-to-end tests
-6. Clean up all services
+2. Load and validate test keys
+3. Start all mock services
+4. Run database migrations
+5. Build and start the gateway
+6. Execute end-to-end tests
+7. Clean up all services
 
 ## Manual Testing
 

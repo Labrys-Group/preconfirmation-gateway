@@ -50,18 +50,53 @@ export BEACON_API_ENDPOINT="http://localhost:5051"
 export RETH_ENDPOINT="http://localhost:8545"
 export CONSTRAINTS_API_ENDPOINT="http://localhost:3501"
 
-# Generate test keys if not set
+# Load test keys from environment or a keys file
+# Keys must be provided externally - no hardcoded keys in the script
+if [ -n "${KEYS_FILE:-}" ] && [ -f "$KEYS_FILE" ]; then
+  echo "Loading test keys from $KEYS_FILE"
+  # Source the keys file which should export ECDSA_PRIVATE_KEY_1 and BLS_PRIVATE_KEY_1
+  # shellcheck disable=SC1090
+  source "$KEYS_FILE"
+fi
+
+# Validate that required keys are present
 if [ -z "${ECDSA_PRIVATE_KEY_1:-}" ]; then
-  # Default test key (matches mock-relay committer address)
-  export ECDSA_PRIVATE_KEY_1="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+  echo -e "${RED}✗ ECDSA_PRIVATE_KEY_1 is not set${NC}"
+  echo ""
+  echo "Integration tests require cryptographic keys to be provided via environment variables."
+  echo ""
+  echo "Please set the following environment variables before running this script:"
+  echo "  export ECDSA_PRIVATE_KEY_1=\"0x...\"  # ECDSA private key (64 hex chars)"
+  echo "  export BLS_PRIVATE_KEY_1=\"0x...\"    # BLS private key (96 hex chars)"
+  echo ""
+  echo "Alternatively, create a keys file and set KEYS_FILE:"
+  echo "  export KEYS_FILE=\"/path/to/test-keys.sh\""
+  echo ""
+  echo "Example test-keys.sh file:"
+  echo "  #!/bin/bash"
+  echo "  export ECDSA_PRIVATE_KEY_1=\"0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80\""
+  echo "  export BLS_PRIVATE_KEY_1=\"0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001\""
+  echo ""
+  echo "Note: The ECDSA key must correspond to address 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+  echo "      to match the mock relay's configured committer address."
+  exit 1
 fi
 
 if [ -z "${BLS_PRIVATE_KEY_1:-}" ]; then
-  # Mock BLS key (for testing)
-  export BLS_PRIVATE_KEY_1="0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+  echo -e "${RED}✗ BLS_PRIVATE_KEY_1 is not set${NC}"
+  echo ""
+  echo "Integration tests require cryptographic keys to be provided via environment variables."
+  echo ""
+  echo "Please set the following environment variables before running this script:"
+  echo "  export ECDSA_PRIVATE_KEY_1=\"0x...\"  # ECDSA private key (64 hex chars)"
+  echo "  export BLS_PRIVATE_KEY_1=\"0x...\"    # BLS private key (96 hex chars)"
+  echo ""
+  echo "Alternatively, create a keys file and set KEYS_FILE:"
+  echo "  export KEYS_FILE=\"/path/to/test-keys.sh\""
+  exit 1
 fi
 
-echo -e "${GREEN}✓ Environment configured${NC}\n"
+echo -e "${GREEN}✓ Environment configured (keys loaded)${NC}\n"
 
 # Step 4: Run database migrations
 echo -e "${BLUE}[4/8]${NC} Running database migrations..."
