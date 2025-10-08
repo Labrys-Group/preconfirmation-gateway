@@ -213,7 +213,7 @@ async fn main() -> anyhow::Result<()> {
 			});
 
 			let server = Server::bind(&addr).serve(make_svc);
-			tracing::info!("Metrics server listening on http://{}metrics", addr);
+            tracing::info!("Metrics server listening on http://{}/metrics", addr);
 
 			if let Err(e) = server.await {
 				tracing::error!("Metrics server error: {}", e);
