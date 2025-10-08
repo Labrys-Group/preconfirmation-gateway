@@ -34,7 +34,7 @@ impl GasPriceInfo {
     /// # Examples
     ///
     /// ```
-    /// use primitive_types::U256;
+    /// use ethers_core::types::U256;
     ///
     /// let info = crate::api::reth::GasPriceInfo { gas_price: U256::from(20u64), block_number: 0, timestamp: 0 };
     /// assert_eq!(info.gas_price_as_u64_clamped(), 20u64);
@@ -59,9 +59,9 @@ impl GasPriceInfo {
     /// # Examples
     ///
     /// ```
-    /// use primitive_types::U256;
+    /// use ethers_core::types::U256;
     ///
-    /// let info = GasPriceInfo { gas_price: U256::from(20u64), block_number: 0, timestamp: 0 };
+    /// let info = crate::api::reth::GasPriceInfo { gas_price: U256::from(20u64), block_number: 0, timestamp: 0 };
     /// assert_eq!(info.gas_price_as_u64_checked().unwrap(), 20u64);
     /// ```
     pub fn gas_price_as_u64_checked(&self) -> Result<u64> {
@@ -90,11 +90,18 @@ mod u256_serde {
     /// # Examples
     ///
     /// ```
-    /// use serde_json::to_string;
-    /// use primitive_types::U256;
-    /// let v = U256::from(0x1a_u64);
-    /// let s = to_string(&format!("0x{:x}", v)).unwrap(); // mimic serializer output
-    /// assert_eq!(s, "\"0x1a\"");
+    /// use ethers_core::types::U256;
+    /// use serde::Serialize;
+    ///
+    /// #[derive(Serialize)]
+    /// struct Example {
+    ///     #[serde(with = "crate::api::reth::u256_serde")]
+    ///     value: U256,
+    /// }
+    ///
+    /// let example = Example { value: U256::from(0x1a_u64) };
+    /// let json = serde_json::to_string(&example).unwrap();
+    /// assert_eq!(json, r#"{"value":"0x1a"}"#);
     /// ```
     pub fn serialize<S>(value: &U256, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -111,9 +118,17 @@ mod u256_serde {
     /// # Examples
     ///
     /// ```
-    /// use primitive_types::U256;
-    /// let v: U256 = serde_json::from_str("\"0x1dcd6500\"").unwrap();
-    /// assert_eq!(v, U256::from(0x1dcd6500u64));
+    /// use ethers_core::types::U256;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Example {
+    ///     #[serde(with = "crate::api::reth::u256_serde")]
+    ///     value: U256,
+    /// }
+    ///
+    /// let example: Example = serde_json::from_str(r#"{"value":"0x1dcd6500"}"#).unwrap();
+    /// assert_eq!(example.value, U256::from(0x1dcd6500u64));
     /// ```
     pub fn deserialize<'de, D>(deserializer: D) -> Result<U256, D::Error>
     where
@@ -142,7 +157,7 @@ impl Default for RethApiConfig {
     /// # Examples
     ///
     /// ```
-    /// let cfg = crate::RethApiConfig::default();
+    /// let cfg = crate::api::reth::RethApiConfig::default();
     /// assert_eq!(cfg.endpoint, "http://localhost:8545");
     /// assert_eq!(cfg.request_timeout_secs, 10);
     /// assert_eq!(cfg.max_retries, 3);
