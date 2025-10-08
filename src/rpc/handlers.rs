@@ -102,8 +102,8 @@ fn find_signing_key_for_committer<'a>(
     context: &'a RpcContext,
     committer_address: &str,
 ) -> Result<&'a secp256k1::SecretKey, String> {
-    // Check if the committer address matches our configured address
-    if committer_address == context.config.signing.committer_address {
+    let norm = |s: &str| s.trim_start_matches("0x").to_ascii_lowercase();
+    if norm(committer_address) == norm(&context.config.signing.committer_address) {
         return Ok(&context.config.signing.ecdsa_private_key);
     }
 
