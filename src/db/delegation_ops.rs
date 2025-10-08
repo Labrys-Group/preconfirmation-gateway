@@ -23,10 +23,7 @@ use crate::types::delegation::{BlsPublicKey, BlsSignature, DelegationMessage, Si
 /// # Ok(())
 /// # }
 /// ```
-pub async fn save_delegation(
-	pool: &PgPool,
-	signed_delegation: &SignedDelegation,
-) -> Result<Uuid> {
+pub async fn save_delegation(pool: &PgPool, signed_delegation: &SignedDelegation) -> Result<Uuid> {
 	let id = Uuid::new_v4();
 	let message = &signed_delegation.message;
 
@@ -50,7 +47,7 @@ pub async fn save_delegation(
 		message.committer,
 		message.slot as i64,
 		&signed_delegation.signature.0[..], // Convert BlsSignature to &[u8]
-		true // is_active
+		true                                // is_active
 	)
 	.fetch_one(pool)
 	.await
@@ -77,10 +74,7 @@ pub async fn save_delegation(
 /// # Ok(())
 /// # }
 /// ```
-pub async fn get_delegations_for_slot(
-	pool: &PgPool,
-	slot: u64,
-) -> Result<Vec<SignedDelegation>> {
+pub async fn get_delegations_for_slot(pool: &PgPool, slot: u64) -> Result<Vec<SignedDelegation>> {
 	let rows = sqlx::query!(
 		r#"
 		SELECT
@@ -127,10 +121,7 @@ pub async fn get_delegations_for_slot(
 			slot: row.slot_number as u64,
 		};
 
-		let signed_delegation = SignedDelegation {
-			message: delegation_message,
-			signature: BlsSignature(signature),
-		};
+		let signed_delegation = SignedDelegation { message: delegation_message, signature: BlsSignature(signature) };
 
 		delegations.push(signed_delegation);
 	}
@@ -194,10 +185,8 @@ pub async fn get_delegation_by_proposer_slot(
 				slot: row.slot_number as u64,
 			};
 
-			let signed_delegation = SignedDelegation {
-				message: delegation_message,
-				signature: BlsSignature(signature_bytes),
-			};
+			let signed_delegation =
+				SignedDelegation { message: delegation_message, signature: BlsSignature(signature_bytes) };
 
 			Ok(Some(signed_delegation))
 		}
@@ -262,10 +251,8 @@ pub async fn get_delegations_by_delegate(
 			slot: row.slot_number as u64,
 		};
 
-		let signed_delegation = SignedDelegation {
-			message: delegation_message,
-			signature: BlsSignature(signature_bytes),
-		};
+		let signed_delegation =
+			SignedDelegation { message: delegation_message, signature: BlsSignature(signature_bytes) };
 
 		delegations.push(signed_delegation);
 	}
@@ -334,10 +321,7 @@ pub async fn delegation_exists_for_slot_and_committer(
 /// assert!(affected >= 0);
 /// # Ok(()) }
 /// ```
-pub async fn deactivate_expired_delegations(
-	pool: &PgPool,
-	current_slot: u64,
-) -> Result<u64> {
+pub async fn deactivate_expired_delegations(pool: &PgPool, current_slot: u64) -> Result<u64> {
 	let result = sqlx::query!(
 		r#"
 		UPDATE delegations
@@ -433,10 +417,7 @@ pub async fn get_delegation_stats(pool: &PgPool) -> Result<DelegationStats> {
 /// # Ok(())
 /// # }
 /// ```
-pub async fn save_delegations_batch(
-	pool: &PgPool,
-	delegations: &[SignedDelegation],
-) -> Result<Vec<Uuid>> {
+pub async fn save_delegations_batch(pool: &PgPool, delegations: &[SignedDelegation]) -> Result<Vec<Uuid>> {
 	let mut ids = Vec::new();
 
 	// Use a transaction for batch operations

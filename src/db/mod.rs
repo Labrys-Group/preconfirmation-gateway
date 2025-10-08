@@ -10,7 +10,7 @@ pub mod slot_congestion_ops;
 use std::env;
 
 use anyhow::{Context, Result};
-use sqlx::{migrate::MigrateDatabase, postgres::PgPoolOptions, PgPool, Postgres};
+use sqlx::{PgPool, Postgres, migrate::MigrateDatabase, postgres::PgPoolOptions};
 use tracing::info;
 
 use crate::config::Config;
@@ -35,17 +35,14 @@ use crate::config::Config;
 /// ```
 pub async fn create_pool(config: &Config) -> Result<PgPool> {
 	// Environment variable takes precedence over config file
-	let database_url = env::var("DATABASE_URL")
-		.unwrap_or_else(|_| config.database_url().to_string());
+	let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| config.database_url().to_string());
 
 	info!("Connecting to database");
 
 	// Create database if it doesn't exist
 	if !Postgres::database_exists(&database_url).await.unwrap_or(false) {
 		info!("Database does not exist, creating it...");
-		Postgres::create_database(&database_url)
-			.await
-			.context("Failed to create database")?;
+		Postgres::create_database(&database_url).await.context("Failed to create database")?;
 	}
 
 	// Create connection pool
@@ -78,10 +75,7 @@ pub async fn create_pool(config: &Config) -> Result<PgPool> {
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
 	info!("Running database migrations...");
 
-	sqlx::migrate!("./migrations")
-		.run(pool)
-		.await
-		.context("Failed to run database migrations")?;
+	sqlx::migrate!("./migrations").run(pool).await.context("Failed to run database migrations")?;
 
 	info!("Database migrations completed successfully");
 	Ok(())
@@ -109,10 +103,7 @@ pub async fn test_connection(pool: &PgPool) -> Result<()> {
 	info!("Testing database connection...");
 
 	// Simple query to verify connection
-	let row: (i32,) = sqlx::query_as("SELECT 1")
-		.fetch_one(pool)
-		.await
-		.context("Failed to execute test query")?;
+	let row: (i32,) = sqlx::query_as("SELECT 1").fetch_one(pool).await.context("Failed to execute test query")?;
 
 	if row.0 == 1 {
 		info!("Database connection test successful");
@@ -155,8 +146,8 @@ impl DatabaseContext {
 	#[cfg(test)]
 	pub fn new_for_testing() -> Self {
 		// Create a fake pool that won't actually connect
-		let pool = PgPool::connect_lazy("postgresql://test:test@localhost/test_db")
-			.expect("Failed to create test pool");
+		let pool =
+			PgPool::connect_lazy("postgresql://test:test@localhost/test_db").expect("Failed to create test pool");
 		Self { pool }
 	}
 
@@ -193,10 +184,7 @@ impl DatabaseContext {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn save_commitment(
-		&self,
-		signed_commitment: &crate::types::SignedCommitment,
-	) -> Result<uuid::Uuid> {
+	pub async fn save_commitment(&self, signed_commitment: &crate::types::SignedCommitment) -> Result<uuid::Uuid> {
 		operations::save_commitment(&self.pool, signed_commitment).await
 	}
 
@@ -218,10 +206,7 @@ impl DatabaseContext {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn get_commitment_by_hash(
-		&self,
-		request_hash: &str,
-	) -> Result<Option<crate::types::SignedCommitment>> {
+	pub async fn get_commitment_by_hash(&self, request_hash: &str) -> Result<Option<crate::types::SignedCommitment>> {
 		operations::get_commitment_by_hash(&self.pool, request_hash).await
 	}
 
@@ -286,10 +271,7 @@ impl DatabaseContext {
 	/// });
 	/// println!("saved id: {}", id);
 	/// ```
-	pub async fn save_delegation(
-		&self,
-		signed_delegation: &crate::types::SignedDelegation,
-	) -> Result<uuid::Uuid> {
+	pub async fn save_delegation(&self, signed_delegation: &crate::types::SignedDelegation) -> Result<uuid::Uuid> {
 		delegation_ops::save_delegation(&self.pool, signed_delegation).await
 	}
 
@@ -308,10 +290,7 @@ impl DatabaseContext {
 	///     ctx.get_delegations_for_slot(42).await.unwrap()
 	/// });
 	/// ```
-	pub async fn get_delegations_for_slot(
-		&self,
-		slot: u64,
-	) -> Result<Vec<crate::types::SignedDelegation>> {
+	pub async fn get_delegations_for_slot(&self, slot: u64) -> Result<Vec<crate::types::SignedDelegation>> {
 		delegation_ops::get_delegations_for_slot(&self.pool, slot).await
 	}
 
@@ -331,11 +310,7 @@ impl DatabaseContext {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn delegation_exists_for_slot_and_committer(
-		&self,
-		slot: u64,
-		committer_address: &str,
-	) -> Result<bool> {
+	pub async fn delegation_exists_for_slot_and_committer(&self, slot: u64, committer_address: &str) -> Result<bool> {
 		delegation_ops::delegation_exists_for_slot_and_committer(&self.pool, slot, committer_address).await
 	}
 
@@ -476,7 +451,8 @@ impl DatabaseContext {
 			base_gas_price,
 			total_gas_limit,
 			genesis_time,
-		).await
+		)
+		.await
 	}
 
 	/// Update the recorded gas usage for a slot's congestion entry and return the updated record.
@@ -510,12 +486,7 @@ impl DatabaseContext {
 		additional_gas: u64,
 		scaling_factor: f64,
 	) -> Result<slot_congestion_ops::SlotCongestion> {
-		slot_congestion_ops::update_slot_congestion_gas_usage(
-			&self.pool,
-			slot,
-			additional_gas,
-			scaling_factor,
-		).await
+		slot_congestion_ops::update_slot_congestion_gas_usage(&self.pool, slot, additional_gas, scaling_factor).await
 	}
 
 	/// Retrieves the current gas price for the specified slot.

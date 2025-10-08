@@ -7,101 +7,96 @@ use tracing::debug;
 /// Slot congestion data for fee calculation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlotCongestion {
-    pub id: Option<i32>,
-    pub slot: u64,
-    pub preconfirmed_gas: u64,
-    pub total_gas_limit: u64,
-    pub gas_used_ratio: f64,
-    pub base_gas_price: u64,
-    pub calculated_fee_multiplier: f64,
-    pub current_tx_price: u64,
-    pub slot_start_time: SystemTime,
-    pub last_updated: Option<SystemTime>,
-    pub created_at: Option<SystemTime>,
+	pub id: Option<i32>,
+	pub slot: u64,
+	pub preconfirmed_gas: u64,
+	pub total_gas_limit: u64,
+	pub gas_used_ratio: f64,
+	pub base_gas_price: u64,
+	pub calculated_fee_multiplier: f64,
+	pub current_tx_price: u64,
+	pub slot_start_time: SystemTime,
+	pub last_updated: Option<SystemTime>,
+	pub created_at: Option<SystemTime>,
 }
 
 impl SlotCongestion {
-    /// Creates a new in-memory SlotCongestion for the given slot with initial/default metrics.
-    ///
-    /// The returned struct has zero preconfirmed gas, gas_used_ratio 0.0, calculated_fee_multiplier 1.0,
-    /// and current_tx_price initialized to `base_gas_price`.
-    ///
-    /// # Parameters
-    ///
-    /// - `slot`: Slot number to track.
-    /// - `base_gas_price`: Base gas price in wei used as the initial current_tx_price.
-    /// - `total_gas_limit`: Gas limit for the slot used to compute congestion ratios.
-    /// - `slot_start_time`: Start time of the slot.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let start = std::time::SystemTime::now();
-    /// let sc = SlotCongestion::new(42, 1_000, 30_000_000, start);
-    /// assert_eq!(sc.slot, 42);
-    /// assert_eq!(sc.preconfirmed_gas, 0);
-    /// assert_eq!(sc.calculated_fee_multiplier, 1.0);
-    /// assert_eq!(sc.current_tx_price, 1_000);
-    /// ```
-    pub fn new(
-        slot: u64,
-        base_gas_price: u64,
-        total_gas_limit: u64,
-        slot_start_time: SystemTime,
-    ) -> Self {
-        Self {
-            id: None,
-            slot,
-            preconfirmed_gas: 0,
-            total_gas_limit,
-            gas_used_ratio: 0.0,
-            base_gas_price,
-            calculated_fee_multiplier: 1.0,
-            current_tx_price: base_gas_price,
-            slot_start_time,
-            last_updated: None,
-            created_at: None,
-        }
-    }
+	/// Creates a new in-memory SlotCongestion for the given slot with initial/default metrics.
+	///
+	/// The returned struct has zero preconfirmed gas, gas_used_ratio 0.0, calculated_fee_multiplier 1.0,
+	/// and current_tx_price initialized to `base_gas_price`.
+	///
+	/// # Parameters
+	///
+	/// - `slot`: Slot number to track.
+	/// - `base_gas_price`: Base gas price in wei used as the initial current_tx_price.
+	/// - `total_gas_limit`: Gas limit for the slot used to compute congestion ratios.
+	/// - `slot_start_time`: Start time of the slot.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let start = std::time::SystemTime::now();
+	/// let sc = SlotCongestion::new(42, 1_000, 30_000_000, start);
+	/// assert_eq!(sc.slot, 42);
+	/// assert_eq!(sc.preconfirmed_gas, 0);
+	/// assert_eq!(sc.calculated_fee_multiplier, 1.0);
+	/// assert_eq!(sc.current_tx_price, 1_000);
+	/// ```
+	pub fn new(slot: u64, base_gas_price: u64, total_gas_limit: u64, slot_start_time: SystemTime) -> Self {
+		Self {
+			id: None,
+			slot,
+			preconfirmed_gas: 0,
+			total_gas_limit,
+			gas_used_ratio: 0.0,
+			base_gas_price,
+			calculated_fee_multiplier: 1.0,
+			current_tx_price: base_gas_price,
+			slot_start_time,
+			last_updated: None,
+			created_at: None,
+		}
+	}
 
-    /// Apply additional gas usage to this SlotCongestion and update its derived congestion metrics.
-    ///
-    /// This method increments `preconfirmed_gas`, recomputes `gas_used_ratio`, derives a congestion
-    /// multiplier using the formula `multiplier = 1 / (1 - (gas_used_ratio)^k)`, clamps the multiplier
-    /// to the range [1.0, 100.0], and updates `current_tx_price` = `base_gas_price * multiplier`.
-    ///
-    /// The `scaling_factor` (k) controls how sharply the multiplier grows as the slot fills.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::time::SystemTime;
-    /// // Construct using the public constructor available in this module
-    /// let mut congestion = SlotCongestion::new(42, 1_000_000_000u64, 30_000_000u64, SystemTime::now());
-    /// congestion.add_gas_usage(15_000_000u64, 2.0);
-    /// assert_eq!(congestion.preconfirmed_gas, 15_000_000u64);
-    /// assert!(congestion.calculated_fee_multiplier >= 1.0);
-    /// ```
-    pub fn add_gas_usage(&mut self, additional_gas: u64, scaling_factor: f64) {
-        self.preconfirmed_gas += additional_gas;
-        self.gas_used_ratio = self.preconfirmed_gas as f64 / self.total_gas_limit as f64;
+	/// Apply additional gas usage to this SlotCongestion and update its derived congestion metrics.
+	///
+	/// This method increments `preconfirmed_gas`, recomputes `gas_used_ratio`, derives a congestion
+	/// multiplier using the formula `multiplier = 1 / (1 - (gas_used_ratio)^k)`, clamps the multiplier
+	/// to the range [1.0, 100.0], and updates `current_tx_price` = `base_gas_price * multiplier`.
+	///
+	/// The `scaling_factor` (k) controls how sharply the multiplier grows as the slot fills.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::time::SystemTime;
+	/// // Construct using the public constructor available in this module
+	/// let mut congestion = SlotCongestion::new(42, 1_000_000_000u64, 30_000_000u64, SystemTime::now());
+	/// congestion.add_gas_usage(15_000_000u64, 2.0);
+	/// assert_eq!(congestion.preconfirmed_gas, 15_000_000u64);
+	/// assert!(congestion.calculated_fee_multiplier >= 1.0);
+	/// ```
+	pub fn add_gas_usage(&mut self, additional_gas: u64, scaling_factor: f64) {
+		self.preconfirmed_gas += additional_gas;
+		self.gas_used_ratio = self.preconfirmed_gas as f64 / self.total_gas_limit as f64;
 
-        // Calculate fee multiplier using the congestion formula
-        // multiplier = 1 / (1 - (gas_ratio)^k)
-        if self.gas_used_ratio >= 1.0 {
-            // Prevent division by zero - at 100% usage, use max multiplier
-            self.calculated_fee_multiplier = 100.0;
-        } else {
-            let ratio_powered = self.gas_used_ratio.powf(scaling_factor);
-            self.calculated_fee_multiplier = 1.0 / (1.0 - ratio_powered);
-        }
+		// Calculate fee multiplier using the congestion formula
+		// multiplier = 1 / (1 - (gas_ratio)^k)
+		if self.gas_used_ratio >= 1.0 {
+			// Prevent division by zero - at 100% usage, use max multiplier
+			self.calculated_fee_multiplier = 100.0;
+		} else {
+			let ratio_powered = self.gas_used_ratio.powf(scaling_factor);
+			self.calculated_fee_multiplier = 1.0 / (1.0 - ratio_powered);
+		}
 
-        // Apply bounds checking
-        self.calculated_fee_multiplier = self.calculated_fee_multiplier.clamp(1.0, 100.0);
+		// Apply bounds checking
+		self.calculated_fee_multiplier = self.calculated_fee_multiplier.clamp(1.0, 100.0);
 
-        // Calculate final transaction price
-        self.current_tx_price = (self.base_gas_price as f64 * self.calculated_fee_multiplier) as u64;
-    }
+		// Calculate final transaction price
+		self.current_tx_price = (self.base_gas_price as f64 * self.calculated_fee_multiplier) as u64;
+	}
 }
 
 /// Ensure a slot congestion record exists and return its in-memory representation.
@@ -135,26 +130,26 @@ impl SlotCongestion {
 /// # }
 /// ```
 pub async fn get_or_create_slot_congestion(
-    pool: &PgPool,
-    slot: u64,
-    base_gas_price: u64,
-    total_gas_limit: u64,
-    genesis_time: u64,
+	pool: &PgPool,
+	slot: u64,
+	base_gas_price: u64,
+	total_gas_limit: u64,
+	genesis_time: u64,
 ) -> Result<SlotCongestion> {
-    // Calculate slot start time
-    let slot_start_timestamp = genesis_time + (slot * 12); // 12-second slots
-    let slot_start_time = UNIX_EPOCH + Duration::from_secs(slot_start_timestamp);
+	// Calculate slot start time
+	let slot_start_timestamp = genesis_time + (slot * 12); // 12-second slots
+	let slot_start_time = UNIX_EPOCH + Duration::from_secs(slot_start_timestamp);
 
-    // Create new record struct (in memory)
-    let congestion = SlotCongestion::new(slot, base_gas_price, total_gas_limit, slot_start_time);
+	// Create new record struct (in memory)
+	let congestion = SlotCongestion::new(slot, base_gas_price, total_gas_limit, slot_start_time);
 
-    let slot_start_time_chrono = sqlx::types::chrono::DateTime::from_timestamp(
-        slot_start_timestamp as i64, 0
-    ).ok_or_else(|| anyhow::anyhow!("Invalid slot start timestamp"))?.naive_utc();
+	let slot_start_time_chrono = sqlx::types::chrono::DateTime::from_timestamp(slot_start_timestamp as i64, 0)
+		.ok_or_else(|| anyhow::anyhow!("Invalid slot start timestamp"))?
+		.naive_utc();
 
-    // Try to insert, but do nothing if a row for this slot already exists
-    let insert_result = sqlx::query!(
-        r#"
+	// Try to insert, but do nothing if a row for this slot already exists
+	let insert_result = sqlx::query!(
+		r#"
         INSERT INTO slot_congestion (
             slot, preconfirmed_gas, total_gas_limit, gas_used_ratio,
             base_gas_price, calculated_fee_multiplier, current_tx_price, slot_start_time
@@ -163,33 +158,31 @@ pub async fn get_or_create_slot_congestion(
         ON CONFLICT (slot) DO NOTHING
         RETURNING id
         "#,
-        slot as i64,
-        congestion.preconfirmed_gas as i64,
-        congestion.total_gas_limit as i64,
-        congestion.gas_used_ratio,
-        congestion.base_gas_price as i64,
-        congestion.calculated_fee_multiplier,
-        congestion.current_tx_price as i64,
-        slot_start_time_chrono
-    )
-    .fetch_optional(pool)
-    .await
-    .context("Failed to insert slot congestion record")?;
+		slot as i64,
+		congestion.preconfirmed_gas as i64,
+		congestion.total_gas_limit as i64,
+		congestion.gas_used_ratio,
+		congestion.base_gas_price as i64,
+		congestion.calculated_fee_multiplier,
+		congestion.current_tx_price as i64,
+		slot_start_time_chrono
+	)
+	.fetch_optional(pool)
+	.await
+	.context("Failed to insert slot congestion record")?;
 
-    // If we got an id back, we won the race
-    if let Some(id_row) = insert_result {
-        debug!("Created new slot congestion record for slot {} with ID {}", slot, id_row.id);
-        let mut result = congestion;
-        result.id = Some(id_row.id);
-        return Ok(result);
-    }
+	// If we got an id back, we won the race
+	if let Some(id_row) = insert_result {
+		debug!("Created new slot congestion record for slot {} with ID {}", slot, id_row.id);
+		let mut result = congestion;
+		result.id = Some(id_row.id);
+		return Ok(result);
+	}
 
-    // Otherwise another task won the race—re-fetch the existing record
-    get_slot_congestion(pool, slot)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!(
-            "Slot congestion unexpectedly missing after insert for slot {}", slot
-        ))
+	// Otherwise another task won the race—re-fetch the existing record
+	get_slot_congestion(pool, slot)
+		.await?
+		.ok_or_else(|| anyhow::anyhow!("Slot congestion unexpectedly missing after insert for slot {}", slot))
 }
 
 /// Fetches congestion metrics for the specified slot from the database.
@@ -214,12 +207,9 @@ pub async fn get_or_create_slot_congestion(
 /// # Ok(())
 /// # }
 /// ```
-pub async fn get_slot_congestion(
-    pool: &PgPool,
-    slot: u64,
-) -> Result<Option<SlotCongestion>> {
-    let row = sqlx::query!(
-        r#"
+pub async fn get_slot_congestion(pool: &PgPool, slot: u64) -> Result<Option<SlotCongestion>> {
+	let row = sqlx::query!(
+		r#"
         SELECT
             id, slot, preconfirmed_gas, total_gas_limit,
             gas_used_ratio, base_gas_price, calculated_fee_multiplier, current_tx_price,
@@ -227,31 +217,31 @@ pub async fn get_slot_congestion(
         FROM slot_congestion
         WHERE slot = $1
         "#,
-        slot as i64
-    )
-    .fetch_optional(pool)
-    .await
-    .context("Failed to query slot congestion")?;
+		slot as i64
+	)
+	.fetch_optional(pool)
+	.await
+	.context("Failed to query slot congestion")?;
 
-    if let Some(row) = row {
-        let slot_congestion = SlotCongestion {
-            id: Some(row.id),
-            slot: row.slot as u64,
-            preconfirmed_gas: row.preconfirmed_gas as u64,
-            total_gas_limit: row.total_gas_limit as u64,
-            gas_used_ratio: row.gas_used_ratio,
-            base_gas_price: row.base_gas_price as u64,
-            calculated_fee_multiplier: row.calculated_fee_multiplier,
-            current_tx_price: row.current_tx_price as u64,
-            slot_start_time: UNIX_EPOCH + Duration::from_secs(row.slot_start_time.and_utc().timestamp() as u64),
-            last_updated: row.last_updated.map(|dt| UNIX_EPOCH + Duration::from_secs(dt.and_utc().timestamp() as u64)),
-            created_at: row.created_at.map(|dt| UNIX_EPOCH + Duration::from_secs(dt.and_utc().timestamp() as u64)),
-        };
+	if let Some(row) = row {
+		let slot_congestion = SlotCongestion {
+			id: Some(row.id),
+			slot: row.slot as u64,
+			preconfirmed_gas: row.preconfirmed_gas as u64,
+			total_gas_limit: row.total_gas_limit as u64,
+			gas_used_ratio: row.gas_used_ratio,
+			base_gas_price: row.base_gas_price as u64,
+			calculated_fee_multiplier: row.calculated_fee_multiplier,
+			current_tx_price: row.current_tx_price as u64,
+			slot_start_time: UNIX_EPOCH + Duration::from_secs(row.slot_start_time.and_utc().timestamp() as u64),
+			last_updated: row.last_updated.map(|dt| UNIX_EPOCH + Duration::from_secs(dt.and_utc().timestamp() as u64)),
+			created_at: row.created_at.map(|dt| UNIX_EPOCH + Duration::from_secs(dt.and_utc().timestamp() as u64)),
+		};
 
-        Ok(Some(slot_congestion))
-    } else {
-        Ok(None)
-    }
+		Ok(Some(slot_congestion))
+	} else {
+		Ok(None)
+	}
 }
 
 /// Update the stored congestion metrics for a specific slot by applying additional gas usage.
@@ -287,16 +277,15 @@ pub async fn get_slot_congestion(
 /// # }
 /// ```
 pub async fn update_slot_congestion_gas_usage(
-    pool: &PgPool,
-    slot: u64,
-    additional_gas: u64,
-    scaling_factor: f64,
+	pool: &PgPool,
+	slot: u64,
+	additional_gas: u64,
+	scaling_factor: f64,
 ) -> Result<SlotCongestion> {
-    let mut tx = pool.begin().await
-        .context("Failed to begin slot congestion update transaction")?;
+	let mut tx = pool.begin().await.context("Failed to begin slot congestion update transaction")?;
 
-    let row = sqlx::query!(
-        r#"
+	let row = sqlx::query!(
+		r#"
         SELECT
             id, slot, preconfirmed_gas, total_gas_limit,
             gas_used_ratio, base_gas_price, calculated_fee_multiplier, current_tx_price,
@@ -305,31 +294,31 @@ pub async fn update_slot_congestion_gas_usage(
         WHERE slot = $1
         FOR UPDATE
         "#,
-        slot as i64
-    )
-    .fetch_optional(&mut *tx)
-    .await
-    .context("Failed to lock slot congestion row")?
-    .ok_or_else(|| anyhow::anyhow!("Slot congestion record not found for slot {}", slot))?;
+		slot as i64
+	)
+	.fetch_optional(&mut *tx)
+	.await
+	.context("Failed to lock slot congestion row")?
+	.ok_or_else(|| anyhow::anyhow!("Slot congestion record not found for slot {}", slot))?;
 
-    let mut congestion = SlotCongestion {
-        id: Some(row.id),
-        slot: row.slot as u64,
-        preconfirmed_gas: row.preconfirmed_gas as u64,
-        total_gas_limit: row.total_gas_limit as u64,
-        gas_used_ratio: row.gas_used_ratio,
-        base_gas_price: row.base_gas_price as u64,
-        calculated_fee_multiplier: row.calculated_fee_multiplier,
-        current_tx_price: row.current_tx_price as u64,
-        slot_start_time: UNIX_EPOCH + Duration::from_secs(row.slot_start_time.and_utc().timestamp() as u64),
-        last_updated: row.last_updated.map(|dt| UNIX_EPOCH + Duration::from_secs(dt.and_utc().timestamp() as u64)),
-        created_at: row.created_at.map(|dt| UNIX_EPOCH + Duration::from_secs(dt.and_utc().timestamp() as u64)),
-    };
+	let mut congestion = SlotCongestion {
+		id: Some(row.id),
+		slot: row.slot as u64,
+		preconfirmed_gas: row.preconfirmed_gas as u64,
+		total_gas_limit: row.total_gas_limit as u64,
+		gas_used_ratio: row.gas_used_ratio,
+		base_gas_price: row.base_gas_price as u64,
+		calculated_fee_multiplier: row.calculated_fee_multiplier,
+		current_tx_price: row.current_tx_price as u64,
+		slot_start_time: UNIX_EPOCH + Duration::from_secs(row.slot_start_time.and_utc().timestamp() as u64),
+		last_updated: row.last_updated.map(|dt| UNIX_EPOCH + Duration::from_secs(dt.and_utc().timestamp() as u64)),
+		created_at: row.created_at.map(|dt| UNIX_EPOCH + Duration::from_secs(dt.and_utc().timestamp() as u64)),
+	};
 
-    congestion.add_gas_usage(additional_gas, scaling_factor);
+	congestion.add_gas_usage(additional_gas, scaling_factor);
 
-    sqlx::query!(
-        r#"
+	sqlx::query!(
+		r#"
         UPDATE slot_congestion SET
             preconfirmed_gas = $2,
             gas_used_ratio = $3,
@@ -338,28 +327,27 @@ pub async fn update_slot_congestion_gas_usage(
             last_updated = NOW()
         WHERE slot = $1
         "#,
-        slot as i64,
-        congestion.preconfirmed_gas as i64,
-        congestion.gas_used_ratio,
-        congestion.calculated_fee_multiplier,
-        congestion.current_tx_price as i64
-    )
-    .execute(&mut *tx)
-    .await
-    .context("Failed to update slot congestion")?;
+		slot as i64,
+		congestion.preconfirmed_gas as i64,
+		congestion.gas_used_ratio,
+		congestion.calculated_fee_multiplier,
+		congestion.current_tx_price as i64
+	)
+	.execute(&mut *tx)
+	.await
+	.context("Failed to update slot congestion")?;
 
-    tx.commit().await
-        .context("Failed to commit slot congestion update transaction")?;
+	tx.commit().await.context("Failed to commit slot congestion update transaction")?;
 
-    debug!(
-        "Updated slot {} congestion: {}% full, {:.2}x multiplier, {} wei price",
-        slot,
-        (congestion.gas_used_ratio * 100.0),
-        congestion.calculated_fee_multiplier,
-        congestion.current_tx_price
-    );
+	debug!(
+		"Updated slot {} congestion: {}% full, {:.2}x multiplier, {} wei price",
+		slot,
+		(congestion.gas_used_ratio * 100.0),
+		congestion.calculated_fee_multiplier,
+		congestion.current_tx_price
+	);
 
-    Ok(congestion)
+	Ok(congestion)
 }
 
 /// Returns the current transaction price for the given slot, adjusted for congestion.
@@ -378,19 +366,13 @@ pub async fn update_slot_congestion_gas_usage(
 /// # Ok(())
 /// # }
 /// ```
-pub async fn get_current_gas_price_for_slot(
-    pool: &PgPool,
-    slot: u64,
-) -> Result<Option<u64>> {
-    let row = sqlx::query!(
-        "SELECT current_tx_price FROM slot_congestion WHERE slot = $1",
-        slot as i64
-    )
-    .fetch_optional(pool)
-    .await
-    .context("Failed to query current gas price for slot")?;
+pub async fn get_current_gas_price_for_slot(pool: &PgPool, slot: u64) -> Result<Option<u64>> {
+	let row = sqlx::query!("SELECT current_tx_price FROM slot_congestion WHERE slot = $1", slot as i64)
+		.fetch_optional(pool)
+		.await
+		.context("Failed to query current gas price for slot")?;
 
-    Ok(row.map(|r| r.current_tx_price as u64))
+	Ok(row.map(|r| r.current_tx_price as u64))
 }
 
 /// Removes slot congestion rows whose slot_start_time is older than the given retention window.
@@ -417,40 +399,35 @@ pub async fn get_current_gas_price_for_slot(
 /// # Ok(())
 /// # }
 /// ```
-pub async fn cleanup_old_slot_congestion(
-    pool: &PgPool,
-    hours_to_keep: u32,
-) -> Result<u64> {
-    let cutoff_time = SystemTime::now() - Duration::from_secs(hours_to_keep as u64 * 3600);
-    let cutoff_timestamp = cutoff_time.duration_since(UNIX_EPOCH)?.as_secs() as i64;
+pub async fn cleanup_old_slot_congestion(pool: &PgPool, hours_to_keep: u32) -> Result<u64> {
+	let cutoff_time = SystemTime::now() - Duration::from_secs(hours_to_keep as u64 * 3600);
+	let cutoff_timestamp = cutoff_time.duration_since(UNIX_EPOCH)?.as_secs() as i64;
 
-    let cutoff_chrono = sqlx::types::chrono::DateTime::from_timestamp(cutoff_timestamp, 0)
-        .ok_or_else(|| anyhow::anyhow!("Invalid cutoff timestamp"))?.naive_utc();
+	let cutoff_chrono = sqlx::types::chrono::DateTime::from_timestamp(cutoff_timestamp, 0)
+		.ok_or_else(|| anyhow::anyhow!("Invalid cutoff timestamp"))?
+		.naive_utc();
 
-    let result = sqlx::query!(
-        "DELETE FROM slot_congestion WHERE slot_start_time < $1",
-        cutoff_chrono
-    )
-    .execute(pool)
-    .await
-    .context("Failed to cleanup old slot congestion records")?;
+	let result = sqlx::query!("DELETE FROM slot_congestion WHERE slot_start_time < $1", cutoff_chrono)
+		.execute(pool)
+		.await
+		.context("Failed to cleanup old slot congestion records")?;
 
-    let deleted_count = result.rows_affected();
-    if deleted_count > 0 {
-        debug!("Cleaned up {} old slot congestion records", deleted_count);
-    }
+	let deleted_count = result.rows_affected();
+	if deleted_count > 0 {
+		debug!("Cleaned up {} old slot congestion records", deleted_count);
+	}
 
-    Ok(deleted_count)
+	Ok(deleted_count)
 }
 
 /// Get congestion statistics for monitoring
 #[derive(Debug, Serialize)]
 pub struct CongestionStats {
-    pub total_slots_tracked: u64,
-    pub current_average_congestion: f64,
-    pub highest_congestion_slot: Option<u64>,
-    pub highest_congestion_ratio: f64,
-    pub average_fee_multiplier: f64,
+	pub total_slots_tracked: u64,
+	pub current_average_congestion: f64,
+	pub highest_congestion_slot: Option<u64>,
+	pub highest_congestion_ratio: f64,
+	pub average_fee_multiplier: f64,
 }
 
 /// Compute aggregate congestion statistics for the last 24 hours from the `slot_congestion` table.
@@ -475,8 +452,8 @@ pub struct CongestionStats {
 /// # }
 /// ```
 pub async fn get_congestion_stats(pool: &PgPool) -> Result<CongestionStats> {
-    let stats = sqlx::query!(
-        r#"
+	let stats = sqlx::query!(
+		r#"
         SELECT
             COUNT(*) as "total_slots!",
             COALESCE(AVG(gas_used_ratio), 0.0) as "avg_congestion!",
@@ -485,115 +462,105 @@ pub async fn get_congestion_stats(pool: &PgPool) -> Result<CongestionStats> {
         FROM slot_congestion
         WHERE slot_start_time > NOW() - INTERVAL '24 hours'
         "#
-    )
-    .fetch_one(pool)
-    .await
-    .context("Failed to get congestion statistics")?;
+	)
+	.fetch_one(pool)
+	.await
+	.context("Failed to get congestion statistics")?;
 
-    let highest_congestion_slot = if stats.max_congestion > 0.0 {
-        let row = sqlx::query!(
-            r#"
+	let highest_congestion_slot = if stats.max_congestion > 0.0 {
+		let row = sqlx::query!(
+			r#"
             SELECT slot, gas_used_ratio
             FROM slot_congestion
             WHERE slot_start_time > NOW() - INTERVAL '24 hours'
             ORDER BY gas_used_ratio DESC
             LIMIT 1
             "#
-        )
-        .fetch_optional(pool)
-        .await
-        .context("Failed to find highest congestion slot")?;
+		)
+		.fetch_optional(pool)
+		.await
+		.context("Failed to find highest congestion slot")?;
 
-        row.map(|r| r.slot as u64)
-    } else {
-        None
-    };
+		row.map(|r| r.slot as u64)
+	} else {
+		None
+	};
 
-    Ok(CongestionStats {
-        total_slots_tracked: stats.total_slots as u64,
-        current_average_congestion: stats.avg_congestion,
-        highest_congestion_slot,
-        highest_congestion_ratio: stats.max_congestion,
-        average_fee_multiplier: stats.avg_multiplier,
-    })
+	Ok(CongestionStats {
+		total_slots_tracked: stats.total_slots as u64,
+		current_average_congestion: stats.avg_congestion,
+		highest_congestion_slot,
+		highest_congestion_ratio: stats.max_congestion,
+		average_fee_multiplier: stats.avg_multiplier,
+	})
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn test_slot_congestion_creation() {
-        let slot = 12345;
-        let base_price = 1_000_000_000; // 1 gwei
-        let gas_limit = 30_000_000;
-        let start_time = SystemTime::now();
+	#[test]
+	fn test_slot_congestion_creation() {
+		let slot = 12345;
+		let base_price = 1_000_000_000; // 1 gwei
+		let gas_limit = 30_000_000;
+		let start_time = SystemTime::now();
 
-        let congestion = SlotCongestion::new(slot, base_price, gas_limit, start_time);
+		let congestion = SlotCongestion::new(slot, base_price, gas_limit, start_time);
 
-        assert_eq!(congestion.slot, slot);
-        assert_eq!(congestion.base_gas_price, base_price);
-        assert_eq!(congestion.preconfirmed_gas, 0);
-        assert_eq!(congestion.gas_used_ratio, 0.0);
-        assert_eq!(congestion.calculated_fee_multiplier, 1.0);
-        assert_eq!(congestion.current_tx_price, base_price);
-    }
+		assert_eq!(congestion.slot, slot);
+		assert_eq!(congestion.base_gas_price, base_price);
+		assert_eq!(congestion.preconfirmed_gas, 0);
+		assert_eq!(congestion.gas_used_ratio, 0.0);
+		assert_eq!(congestion.calculated_fee_multiplier, 1.0);
+		assert_eq!(congestion.current_tx_price, base_price);
+	}
 
-    #[test]
-    fn test_gas_usage_calculation() {
-        let mut congestion = SlotCongestion::new(
-            12345,
-            1_000_000_000, // 1 gwei base price
-            30_000_000,    // 30M gas limit
-            SystemTime::now(),
-        );
+	#[test]
+	fn test_gas_usage_calculation() {
+		let mut congestion = SlotCongestion::new(
+			12345,
+			1_000_000_000, // 1 gwei base price
+			30_000_000,    // 30M gas limit
+			SystemTime::now(),
+		);
 
-        // Add 15M gas (50% of limit) with scaling factor k=2
-        congestion.add_gas_usage(15_000_000, 2.0);
+		// Add 15M gas (50% of limit) with scaling factor k=2
+		congestion.add_gas_usage(15_000_000, 2.0);
 
-        assert_eq!(congestion.preconfirmed_gas, 15_000_000);
-        assert_eq!(congestion.gas_used_ratio, 0.5);
+		assert_eq!(congestion.preconfirmed_gas, 15_000_000);
+		assert_eq!(congestion.gas_used_ratio, 0.5);
 
-        // With 50% usage and k=2: multiplier = 1 / (1 - 0.5^2) = 1 / (1 - 0.25) = 1.333...
-        assert!((congestion.calculated_fee_multiplier - 1.333).abs() < 0.01);
+		// With 50% usage and k=2: multiplier = 1 / (1 - 0.5^2) = 1 / (1 - 0.25) = 1.333...
+		assert!((congestion.calculated_fee_multiplier - 1.333).abs() < 0.01);
 
-        // Price should be base_price * multiplier
-        let expected_price = (1_000_000_000.0 * congestion.calculated_fee_multiplier) as u64;
-        assert_eq!(congestion.current_tx_price, expected_price);
-    }
+		// Price should be base_price * multiplier
+		let expected_price = (1_000_000_000.0 * congestion.calculated_fee_multiplier) as u64;
+		assert_eq!(congestion.current_tx_price, expected_price);
+	}
 
-    #[test]
-    fn test_high_congestion_bounds() {
-        let mut congestion = SlotCongestion::new(
-            12345,
-            1_000_000_000,
-            30_000_000,
-            SystemTime::now(),
-        );
+	#[test]
+	fn test_high_congestion_bounds() {
+		let mut congestion = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
 
-        // Add 29M gas (96.7% of limit)
-        congestion.add_gas_usage(29_000_000, 2.0);
+		// Add 29M gas (96.7% of limit)
+		congestion.add_gas_usage(29_000_000, 2.0);
 
-        // Should be bounded to reasonable maximum
-        assert!(congestion.calculated_fee_multiplier >= 1.0);
-        assert!(congestion.calculated_fee_multiplier <= 100.0);
-        assert!(congestion.current_tx_price >= congestion.base_gas_price);
-    }
+		// Should be bounded to reasonable maximum
+		assert!(congestion.calculated_fee_multiplier >= 1.0);
+		assert!(congestion.calculated_fee_multiplier <= 100.0);
+		assert!(congestion.current_tx_price >= congestion.base_gas_price);
+	}
 
-    #[test]
-    fn test_full_congestion() {
-        let mut congestion = SlotCongestion::new(
-            12345,
-            1_000_000_000,
-            30_000_000,
-            SystemTime::now(),
-        );
+	#[test]
+	fn test_full_congestion() {
+		let mut congestion = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
 
-        // Add full gas limit
-        congestion.add_gas_usage(30_000_000, 2.0);
+		// Add full gas limit
+		congestion.add_gas_usage(30_000_000, 2.0);
 
-        assert_eq!(congestion.gas_used_ratio, 1.0);
-        assert_eq!(congestion.calculated_fee_multiplier, 100.0); // Max multiplier
-        assert_eq!(congestion.current_tx_price, 100_000_000_000); // 100x base price
-    }
+		assert_eq!(congestion.gas_used_ratio, 1.0);
+		assert_eq!(congestion.calculated_fee_multiplier, 100.0); // Max multiplier
+		assert_eq!(congestion.current_tx_price, 100_000_000_000); // 100x base price
+	}
 }
