@@ -29,9 +29,11 @@ async fn verify_delegation_authority(
         .map_err(|e| format!("Failed to query delegations for slot {}: {}", slot, e))?;
 
     // Check if we have any delegation for this slot and committer
+    let normalize = |addr: &str| addr.trim_start_matches("0x").to_ascii_lowercase();
+    let canonical_committer = normalize(committer_address);
     let matching_delegation = delegations.iter().find(|delegation| {
-        delegation.message.committer == committer_address &&
-        delegation.is_valid_for_slot(slot)
+        normalize(&delegation.message.committer) == canonical_committer
+            && delegation.is_valid_for_slot(slot)
     });
 
     let delegation = match matching_delegation {
