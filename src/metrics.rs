@@ -41,7 +41,18 @@ pub struct MetricsRegistry {
 }
 
 impl MetricsRegistry {
-    /// Create a new metrics registry with all collectors
+    /// Creates and registers a Prometheus metrics registry populated with all gateway collectors.
+    ///
+    /// On success returns an initialized `MetricsRegistry` with collectors for commitments,
+    /// delegations, congestion, and pricing already registered with the internal registry.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let registry = MetricsRegistry::new().unwrap();
+    /// let encoded = registry.render_metrics().unwrap();
+    /// assert!(encoded.contains("gateway_commitments_total"));
+    /// ```
     pub fn new() -> Result<Self> {
         let registry = Registry::new();
 
@@ -140,7 +151,19 @@ impl MetricsRegistry {
         })
     }
 
-    /// Update all metrics from database and services
+    /// Refreshes all Prometheus metrics by querying the configured database and fee pricing engine.
+    ///
+    /// This method fetches commitment, delegation, congestion, and pricing statistics from the provided
+    /// services and updates the corresponding metric collectors. Failures to fetch individual groups
+    /// are logged as warnings; the function itself propagates errors encountered during the overall
+    /// update process.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Within an async context:
+    /// // metrics.update_metrics(&database_context, &fee_pricing_engine).await?;
+    /// ```
     pub async fn update_metrics(
         &self,
         database: &DatabaseContext,
@@ -187,7 +210,18 @@ impl MetricsRegistry {
         Ok(())
     }
 
-    /// Render metrics in Prometheus text format
+    /// Render the registry's metrics into Prometheus text exposition format.
+    ///
+    /// Encodes all registered metric families and returns the resulting UTF-8 string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let reg = MetricsRegistry::new().unwrap();
+    /// // (populate metrics here)
+    /// let text = reg.render_metrics().unwrap();
+    /// assert!(text.contains("# HELP") || text.contains("commitments_total"));
+    /// ```
     pub fn render_metrics(&self) -> Result<String> {
         let encoder = TextEncoder::new();
         let metric_families = self.registry.gather();
@@ -198,13 +232,45 @@ impl MetricsRegistry {
         Ok(String::from_utf8(buffer)?)
     }
 
-    /// Update commitment metrics from stats
+    /// Update commitment-related Prometheus metrics.
+    ///
+    /// Sets the total number of commitments and the count for the "inclusion" commitment type.
+    ///
+    /// # Parameters
+    ///
+    /// - `total`: Total number of commitments to record.
+    /// - `type_1`: Number of commitments of the "inclusion" type to record.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use anyhow::Result;
+    /// # async fn try_main() -> Result<()> {
+    /// let metrics = MetricsRegistry::new()?;
+    /// metrics.update_commitment_stats(42, 7);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn update_commitment_stats(&self, total: i64, type_1: i64) {
         self.commitments_total.with_label_values(&["all"]).set(total);
         self.commitments_by_type.with_label_values(&["inclusion"]).set(type_1);
     }
 
-    /// Update delegation metrics from stats
+    /// Update delegation-related Prometheus gauges with the provided counts.
+    ///
+    /// Sets the following metric labels:
+    /// - `delegations_total` ("all") to `total`
+    /// - `delegations_active` ("current") to `active`
+    /// - `unique_proposers` ("all") to `proposers`
+    /// - `unique_delegates` ("all") to `delegates`
+    /// - `slots_covered` ("active") to `slots`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // assume `metrics` is a `MetricsRegistry` instance
+    /// metrics.update_delegation_stats(42, 10, 7, 5, 3);
+    /// ```
     pub fn update_delegation_stats(&self, total: i64, active: i64, proposers: i64, delegates: i64, slots: i64) {
         self.delegations_total.with_label_values(&["all"]).set(total);
         self.delegations_active.with_label_values(&["current"]).set(active);
@@ -213,14 +279,45 @@ impl MetricsRegistry {
         self.slots_covered.with_label_values(&["active"]).set(slots);
     }
 
-    /// Update congestion metrics from stats
+    /// Update congestion-related Prometheus metrics for the 24h window.
+    ///
+    /// This sets the `average_congestion`, `highest_congestion`, and `average_fee_multiplier`
+    /// metrics (all labeled `"24h"`) to the provided values.
+    ///
+    /// # Parameters
+    ///
+    /// - `avg_congestion`: average congestion value for the 24-hour window.
+    /// - `highest`: highest observed congestion ratio for the 24-hour window.
+    /// - `avg_multiplier`: average fee multiplier for the 24-hour window.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # // Assuming `metrics` is an initialized `MetricsRegistry`
+    /// metrics.update_congestion_stats(0.32, 0.75, 1.12);
+    /// ```
     pub fn update_congestion_stats(&self, avg_congestion: f64, highest: f64, avg_multiplier: f64) {
         self.average_congestion.with_label_values(&["24h"]).set(avg_congestion);
         self.highest_congestion.with_label_values(&["24h"]).set(highest);
         self.average_fee_multiplier.with_label_values(&["24h"]).set(avg_multiplier);
     }
 
-    /// Update pricing metrics
+    /// Update pricing-related Prometheus metrics.
+    ///
+    /// Sets the `current_slot` metric (label "beacon") to `slot`. If `gas_price` is `Some`,
+    /// sets the `base_gas_price` metric (label "current") to that value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use anyhow::Result;
+    /// # async fn doc() -> Result<()> {
+    /// let registry = MetricsRegistry::new()?;
+    /// registry.update_pricing_stats(42, Some(100));
+    /// registry.update_pricing_stats(43, None);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn update_pricing_stats(&self, slot: u64, gas_price: Option<u64>) {
         self.current_slot.with_label_values(&["beacon"]).set(slot as i64);
         if let Some(price) = gas_price {

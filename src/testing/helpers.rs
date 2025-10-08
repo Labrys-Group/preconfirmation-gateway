@@ -12,7 +12,22 @@ use crate::types::{RpcContext, CommitmentRequest, SignedCommitment};
 pub struct TestHelpers;
 
 impl TestHelpers {
-    /// Setup a test environment with mock services
+    /// Creates a TestEnvironment populated with mock services for testing.
+    ///
+    /// The returned TestEnvironment contains an Arc-wrapped test Config and mock
+    /// implementations for the database, constraints API client, and beacon API
+    /// client, suitable for use in unit and integration tests.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #[tokio::test]
+    /// async fn setup_env_smoke() {
+    ///     let env = crate::testing::helpers::setup_test_environment().await;
+    ///     // Use `env` in test setup; fields are Arc-wrapped mock instances.
+    ///     assert!(std::sync::Arc::strong_count(&env.config) >= 1);
+    /// }
+    /// ```
     pub async fn setup_test_environment() -> TestEnvironment {
         let config = crate::testing::mocks::create_test_config();
         let mock_db = MockDatabase::new();
@@ -27,7 +42,25 @@ impl TestHelpers {
         }
     }
 
-    /// Create a test RPC context
+    /// Constructs an Arc-wrapped RpcContext preconfigured for testing.
+    ///
+    /// The returned context contains a test database connection, a fee pricing engine, and a beacon API client wired from the provided configuration; it is intended for use in unit and integration tests that need a ready-to-use RpcContext.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Shared configuration used to initialize clients and services within the test context.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// // construct or obtain a test Config
+    /// let cfg = Arc::new(crate::config::Config::default());
+    /// let rpc_ctx = crate::testing::helpers::create_test_rpc_context(cfg);
+    /// // use `rpc_ctx` in tests...
+    /// ```
+    pub fn create_test_rpc_context(config: Arc<Config>) -> Arc<RpcContext> {
     pub fn create_test_rpc_context(config: Arc<Config>) -> Arc<RpcContext> {
         // Create a test database pool (using an in-memory SQLite for testing would be ideal,
         // but for now we'll create a minimal PgPool that won't actually connect)
@@ -62,7 +95,19 @@ impl TestHelpers {
         Arc::new(RpcContext::new(database, (*config).clone(), fee_engine, beacon_client))
     }
 
-    /// Measure the execution time of an async operation
+    /// Measures the elapsed time of an asynchronous operation and returns its result with the duration.
+    ///
+    /// The returned tuple contains the operation's output as the first element and the elapsed `Duration` as the second.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn example() {
+    /// let (value, elapsed) = measure_time(|| async { 42 }).await;
+    /// assert_eq!(value, 42);
+    /// assert!(elapsed.as_nanos() >= 0);
+    /// # }
+    /// ```
     pub async fn measure_time<F, Fut, T>(operation: F) -> (T, Duration)
     where
         F: FnOnce() -> Fut,
@@ -74,7 +119,31 @@ impl TestHelpers {
         (result, duration)
     }
 
-    /// Run a test with timeout
+    /// Run an async operation and fail if it does not complete within the given duration.
+    ///
+    /// The function awaits the provided operation and returns its result if it completes before
+    /// `duration` elapses; otherwise it returns an error indicating a timeout.
+    ///
+    /// # Returns
+    ///
+    /// `Ok` containing the operation's result if it completed in time, or `Err` if the timeout was reached.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use tokio::time::sleep;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     // completes before timeout
+    ///     let res = crate::with_timeout(Duration::from_millis(200), || async {
+    ///         sleep(Duration::from_millis(50)).await;
+    ///         42
+    ///     }).await;
+    ///     assert_eq!(res.unwrap(), 42);
+    /// }
+    /// ```
     pub async fn with_timeout<F, Fut, T>(
         duration: Duration,
         operation: F,
@@ -88,7 +157,27 @@ impl TestHelpers {
             .map_err(|_| anyhow::anyhow!("Operation timed out after {:?}", duration))
     }
 
-    /// Assert that an operation completes within a time limit
+    /// Ensures an asynchronous operation finishes within the specified duration.
+    ///
+    /// Returns the operation's successful value if it completes within `max_duration`; returns an error if the operation exceeds the time limit.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::time::Duration;
+    /// use anyhow::Result;
+    /// use crate::testing::helpers::TestHelpers;
+    ///
+    /// # async fn example() -> Result<()> {
+    /// let value = TestHelpers::assert_completes_within(Duration::from_secs(1), || async {
+    ///     // perform async work...
+    ///     Ok::<_, anyhow::Error>(123)
+    /// }).await?;
+    ///
+    /// assert_eq!(value, 123);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn assert_completes_within<F, Fut, T>(
         max_duration: Duration,
         operation: F,
@@ -110,7 +199,38 @@ impl TestHelpers {
         result
     }
 
-    /// Run multiple operations concurrently and measure total time
+    /// Runs multiple asynchronous operations in parallel and returns their outputs with the total elapsed time.
+    ///
+    /// The provided operations are executed concurrently (each spawned onto the Tokio runtime). The function
+    /// waits for all operations to complete, panics if any spawned task panics, and returns a tuple with:
+    /// 1) a `Vec<T>` containing each operation's output in the same order as the input operations, and
+    /// 2) the total `Duration` elapsed from before spawning until all tasks have completed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use tokio::runtime::Runtime;
+    ///
+    /// fn main() {
+    ///     let rt = Runtime::new().unwrap();
+    ///     rt.block_on(async {
+    ///         let ops: Vec<Box<dyn FnOnce() -> _ + Send>> = vec![
+    ///             Box::new(|| async { 1 }),
+    ///             Box::new(|| async { 2 }),
+    ///         ];
+    ///         // Convert boxed closures to concrete typed vec for the function call
+    ///         let ops_typed: Vec<_> = ops.into_iter().map(|b| {
+    ///             // Re-box into the expected concrete type: FnOnce() -> impl Future<Output = i32> + Send + 'static
+    ///             move || (b)()
+    ///         }).collect();
+    ///
+    ///         let (results, duration): (Vec<i32>, Duration) = crate::testing::helpers::run_concurrent_operations(ops_typed).await;
+    ///         assert_eq!(results, vec![1, 2]);
+    ///         assert!(duration.as_millis() >= 0);
+    ///     });
+    /// }
+    /// ```
     pub async fn run_concurrent_operations<F, Fut, T>(
         operations: Vec<F>,
     ) -> (Vec<T>, Duration)
@@ -135,7 +255,26 @@ impl TestHelpers {
         (results, duration)
     }
 
-    /// Test database operations under load
+    /// Runs concurrent simple queries against the provided Postgres pool and returns per-task metrics.
+    ///
+    /// Spawns `concurrent_operations` tasks; each task executes `operations_per_task` `SELECT 1` queries
+    /// with a brief pause between iterations. Returns a `DatabaseStressTestResults` containing the total
+    /// duration, per-task success/failure counts, and the test configuration values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #[tokio::test]
+    /// async fn example_stress_test_database() {
+    ///     let pool = sqlx::postgres::PgPoolOptions::new()
+    ///         .max_connections(5)
+    ///         .connect_lazy("postgres://user:pass@localhost/db");
+    ///
+    ///     let results = crate::testing::helpers::stress_test_database(&pool, 2, 5).await.unwrap();
+    ///     assert_eq!(results.concurrent_operations, 2);
+    ///     assert_eq!(results.operations_per_task, 5);
+    /// }
+    /// ```
     pub async fn stress_test_database(
         pool: &PgPool,
         concurrent_operations: usize,
@@ -193,7 +332,25 @@ impl TestHelpers {
         })
     }
 
-    /// Validate that constraint submission timing is correct
+    /// Ensures a constraint submission occurred no later than the slot's deadline derived from genesis.
+    ///
+    /// The submission deadline is computed as: `genesis_time + (commitment_slot * 12) + 8` seconds.
+    /// `commitment_slot` is the slot index, `submission_time` is the Instant when the submission was recorded,
+    /// and `genesis_time` is the UNIX timestamp in seconds for genesis.
+    ///
+    /// Returns `Ok(())` when the submission time is on or before the deadline. Returns an `Err` when the
+    /// submission occurs after the deadline or when converting `Instant` to a UNIX timestamp overflows/underflows.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Instant;
+    /// // genesis_time in seconds (UNIX timestamp)
+    /// let genesis_time = 0_u64;
+    /// let commitment_slot = 1_u64;
+    /// let submission_time = Instant::now();
+    /// assert!(crate::testing::helpers::validate_constraint_timing(commitment_slot, submission_time, genesis_time).is_ok());
+    /// ```
     pub fn validate_constraint_timing(
         commitment_slot: u64,
         submission_time: Instant,
@@ -233,7 +390,30 @@ impl TestHelpers {
         Ok(())
     }
 
-    /// Generate test load with realistic patterns
+    /// Generates realistic inclusion-commitment load against the provided RPC context for the given duration and target throughput.
+    ///
+    /// Repeatedly builds realistic commitment requests and simulates their submission, collecting per-request response times and counts of successful and failed requests. The returned `LoadTestResults` contains the observed duration, request counts, recorded response times, the configured target TPS, and the measured actual TPS.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #[tokio::test]
+    /// async fn example_generate_load() {
+    ///     use std::sync::Arc;
+    ///     use std::time::Duration;
+    ///
+    ///     // Create a test RPC context (helper shown for illustration; adjust to your test setup).
+    ///     let config = Arc::new(crate::Config::default());
+    ///     let ctx = crate::testing::helpers::TestHelpers::create_test_rpc_context(config);
+    ///
+    ///     let results = crate::testing::helpers::TestHelpers::generate_realistic_load(ctx, Duration::from_secs(1), 5.0)
+    ///         .await
+    ///         .unwrap();
+    ///
+    ///     // At least one request should have been attempted during the interval.
+    ///     assert!(results.successful_requests + results.failed_requests > 0);
+    /// }
+    /// ```
     pub async fn generate_realistic_load(
         context: Arc<RpcContext>,
         duration: Duration,
@@ -284,7 +464,25 @@ impl TestHelpers {
         })
     }
 
-    /// Simulate a commitment request for testing
+    /// Simulates handling a commitment request and returns a mocked signed commitment for use in tests.
+    ///
+    /// Validates the request payload slot and generates a request hash, then constructs a `Commitment` and returns a `SignedCommitment` containing that commitment and a deterministic mock signature.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn example() -> anyhow::Result<()> {
+    /// use std::sync::Arc;
+    /// // Construct a minimal `CommitmentRequest` appropriate to your test harness.
+    /// // The exact fields depend on your crate's types; this shows the call pattern.
+    /// let ctx = Arc::new(/* RpcContext for tests */);
+    /// let request = /* build a CommitmentRequest for testing */;
+    ///
+    /// let signed = crate::testing::helpers::simulate_commitment_request(ctx, request).await?;
+    /// assert!(signed.signature.starts_with("0x"));
+    /// # Ok(())
+    /// # }
+    /// ```
     async fn simulate_commitment_request(
         _context: Arc<RpcContext>,
         request: CommitmentRequest,
@@ -335,15 +533,91 @@ pub struct DatabaseStressTestResults {
 }
 
 impl DatabaseStressTestResults {
+    /// Returns the total number of operations executed across all tasks.
+    ///
+    /// Sums each task's `successful_operations` and `failed_operations` in `task_results`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    ///
+    /// let r1 = TaskResults { task_id: 0, successful_operations: 5, failed_operations: 2, total_duration: Duration::from_secs(1) };
+    /// let r2 = TaskResults { task_id: 1, successful_operations: 3, failed_operations: 4, total_duration: Duration::from_secs(2) };
+    /// let stats = DatabaseStressTestResults {
+    ///     total_duration: Duration::from_secs(3),
+    ///     task_results: vec![r1, r2],
+    ///     concurrent_operations: 2,
+    ///     operations_per_task: 7,
+    /// };
+    ///
+    /// assert_eq!(stats.total_operations(), 14);
+    /// ```
     pub fn total_operations(&self) -> usize {
         self.task_results.iter().map(|r| r.successful_operations + r.failed_operations).sum()
     }
 
+    /// Returns the fraction of successful operations across all tasks.
+    ///
+    /// The value is the number of successful operations divided by the total number
+    /// of operations (successful + failed). If there are no operations in total,
+    /// the result is `NaN`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    ///
+    /// let results = crate::testing::helpers::DatabaseStressTestResults {
+    ///     total_duration: Duration::from_secs(1),
+    ///     task_results: vec![crate::testing::helpers::TaskResults {
+    ///         task_id: 0,
+    ///         successful_operations: 5,
+    ///         failed_operations: 5,
+    ///         total_duration: Duration::from_secs(1),
+    ///     }],
+    ///     concurrent_operations: 1,
+    ///     operations_per_task: 10,
+    /// };
+    ///
+    /// assert_eq!(results.success_rate(), 0.5);
+    ///
+    /// let empty = crate::testing::helpers::DatabaseStressTestResults {
+    ///     total_duration: Duration::from_secs(0),
+    ///     task_results: vec![],
+    ///     concurrent_operations: 0,
+    ///     operations_per_task: 0,
+    /// };
+    ///
+    /// assert!(empty.success_rate().is_nan());
+    /// ```
     pub fn success_rate(&self) -> f64 {
         let total_success: usize = self.task_results.iter().map(|r| r.successful_operations).sum();
         total_success as f64 / self.total_operations() as f64
     }
 
+    /// Calculates the achieved operations per second.
+    ///
+    /// Returns the total number of operations (successful + failed) divided by the total duration in seconds. If `total_duration` is zero, this will return `f64::INFINITY`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// let task = TaskResults {
+    ///     task_id: 0,
+    ///     successful_operations: 100,
+    ///     failed_operations: 0,
+    ///     total_duration: Duration::from_secs(10),
+    /// };
+    /// let results = DatabaseStressTestResults {
+    ///     total_duration: Duration::from_secs(10),
+    ///     task_results: vec![task],
+    ///     concurrent_operations: 1,
+    ///     operations_per_task: 100,
+    /// };
+    /// assert_eq!(results.operations_per_second(), 10.0);
+    /// ```
     pub fn operations_per_second(&self) -> f64 {
         self.total_operations() as f64 / self.total_duration.as_secs_f64()
     }
@@ -370,10 +644,61 @@ pub struct LoadTestResults {
 }
 
 impl LoadTestResults {
+    /// Calculates the fraction of requests that succeeded.
+    ///
+    /// If no requests were made (successful_requests + failed_requests == 0), this returns `NaN`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let results = LoadTestResults {
+    ///     duration: std::time::Duration::from_secs(1),
+    ///     successful_requests: 80,
+    ///     failed_requests: 20,
+    ///     response_times: vec![],
+    ///     target_tps: 100.0,
+    ///     actual_tps: 100.0,
+    /// };
+    /// assert!((results.success_rate() - 0.8).abs() < 1e-12);
+    ///
+    /// let empty = LoadTestResults {
+    ///     duration: std::time::Duration::from_secs(0),
+    ///     successful_requests: 0,
+    ///     failed_requests: 0,
+    ///     response_times: vec![],
+    ///     target_tps: 0.0,
+    ///     actual_tps: 0.0,
+    /// };
+    /// assert!(empty.success_rate().is_nan());
+    /// ```
     pub fn success_rate(&self) -> f64 {
         self.successful_requests as f64 / (self.successful_requests + self.failed_requests) as f64
     }
 
+    /// Computes the average of the recorded response times.
+    ///
+    /// If there are no recorded response times, returns a zero `Duration`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// # // Minimal shim of the struct for the doctest
+    /// # struct LoadTestResults { response_times: Vec<Duration> }
+    /// # impl LoadTestResults {
+    /// #     fn average_response_time(&self) -> Duration {
+    /// #         if self.response_times.is_empty() {
+    /// #             return Duration::default();
+    /// #         }
+    /// #         let total: Duration = self.response_times.iter().sum();
+    /// #         total / self.response_times.len() as u32
+    /// #     }
+    /// # }
+    /// let results = LoadTestResults {
+    ///     response_times: vec![Duration::from_millis(100), Duration::from_millis(200)],
+    /// };
+    /// assert_eq!(results.average_response_time(), Duration::from_millis(150));
+    /// ```
     pub fn average_response_time(&self) -> Duration {
         if self.response_times.is_empty() {
             return Duration::default();
@@ -383,6 +708,32 @@ impl LoadTestResults {
         total / self.response_times.len() as u32
     }
 
+    /// Returns the response time at the given percentile (percentage).
+    ///
+    /// The method clones and sorts recorded response times and selects the value at
+    /// position floor(n * percentile / 100). If no response times are available,
+    /// returns a zero `Duration`.
+    ///
+    /// `percentile` must be in the range 0.0..=100.0; behavior for values outside
+    /// that range is undefined.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::Duration;
+    ///
+    /// let results = LoadTestResults {
+    ///     duration: Duration::from_secs(1),
+    ///     successful_requests: 3,
+    ///     failed_requests: 0,
+    ///     response_times: vec![Duration::from_millis(10), Duration::from_millis(30), Duration::from_millis(20)],
+    ///     target_tps: 1.0,
+    ///     actual_tps: 3.0,
+    /// };
+    ///
+    /// // 50th percentile (median) should be 20 ms
+    /// assert_eq!(results.percentile_response_time(50.0), Duration::from_millis(20));
+    /// ```
     pub fn percentile_response_time(&self, percentile: f64) -> Duration {
         if self.response_times.is_empty() {
             return Duration::default();

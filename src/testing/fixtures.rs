@@ -10,7 +10,18 @@ use crate::testing::mocks::{create_test_bls_keypair, create_test_ecdsa_keypair};
 pub struct TestFixtures;
 
 impl TestFixtures {
-    /// Create a valid inclusion commitment request for testing
+    /// Constructs a CommitmentRequest containing an inclusion payload for the given slot and committer address.
+    ///
+    /// The returned request uses commitment_type 1 (Inclusion preconfirmation) and contains an encoded inclusion payload for testing.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let req = create_inclusion_commitment_request(42, "committer-addr");
+    /// assert_eq!(req.commitment_type, 1);
+    /// assert_eq!(req.slasher, "committer-addr".to_string());
+    /// assert!(!req.payload.is_empty());
+    /// ```
     pub fn create_inclusion_commitment_request(slot: u64, committer_address: &str) -> CommitmentRequest {
         // Create a simple inclusion payload
         let inclusion_payload = InclusionPayload::new(
@@ -29,7 +40,33 @@ impl TestFixtures {
         }
     }
 
-    /// Create a valid signed delegation for testing
+    /// Constructs a SignedDelegation for tests using the provided proposer and delegate keys and slot.
+    
+    ///
+    
+    /// The returned SignedDelegation contains the given proposer, delegate, committer address, and slot,
+    
+    /// along with a deterministic mock 96-byte BLS signature used for testing purposes.
+    
+    ///
+    
+    /// # Examples
+    
+    ///
+    
+    /// ```
+    
+    /// let proposer = BlsPublicKey([1u8; 48]);
+    
+    /// let delegate = BlsPublicKey([2u8; 48]);
+    
+    /// let signed = create_signed_delegation(42, proposer, delegate, "committer@example.com");
+    
+    /// assert_eq!(signed.message.slot, 42);
+    
+    /// assert_eq!(signed.message.committer, "committer@example.com".to_string());
+    
+    /// ```
     pub fn create_signed_delegation(
         slot: u64,
         proposer_key: BlsPublicKey,
@@ -52,7 +89,39 @@ impl TestFixtures {
         }
     }
 
-    /// Create multiple delegations for testing various scenarios
+    /// Generate a set of sample SignedDelegation entries for testing.
+    
+    ///
+    
+    /// The returned map contains three entries keyed as:
+    
+    /// - "delegation1": a normal delegation (proposer1 -> delegate1) with committer1
+    
+    /// - "delegation2": a different proposer with the same delegate as delegation1 (proposer2 -> delegate1) with committer1
+    
+    /// - "delegation3": a delegation with the same proposer as delegation1 but a different delegate and a different committer (proposer1 -> delegate2) with committer2
+    
+    ///
+    
+    /// Each SignedDelegation is constructed for the provided slot and uses test keypairs.
+    
+    ///
+    
+    /// # Examples
+    
+    ///
+    
+    /// ```
+    
+    /// let delegations = TestFixtures::create_test_delegations(100);
+    
+    /// assert!(delegations.contains_key("delegation1"));
+    
+    /// assert!(delegations.contains_key("delegation2"));
+    
+    /// assert!(delegations.contains_key("delegation3"));
+    
+    /// ```
     pub fn create_test_delegations(slot: u64) -> HashMap<String, SignedDelegation> {
         let mut delegations = HashMap::new();
 
@@ -95,7 +164,24 @@ impl TestFixtures {
         delegations
     }
 
-    /// Create test scenarios for various edge cases
+    /// Builds a set of predefined TestScenario entries covering common delegation and commitment cases.
+    ///
+    /// The returned map uses string keys identifying each scenario:
+    /// - "happy_path": valid delegation and commitment
+    /// - "no_delegation": no delegation available for the slot
+    /// - "invalid_payload": malformed commitment payload
+    /// - "wrong_commitment_type": unsupported commitment type
+    /// - "duplicate_commitment": duplicate commitment request
+    ///
+    /// Returns a HashMap mapping scenario names to their TestScenario definitions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let scenarios = create_test_scenarios();
+    /// assert!(scenarios.contains_key("happy_path"));
+    /// assert_eq!(scenarios["happy_path"].expected_success, true);
+    /// ```
     pub fn create_test_scenarios() -> HashMap<String, TestScenario> {
         let mut scenarios = HashMap::new();
 
@@ -169,7 +255,35 @@ impl TestFixtures {
         scenarios
     }
 
-    /// Create test payload with specific slot
+    /// Creates an encoded inclusion payload for tests containing the given slot and fixed sample transaction bytes.
+    
+    ///
+    
+    /// The returned byte vector is the result of encoding an InclusionPayload with the provided `slot` and a small
+    
+    /// hard-coded test transaction payload.
+    
+    ///
+    
+    /// # Returns
+    
+    ///
+    
+    /// A `Vec<u8>` containing the encoded inclusion payload.
+    
+    ///
+    
+    /// # Examples
+    
+    ///
+    
+    /// ```
+    
+    /// let bytes = crate::testing::fixtures::create_test_payload(42);
+    
+    /// assert!(!bytes.is_empty());
+    
+    /// ```
     pub fn create_test_payload(slot: u64) -> Vec<u8> {
         let inclusion_payload = InclusionPayload::new(
             slot,
@@ -180,12 +294,32 @@ impl TestFixtures {
             .expect("Failed to encode test payload")
     }
 
-    /// Create invalid payload for testing error handling
+    /// Constructs a deliberately malformed payload for testing error handling.
+    ///
+    /// The returned byte vector does not conform to any valid payload format and is intended to trigger
+    /// parse or validation errors in tests.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let payload = create_invalid_payload();
+    /// assert_eq!(payload, vec![0xff, 0xff, 0xff, 0xff]);
+    /// ```
     pub fn create_invalid_payload() -> Vec<u8> {
         vec![0xff, 0xff, 0xff, 0xff] // Invalid payload that can't be parsed
     }
 
-    /// Create test commitment request with specific parameters
+    /// Create a CommitmentRequest populated with the given type, payload, and slasher address.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let payload = vec![1, 2, 3];
+    /// let req = create_commitment_request(1, payload.clone(), "0xabc");
+    /// assert_eq!(req.commitment_type, 1);
+    /// assert_eq!(req.payload, payload);
+    /// assert_eq!(req.slasher, "0xabc".to_string());
+    /// ```
     pub fn create_commitment_request(
         commitment_type: u64,
         payload: Vec<u8>,
@@ -224,7 +358,24 @@ pub struct PerformanceTestConfig {
 }
 
 impl PerformanceTestConfig {
-    /// Create default performance test configs
+    /// Provides three preset performance test configurations for common load scenarios.
+    ///
+    /// The presets are:
+    /// - `light_load`: 10 concurrent, 100 total, 5_000 ms max duration, ~20.0 TPS
+    /// - `medium_load`: 50 concurrent, 500 total, 10_000 ms max duration, ~50.0 TPS
+    /// - `high_load`: 100 concurrent, 1_000 total, 20_000 ms max duration, ~50.0 TPS (may be lower under high load)
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<PerformanceTestConfig>` containing the three preset configurations in the order: light, medium, high.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let configs = PerformanceTestConfig::default_configs();
+    /// assert_eq!(configs.len(), 3);
+    /// assert_eq!(configs[0].name, "light_load");
+    /// ```
     pub fn default_configs() -> Vec<PerformanceTestConfig> {
         vec![
             PerformanceTestConfig {
@@ -259,7 +410,20 @@ impl PerformanceTestConfig {
 pub struct TimingTestHelpers;
 
 impl TimingTestHelpers {
-    /// Test constraint submission timing (8-second deadline)
+    /// Produces a set of slots around the current slot to exercise submission timing windows.
+    ///
+    /// Returns five slot numbers covering: a far past slot, a recent past slot, the current slot,
+    /// a near future slot, and a far future slot. These are useful for testing acceptance/rejection
+    /// based on timing constraints.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let slots = create_timing_test_slots();
+    /// // Expect five slots in increasing order: far past, recent past, current, near future, far future
+    /// assert_eq!(slots.len(), 5);
+    /// assert!(slots[0] < slots[1] && slots[1] < slots[2] && slots[2] < slots[3] && slots[3] < slots[4]);
+    /// ```
     pub fn create_timing_test_slots() -> Vec<u64> {
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -278,7 +442,29 @@ impl TimingTestHelpers {
         ]
     }
 
-    /// Calculate if a slot is within the constraint submission window
+    /// Determines whether a slot is within the 10-slot submission window relative to the current time.
+    ///
+    /// The function computes the current slot from system time and returns whether the absolute
+    /// difference between the provided `slot` and that current slot is less than or equal to 10.
+    ///
+    /// # Parameters
+    ///
+    /// - `_genesis_time`: currently unused; retained for API compatibility.
+    /// - `slot`: the slot to evaluate.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the absolute difference between `slot` and the current slot is less than or equal to 10, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let near_future_slot = (std::time::SystemTime::now()
+    ///     .duration_since(std::time::UNIX_EPOCH)
+    ///     .unwrap()
+    ///     .as_secs() / 12) + 5;
+    /// assert!(is_within_submission_window(0, near_future_slot));
+    /// ```
     pub fn is_within_submission_window(_genesis_time: u64, slot: u64) -> bool {
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

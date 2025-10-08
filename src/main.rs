@@ -1,5 +1,26 @@
 use preconfirmation_gateway::{api, config, crypto, db, server, services, types};
 
+/// Start the application: initialize configuration, services, background tasks, and run the RPC server until shutdown.
+///
+/// This function performs full startup of the service: it loads configuration, configures logging, initializes the
+/// database and API clients, starts background services (fee pricing cache refresh, delegation polling, constraint
+/// submission), spawns metrics collection and an HTTP metrics endpoint, and finally runs the RPC server. On shutdown
+/// it aborts background tasks and exits.
+///
+/// # Returns
+///
+/// `Ok(())` on successful startup and clean shutdown, or an `Err` containing the error that prevented startup.
+///
+/// # Examples
+///
+/// ```no_run
+/// // Start the application (runs until shutdown)
+/// # use anyhow::Result;
+/// # async fn run() -> Result<()> {
+/// crate::main().await?;
+/// # Ok(())
+/// # }
+/// ```
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
 	// Load configuration
@@ -142,6 +163,24 @@ async fn main() -> anyhow::Result<()> {
 			use hyper::service::{make_service_fn, service_fn};
 			use hyper::{Body, Request, Response, Server};
 
+			/// Serves Prometheus-formatted metrics from the given registry.
+			///
+			/// Attempts to render metrics from `metrics` and returns an HTTP 200 response with
+			/// `text/plain; version=0.0.4` on success or a 500 response with "Internal Server Error"
+			/// if rendering fails. The incoming request is ignored.
+			///
+			/// # Examples
+			///
+			/// ```
+			/// use hyper::{Body, Request, StatusCode};
+			/// use preconfirmation_gateway::metrics::MetricsRegistry;
+			/// # tokio_test::block_on(async {
+			/// let registry = std::sync::Arc::new(MetricsRegistry::new());
+			/// let req = Request::new(Body::empty());
+			/// let resp = super::metrics_handler(registry, req).await.unwrap();
+			/// assert_eq!(resp.status(), StatusCode::OK);
+			/// # });
+			/// ```
 			async fn metrics_handler(
 				metrics: std::sync::Arc<preconfirmation_gateway::metrics::MetricsRegistry>,
 				_req: Request<Body>,

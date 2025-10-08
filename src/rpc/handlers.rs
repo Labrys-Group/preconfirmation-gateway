@@ -19,7 +19,21 @@ fn validate_and_extract_slot(commitment_type: u64, payload: &[u8]) -> Result<u64
         .map_err(|e| format!("Failed to extract slot from payload: {}", e))
 }
 
-/// Check if we have valid delegation authority for the given slot and committer
+/// Verify that the committer holds a valid delegation for the specified slot and that the delegation's proposer matches the beacon chain's scheduled proposer.
+///
+/// On success, returns `Ok(())`. On failure, returns an `Err(String)` with a descriptive message explaining why delegation authority could not be confirmed (no matching delegation, beacon query/parsing failure, or proposer mismatch).
+///
+/// # Examples
+///
+/// ```
+/// # // This is an illustrative example; replace `ctx` with a real `RpcContext` in tests.
+/// # async fn _example(ctx: RpcContext) {
+/// let slot = 12345;
+/// let committer = "0xdeadbeef...";
+/// let result = verify_delegation_authority(&ctx, slot, committer).await;
+/// assert!(result.is_ok() || result.is_err());
+/// # }
+/// ```
 async fn verify_delegation_authority(
     context: &RpcContext,
     slot: u64,
@@ -99,7 +113,24 @@ async fn verify_delegation_authority(
     Ok(())
 }
 
-/// Find the appropriate ECDSA key for signing based on the committer address
+/// Selects the configured ECDSA signing key that corresponds to the given committer address.
+///
+/// # Parameters
+///
+/// - `committer_address` — The committer address to match against the configured committer address.
+///
+/// # Returns
+///
+/// `Ok(&secp256k1::SecretKey)` with the configured ECDSA secret key if `committer_address` matches the configured committer address, `Err(String)` with a descriptive message otherwise.
+///
+/// # Examples
+///
+/// ```
+/// // Given a prepared `context` where `context.config.signing.committer_address`
+/// // equals `"0xabc..."` and `context.config.signing.ecdsa_private_key` is set:
+/// let key = find_signing_key_for_committer(&context, "0xabc...").unwrap();
+/// assert_eq!(key, &context.config.signing.ecdsa_private_key);
+/// ```
 fn find_signing_key_for_committer<'a>(
     context: &'a RpcContext,
     committer_address: &str,
@@ -115,6 +146,37 @@ fn find_signing_key_for_committer<'a>(
     ))
 }
 
+/// Handle an incoming commitment request: validate payload and delegation authority, sign and persist the commitment, and queue background processing.
+///
+/// Validates the commitment type and extracts the slot from the payload, verifies delegation authority for the slot and committer, resolves the correct signing key, generates a deterministic request hash, prevents duplicates, signs and stores the commitment, and updates fee/gas congestion metrics. On success returns the stored `SignedCommitment`. Errors are returned as JSON-RPC error codes (e.g., `InvalidParams`, `InvalidRequest`, `InternalError`) depending on the failure point.
+///
+/// # Returns
+///
+/// The persisted `SignedCommitment` on success.
+///
+/// # Errors
+///
+/// Returns an RPC error mapped to:
+/// - `InvalidParams` for malformed input or invalid commitment type/slot extraction.
+/// - `InvalidRequest` for delegation or signing-key authorization failures or duplicate requests.
+/// - `InternalError` for hashing, signing, database, or fee-engine failures.
+///
+/// # Examples
+///
+/// ```ignore
+/// use std::sync::Arc;
+/// use jsonrpsee::types::Params;
+/// # async fn example() {
+/// // `ctx` and `params` would be constructed according to your application test harness.
+/// let ctx: Arc<crate::RpcContext> = Arc::new(/* ... */);
+/// let params: Params<'static> = Params::new(vec![]);
+/// let result = crate::rpc::handlers::commitment_request_handler(params, ctx, jsonrpsee::ws_server::RpcModule::new()).await;
+/// match result {
+///     Ok(signed) => println!("Committed: {:?}", signed),
+///     Err(e) => eprintln!("RPC error: {:?}", e),
+/// }
+/// # }
+/// ```
 #[instrument(name = "commitment_request", skip(context, _extensions))]
 pub async fn commitment_request_handler(
 	params: jsonrpsee::types::Params<'static>,
@@ -231,6 +293,27 @@ pub async fn commitment_request_handler(
 	Ok(signed_commitment)
 }
 
+/// Retrieves a signed commitment matching the provided request hash.
+///
+/// Given a JSON-RPC parameter containing a request hash string, returns the corresponding
+/// `SignedCommitment` if present in the database. If no commitment is found, the RPC
+/// handler returns an `InvalidRequest` error; if a database error occurs, it returns an
+/// `InternalError`.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use std::sync::Arc;
+/// # use jsonrpsee::types::Params;
+/// # use jsonrpsee::Extensions;
+/// # use my_crate::rpc::handlers::commitment_result_handler;
+/// # use my_crate::RpcContext;
+/// # tokio_test::block_on(async {
+/// let params = Params::new("0xdeadbeef".to_string());
+/// let ctx = Arc::new(RpcContext::default());
+/// let _ = commitment_result_handler(params, ctx, Extensions::default()).await;
+/// # });
+/// ```
 #[instrument(name = "commitment_result", skip(context, _extensions))]
 pub async fn commitment_result_handler(
 	params: jsonrpsee::types::Params<'static>,
@@ -257,6 +340,18 @@ pub async fn commitment_result_handler(
 	}
 }
 
+/// Produces a catalog of upcoming slot offerings that this service can fulfill.
+///
+/// The response lists SlotInfo entries for each upcoming slot in a lookahead window
+/// (starting at the next slot) and the offerings available for that slot (chain id and supported commitment types).
+///
+/// # Examples
+///
+/// ```
+/// let ctx = create_test_context();
+/// let resp = slots_handler(jsonrpsee::types::Params::None, &ctx, &Extensions::new()).unwrap();
+/// assert!(!resp.slots.is_empty());
+/// ```
 #[instrument(name = "slots", skip(_context, _extensions))]
 pub fn slots_handler(
 	_params: jsonrpsee::types::Params<'_>,
@@ -304,6 +399,30 @@ pub fn slots_handler(
 	Ok(response)
 }
 
+/// Calculate a dynamic fee for a commitment and return an opaque fee payload.
+///
+/// The returned FeeInfo contains `fee_payload`, a 32-byte binary encoding of:
+/// - total_cost: 8 bytes, little-endian u64 (wei)
+/// - final_price: 8 bytes, little-endian u64 (wei per gas)
+/// - estimated_gas: 8 bytes, little-endian u64
+/// - congestion_ppm: 8 bytes, little-endian u64 (parts-per-million, 0..=1_000_000)
+///
+/// The handler validates the commitment type and that the target slot is acceptable for fee computation,
+/// then uses the fee pricing engine to compute values and encodes them into `fee_payload`.
+///
+/// # Examples
+///
+/// ```
+/// // Decode a fee_payload produced by this handler:
+/// let payload: Vec<u8> = vec![0u8; 32]; // replace with real payload
+/// assert_eq!(payload.len(), 32);
+/// let total_cost = u64::from_le_bytes(payload[0..8].try_into().unwrap());
+/// let final_price = u64::from_le_bytes(payload[8..16].try_into().unwrap());
+/// let estimated_gas = u64::from_le_bytes(payload[16..24].try_into().unwrap());
+/// let congestion_ppm = u64::from_le_bytes(payload[24..32].try_into().unwrap());
+/// // congestion ratio in [0.0, 1.0] can be recovered as:
+/// let congestion_ratio = (congestion_ppm as f64) / 1_000_000.0;
+/// ```
 #[instrument(name = "fee", skip(context, _extensions))]
 pub async fn fee_handler(
 	params: jsonrpsee::types::Params<'_>,
@@ -385,6 +504,19 @@ mod tests {
 	use std::sync::Arc;
 
 	// Helper to create a test RPC context with minimal configuration
+	/// Constructs a minimal RpcContext preconfigured for unit and integration tests.
+	///
+	/// The returned context contains deterministic test keys, a lazy PostgreSQL pool,
+	/// a FeePricingEngine, and a BeaconApiClient suitable for local testing without
+	/// external dependencies.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let ctx = create_test_context();
+	/// // Basic sanity check: context is wrapped in an Arc
+	/// assert_eq!(std::sync::Arc::strong_count(&ctx) >= 1, true);
+	/// ```
 	fn create_test_context() -> Arc<RpcContext> {
 		use crate::crypto::parse_private_key;
 		use crate::crypto::bls::keys;
@@ -526,6 +658,40 @@ mod tests {
 		use super::*;
 		use crate::testing::fixtures::TestFixtures;
 
+		/// Validates the behavior of commitment request slot extraction and related validation helpers.
+		///
+		/// Exercises three scenarios:
+		/// 1. An unsupported commitment type is rejected.
+		/// 2. A supported type with an invalid payload is rejected.
+		/// 3. A well-formed inclusion payload yields the expected slot.
+		///
+		/// # Examples
+		///
+		/// ```
+		/// // Construct a context and test fixtures as in the test harness.
+		/// let context = create_test_context();
+		///
+		/// // Invalid commitment type should produce an error.
+		/// let invalid_request = CommitmentRequest {
+		///     commitment_type: 99,
+		///     payload: vec![1, 2, 3, 4],
+		///     slasher: context.config.validation.slasher_address.clone(),
+		/// };
+		/// assert!(validate_and_extract_slot(invalid_request.commitment_type, &invalid_request.payload).is_err());
+		///
+		/// // Invalid payload for a valid type should produce an error.
+		/// let invalid_payload_request = CommitmentRequest {
+		///     commitment_type: 1,
+		///     payload: vec![0xff, 0xff, 0xff, 0xff],
+		///     slasher: context.config.validation.slasher_address.clone(),
+		/// };
+		/// assert!(validate_and_extract_slot(invalid_payload_request.commitment_type, &invalid_payload_request.payload).is_err());
+		///
+		/// // A proper inclusion commitment payload returns the embedded slot.
+		/// let valid_request = TestFixtures::create_inclusion_commitment_request(12345, &context.config.validation.slasher_address);
+		/// let slot = validate_and_extract_slot(valid_request.commitment_type, &valid_request.payload).unwrap();
+		/// assert_eq!(slot, 12345);
+		/// ```
 		#[tokio::test]
 		async fn test_commitment_request_validation_flow() {
 			// Test that the commitment request handler validates inputs correctly

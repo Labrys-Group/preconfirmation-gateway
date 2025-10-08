@@ -21,7 +21,28 @@ pub struct SlotCongestion {
 }
 
 impl SlotCongestion {
-    /// Create a new slot congestion record
+    /// Creates a new in-memory SlotCongestion for the given slot with initial/default metrics.
+    ///
+    /// The returned struct has zero preconfirmed gas, gas_used_ratio 0.0, calculated_fee_multiplier 1.0,
+    /// and current_tx_price initialized to `base_gas_price`.
+    ///
+    /// # Parameters
+    ///
+    /// - `slot`: Slot number to track.
+    /// - `base_gas_price`: Base gas price in wei used as the initial current_tx_price.
+    /// - `total_gas_limit`: Gas limit for the slot used to compute congestion ratios.
+    /// - `slot_start_time`: Start time of the slot.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let start = std::time::SystemTime::now();
+    /// let sc = SlotCongestion::new(42, 1_000, 30_000_000, start);
+    /// assert_eq!(sc.slot, 42);
+    /// assert_eq!(sc.preconfirmed_gas, 0);
+    /// assert_eq!(sc.calculated_fee_multiplier, 1.0);
+    /// assert_eq!(sc.current_tx_price, 1_000);
+    /// ```
     pub fn new(
         slot: u64,
         base_gas_price: u64,
@@ -43,7 +64,24 @@ impl SlotCongestion {
         }
     }
 
-    /// Update congestion with new gas usage
+    /// Apply additional gas usage to this SlotCongestion and update its derived congestion metrics.
+    ///
+    /// This method increments `preconfirmed_gas`, recomputes `gas_used_ratio`, derives a congestion
+    /// multiplier using the formula `multiplier = 1 / (1 - (gas_used_ratio)^k)`, clamps the multiplier
+    /// to the range [1.0, 100.0], and updates `current_tx_price` = `base_gas_price * multiplier`.
+    ///
+    /// The `scaling_factor` (k) controls how sharply the multiplier grows as the slot fills.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::time::SystemTime;
+    /// // Construct using the public constructor available in this module
+    /// let mut congestion = SlotCongestion::new(42, 1_000_000_000u64, 30_000_000u64, SystemTime::now());
+    /// congestion.add_gas_usage(15_000_000u64, 2.0);
+    /// assert_eq!(congestion.preconfirmed_gas, 15_000_000u64);
+    /// assert!(congestion.calculated_fee_multiplier >= 1.0);
+    /// ```
     pub fn add_gas_usage(&mut self, additional_gas: u64, scaling_factor: f64) {
         self.preconfirmed_gas += additional_gas;
         self.gas_used_ratio = self.preconfirmed_gas as f64 / self.total_gas_limit as f64;
@@ -66,7 +104,36 @@ impl SlotCongestion {
     }
 }
 
-/// Get or create slot congestion record for a specific slot
+/// Ensure a slot congestion record exists and return its in-memory representation.
+///
+/// If no row exists for `slot`, this function inserts a new row initialized from the
+/// provided parameters and the computed slot start time; if a concurrent insert wins,
+/// the existing row is fetched and returned.
+///
+/// # Parameters
+///
+/// - `genesis_time`: UNIX timestamp in seconds for chain genesis; used to compute the slot's start time.
+///
+/// # Returns
+///
+/// A `SlotCongestion` for the given `slot`, reflecting either the newly created database row or the existing one.
+///
+/// # Examples
+///
+/// ```rust
+/// # use sqlx::PgPool;
+/// # use crate::db::slot_congestion_ops::get_or_create_slot_congestion;
+/// # async fn example(pool: &PgPool) -> anyhow::Result<()> {
+/// let slot = 42;
+/// let base_gas_price = 1_000_000u64;
+/// let total_gas_limit = 30_000_000u64;
+/// let genesis_time = 1_700_000_000u64; // seconds since UNIX epoch
+///
+/// let congestion = get_or_create_slot_congestion(pool, slot, base_gas_price, total_gas_limit, genesis_time).await?;
+/// println!("Slot {} price: {}", congestion.slot, congestion.current_tx_price);
+/// # Ok(())
+/// # }
+/// ```
 pub async fn get_or_create_slot_congestion(
     pool: &PgPool,
     slot: u64,
@@ -125,7 +192,28 @@ pub async fn get_or_create_slot_congestion(
         ))
 }
 
-/// Get slot congestion data for a specific slot
+/// Fetches congestion metrics for the specified slot from the database.
+///
+/// # Returns
+///
+/// `Ok(Some(SlotCongestion))` with the stored metrics when a row for the slot exists, `Ok(None)` when no record is found, or an error if the database query fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn _example() -> anyhow::Result<()> {
+/// use sqlx::PgPool;
+/// // create or obtain a PgPool...
+/// let pool = PgPool::connect("postgres://user:pass@localhost/db").await?;
+/// let slot = 42;
+/// let record = crate::db::slot_congestion_ops::get_slot_congestion(&pool, slot).await?;
+/// match record {
+///     Some(congestion) => println!("Found congestion for slot {}: {:?}", slot, congestion),
+///     None => println!("No congestion data for slot {}", slot),
+/// }
+/// # Ok(())
+/// # }
+/// ```
 pub async fn get_slot_congestion(
     pool: &PgPool,
     slot: u64,
@@ -166,7 +254,38 @@ pub async fn get_slot_congestion(
     }
 }
 
-/// Update slot congestion with additional gas usage
+/// Update the stored congestion metrics for a specific slot by applying additional gas usage.
+///
+/// This locks the row for the given `slot`, applies `additional_gas` using the provided
+/// `scaling_factor` to recompute the gas usage ratio, fee multiplier, and current transaction price,
+/// persists those updated fields and returns the updated `SlotCongestion`.
+///
+/// # Parameters
+///
+/// - `pool`: Postgres connection pool used to perform the update.
+/// - `slot`: The slot number whose congestion record should be updated.
+/// - `additional_gas`: Additional gas to add to the slot's preconfirmed gas tally.
+/// - `scaling_factor`: Exponent used when computing the congestion-based fee multiplier.
+///
+/// # Returns
+///
+/// The updated `SlotCongestion` reflecting the persisted changes.
+///
+/// # Examples
+///
+/// ```rust
+/// # async fn example(pool: &sqlx::PgPool) -> anyhow::Result<()> {
+/// let slot = 42;
+/// let updated = crate::db::slot_congestion_ops::update_slot_congestion_gas_usage(
+///     pool,
+///     slot,
+///     15_000_000,
+///     2.0,
+/// ).await?;
+/// assert_eq!(updated.slot, slot);
+/// # Ok(())
+/// # }
+/// ```
 pub async fn update_slot_congestion_gas_usage(
     pool: &PgPool,
     slot: u64,
@@ -243,7 +362,22 @@ pub async fn update_slot_congestion_gas_usage(
     Ok(congestion)
 }
 
-/// Get current gas price for a slot (the calculated price including congestion)
+/// Returns the current transaction price for the given slot, adjusted for congestion.
+///
+/// # Returns
+/// `Some(price)` with the price in wei if the slot exists, `None` if no record is present.
+///
+/// # Examples
+///
+/// ```
+/// # async fn example(pool: &sqlx::PgPool) -> anyhow::Result<()> {
+/// let price = crate::db::slot_congestion_ops::get_current_gas_price_for_slot(pool, 42).await?;
+/// if let Some(p) = price {
+///     assert!(p > 0);
+/// }
+/// # Ok(())
+/// # }
+/// ```
 pub async fn get_current_gas_price_for_slot(
     pool: &PgPool,
     slot: u64,
@@ -259,7 +393,30 @@ pub async fn get_current_gas_price_for_slot(
     Ok(row.map(|r| r.current_tx_price as u64))
 }
 
-/// Clean up old slot congestion records (older than specified hours)
+/// Removes slot congestion rows whose slot_start_time is older than the given retention window.
+///
+/// Deletes records with slot_start_time earlier than now minus `hours_to_keep` hours and returns
+/// the number of rows removed.
+///
+/// # Parameters
+///
+/// - `hours_to_keep`: retention window in hours; records older than this will be deleted.
+///
+/// # Returns
+///
+/// The number of rows deleted as `u64`.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn _example() -> anyhow::Result<()> {
+/// # let pool = sqlx::PgPool::connect("postgres://localhost/test").await?;
+/// let deleted = crate::db::slot_congestion_ops::cleanup_old_slot_congestion(&pool, 24).await?;
+/// // `deleted` is the number of removed rows (may be 0)
+/// println!("Deleted {} old slot congestion rows", deleted);
+/// # Ok(())
+/// # }
+/// ```
 pub async fn cleanup_old_slot_congestion(
     pool: &PgPool,
     hours_to_keep: u32,
@@ -296,6 +453,27 @@ pub struct CongestionStats {
     pub average_fee_multiplier: f64,
 }
 
+/// Compute aggregate congestion statistics for the last 24 hours from the `slot_congestion` table.
+///
+/// Returns a `CongestionStats` value containing:
+/// - `total_slots_tracked`: number of distinct slots tracked in the last 24 hours,
+/// - `current_average_congestion`: average `gas_used_ratio` over that window,
+/// - `highest_congestion_slot`: `Some(slot)` for the slot with the highest `gas_used_ratio` in the window, or `None` if no congestion was recorded,
+/// - `highest_congestion_ratio`: the maximum `gas_used_ratio` observed,
+/// - `average_fee_multiplier`: average `calculated_fee_multiplier` over the window.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # use crate::db::slot_congestion_ops::get_congestion_stats;
+/// # async fn run_example() -> Result<(), Box<dyn std::error::Error>> {
+/// let pool = PgPool::connect("postgres://user:pass@localhost/db").await?;
+/// let stats = get_congestion_stats(&pool).await?;
+/// println!("Tracked slots: {}", stats.total_slots_tracked);
+/// # Ok(())
+/// # }
+/// ```
 pub async fn get_congestion_stats(pool: &PgPool) -> Result<CongestionStats> {
     let stats = sqlx::query!(
         r#"

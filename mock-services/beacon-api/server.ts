@@ -13,19 +13,33 @@ const SLOTS_PER_EPOCH = 32;
 // Mock BLS public key (48 bytes) matching the mock-relay
 const MOCK_PROPOSER_PUBKEY = '0x' + '02'.repeat(48);
 
-// Calculate current slot based on time
+/**
+ * Compute the current Beacon chain slot based on the system clock and genesis time.
+ *
+ * @returns The current slot index — the number of slots elapsed since `GENESIS_TIME`.
+ */
 function getCurrentSlot(): number {
   const now = Math.floor(Date.now() / 1000);
   const secondsSinceGenesis = now - GENESIS_TIME;
   return Math.floor(secondsSinceGenesis / SECONDS_PER_SLOT);
 }
 
-// Calculate epoch from slot
+/**
+ * Compute the epoch index that contains a given slot.
+ *
+ * @param slot - Slot index (zero-based)
+ * @returns The epoch index that contains `slot`
+ */
 function slotToEpoch(slot: number): number {
   return Math.floor(slot / SLOTS_PER_EPOCH);
 }
 
-// Calculate first slot of epoch
+/**
+ * Compute the first slot index of a given epoch.
+ *
+ * @param epoch - The epoch number (zero-based)
+ * @returns The index of the first slot in `epoch`
+ */
 function epochToFirstSlot(epoch: number): number {
   return epoch * SLOTS_PER_EPOCH;
 }

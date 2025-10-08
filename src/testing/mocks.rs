@@ -21,12 +21,31 @@ pub struct MockBeaconApiClient {
 }
 
 impl Default for MockBeaconApiClient {
+    /// Create a default instance of this type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let _instance = Default::default();
+    /// ```
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl MockBeaconApiClient {
+    /// Creates a new in-memory MockBeaconApiClient with default test settings.
+    ///
+    /// The default instance has an empty proposer duties map, a 50 ms simulated network delay,
+    /// and failure simulation disabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let client = MockBeaconApiClient::new();
+    /// assert_eq!(client.network_delay_ms, 50);
+    /// assert_eq!(client.should_fail, false);
+    /// ```
     pub fn new() -> Self {
         Self {
             proposer_duties: Arc::new(RwLock::new(HashMap::new())),
@@ -35,24 +54,75 @@ impl MockBeaconApiClient {
         }
     }
 
-    /// Add mock proposer duties for an epoch
+    /// Insert mock proposer duties for the specified epoch into the in-memory store.
+    ///
+    /// This will replace any duties already stored for the same epoch.
+    ///
+    /// # Parameters
+    ///
+    /// - `epoch`: Epoch for which the proposer duties apply.
+    /// - `duties`: The proposer duties to store.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use testing::mocks::MockBeaconApiClient;
+    /// # use crate::types::beacon::ProposerDutiesResponse;
+    /// #[tokio::test]
+    /// async fn add_duties_example() {
+    ///     let client = MockBeaconApiClient::new();
+    ///     let duties = ProposerDutiesResponse::default();
+    ///     client.add_proposer_duties(42, duties).await;
+    ///     // duties for epoch 42 are now stored in the mock
+    /// }
+    /// ```
     pub async fn add_proposer_duties(&self, epoch: u64, duties: ProposerDutiesResponse) {
         self.proposer_duties.write().await.insert(epoch, duties);
     }
 
-    /// Set network delay for testing
+    /// Sets the simulated network delay (in milliseconds) used by the mock client.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut mock = MockBeaconApiClient::new();
+    /// mock.set_network_delay(200);
+    /// ```
     pub fn set_network_delay(&mut self, delay_ms: u64) {
         self.network_delay_ms = delay_ms;
     }
 
-    /// Set failure mode for testing error handling
+    /// Enable or disable simulated failure mode for the mock.
+    ///
+    /// When enabled (`should_fail = true`), mock operations that simulate external
+    /// interactions will return errors instead of successful responses; when
+    /// disabled they behave normally.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut mock = MockDatabase::new();
+    /// mock.set_failure_mode(true);
+    /// // subsequent mock calls will simulate failures
+    /// ```
     pub fn set_failure_mode(&mut self, should_fail: bool) {
         self.should_fail = should_fail;
     }
 }
 
 impl BeaconApiClient {
-    /// Create mock client that behaves like the real client but with controllable responses
+    /// Constructs a MockBeaconApiClient preconfigured for testing.
+    ///
+    /// The returned mock simulates the Beacon API and exposes controls for network delay,
+    /// failure mode, and injectable proposer duties.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut client = MockBeaconApiClient::mock();
+    /// client.set_network_delay(10);
+    /// client.set_failure_mode(false);
+    /// ```
     pub fn mock() -> MockBeaconApiClient {
         MockBeaconApiClient::new()
     }
@@ -73,12 +143,31 @@ pub struct MockConstraintsApiClient {
 }
 
 impl Default for MockConstraintsApiClient {
+    /// Create a default instance of this type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let _instance = Default::default();
+    /// ```
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl MockConstraintsApiClient {
+    /// Create a new MockConstraintsApiClient initialized for tests.
+    ///
+    /// The client starts with empty in-memory delegations and submission logs,
+    /// a simulated network delay of 100 milliseconds, failure mode disabled, and
+    /// no queued submission responses.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let client = MockConstraintsApiClient::new();
+    /// // client can now be used to add delegations, submit constraints, or inspect submissions.
+    /// ```
     pub fn new() -> Self {
         Self {
             delegations: Arc::new(RwLock::new(HashMap::new())),
@@ -89,7 +178,26 @@ impl MockConstraintsApiClient {
         }
     }
 
-    /// Add mock delegation for a slot
+    /// Insert a signed delegation into the in-memory store for a given slot for testing.
+    ///
+    /// Adds the provided `delegation` to the vector associated with `slot`, creating the vector if none exists.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::testing::mocks::MockConstraintsApiClient;
+    /// use crate::types::delegation::SignedDelegation;
+    ///
+    /// #[tokio::test]
+    /// async fn example_add_delegation() {
+    ///     let client = MockConstraintsApiClient::new();
+    ///     // Construct a test delegation; replace with a real SignedDelegation as needed.
+    ///     let delegation = SignedDelegation::default();
+    ///     client.add_delegation(42, delegation).await;
+    ///     let delegations = client.mock_get_delegations_for_slot(42).await.unwrap();
+    ///     assert_eq!(delegations.len(), 1);
+    /// }
+    /// ```
     pub async fn add_delegation(&self, slot: u64, delegation: SignedDelegation) {
         self.delegations.write().await
             .entry(slot)
@@ -97,32 +205,111 @@ impl MockConstraintsApiClient {
             .push(delegation);
     }
 
-    /// Get all submitted constraints (for testing verification)
+    /// Return a cloned list of all constraints that have been submitted to this mock.
+    ///
+    /// The returned vector is a clone of the internal submission log and can be used
+    /// for test assertions without affecting the mock's internal state.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mock = MockConstraintsApiClient::new();
+    /// // initially empty
+    /// assert_eq!(mock.get_submitted_constraints().len(), 0);
+    /// ```
     pub fn get_submitted_constraints(&self) -> Vec<SignedConstraints> {
         self.submitted_constraints.lock().unwrap().clone()
     }
 
-    /// Clear submitted constraints log
+    /// Clears the in-memory log of submitted constraints.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let client = MockConstraintsApiClient::new();
+    /// // Ensure log is empty after clearing
+    /// client.clear_submitted_constraints();
+    /// assert_eq!(client.get_submitted_constraints().len(), 0);
+    /// ```
     pub fn clear_submitted_constraints(&self) {
         self.submitted_constraints.lock().unwrap().clear();
     }
 
-    /// Set network delay for testing
+    /// Sets the simulated network delay (in milliseconds) used by the mock client.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut mock = MockBeaconApiClient::new();
+    /// mock.set_network_delay(200);
+    /// ```
     pub fn set_network_delay(&mut self, delay_ms: u64) {
         self.network_delay_ms = delay_ms;
     }
 
-    /// Set failure mode
+    /// Enable or disable simulated failure mode for the mock.
+    ///
+    /// When enabled (`should_fail = true`), mock operations that simulate external
+    /// interactions will return errors instead of successful responses; when
+    /// disabled they behave normally.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut mock = MockDatabase::new();
+    /// mock.set_failure_mode(true);
+    /// // subsequent mock calls will simulate failures
+    /// ```
     pub fn set_failure_mode(&mut self, should_fail: bool) {
         self.should_fail = should_fail;
     }
 
-    /// Add mock response for constraint submission
+    /// Appends a mock constraint submission response to the client's response queue.
+    ///
+    /// The added response will be returned (in FIFO order) by subsequent submission calls on this mock client.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example() {
+    /// let client = MockConstraintsApiClient::new();
+    /// let response = ConstraintSubmissionResponse { /* fields */ };
+    /// client.add_submission_response(response).await;
+    /// # }
+    /// ```
     pub async fn add_submission_response(&self, response: ConstraintSubmissionResponse) {
         self.submission_responses.write().await.push(response);
     }
 
-    /// Simulate constraint submission (captures the constraints for verification)
+    /// Simulate submitting signed constraints to the mock Constraints API and record them for verification.
+    ///
+    /// This method applies the configured network delay, optionally fails if failure mode is enabled,
+    /// stores a clone of the provided `constraints` in the client's submitted-constraints log, and then
+    /// returns a configured mock `ConstraintSubmissionResponse` or a default successful response if none
+    /// are queued.
+    ///
+    /// # Parameters
+    ///
+    /// - `constraints`: The signed constraints to submit and record in the mock client's log.
+    ///
+    /// # Returns
+    ///
+    /// A `ConstraintSubmissionResponse` describing the simulated submission outcome (e.g., `success` and an optional `submission_id`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use crate::testing::mocks::MockConstraintsApiClient;
+    /// # use crate::types::constraints::SignedConstraints;
+    /// # tokio::test
+    /// async fn example_mock_submit_constraints() {
+    ///     let client = MockConstraintsApiClient::new();
+    ///     let constraints = SignedConstraints::default();
+    ///     let resp = client.mock_submit_constraints(&constraints).await.unwrap();
+    ///     assert!(resp.success);
+    ///     assert_eq!(client.get_submitted_constraints().len(), 1);
+    /// }
+    /// ```
     pub async fn mock_submit_constraints(&self, constraints: &SignedConstraints) -> Result<ConstraintSubmissionResponse> {
         // Simulate network delay
         if self.network_delay_ms > 0 {
@@ -150,7 +337,21 @@ impl MockConstraintsApiClient {
         }
     }
 
-    /// Mock get delegations for slot
+    /// Fetches mock signed delegations stored for the specified slot.
+    ///
+    /// Returns the stored delegations for `slot` or an empty vector if none exist.
+    /// Returns an error when the mock is configured to simulate failure.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # tokio_test::block_on(async {
+    /// let client = MockConstraintsApiClient::new();
+    /// client.add_delegation(42, SignedDelegation::default()).await;
+    /// let delegations = client.mock_get_delegations_for_slot(42).await.unwrap();
+    /// assert!(!delegations.is_empty());
+    /// # });
+    /// ```
     pub async fn mock_get_delegations_for_slot(&self, slot: u64) -> Result<Vec<SignedDelegation>> {
         // Simulate network delay
         if self.network_delay_ms > 0 {
@@ -168,7 +369,16 @@ impl MockConstraintsApiClient {
 }
 
 impl ConstraintsApiClient {
-    /// Create mock client
+    /// Create a mock Constraints API client for testing.
+    ///
+    /// The returned client simulates network latency and failure modes and records submitted constraints.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let client = mock();
+    /// assert!(client.get_submitted_constraints().is_empty());
+    /// ```
     pub fn mock() -> MockConstraintsApiClient {
         MockConstraintsApiClient::new()
     }
@@ -186,12 +396,27 @@ pub struct MockDatabase {
 }
 
 impl Default for MockDatabase {
+    /// Create a default instance of this type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let _instance = Default::default();
+    /// ```
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl MockDatabase {
+    /// Create a new in-memory MockDatabase with empty storage, a 10ms simulated latency, and failure mode disabled.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let db = MockDatabase::new();
+    /// // use `db` in tests to simulate persistence operations
+    /// ```
     pub fn new() -> Self {
         Self {
             commitments: Arc::new(RwLock::new(HashMap::new())),
@@ -201,17 +426,62 @@ impl MockDatabase {
         }
     }
 
-    /// Set database latency for testing
+    /// Configure simulated database latency in milliseconds.
+    ///
+    /// The configured value is applied to mock database operations to introduce an artificial delay
+    /// for testing timing and retry behaviors.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut db = MockDatabase::new();
+    /// db.set_latency(50);
+    /// ```
     pub fn set_latency(&mut self, latency_ms: u64) {
         self.latency_ms = latency_ms;
     }
 
-    /// Set failure mode
+    /// Enable or disable simulated failure mode for the mock.
+    ///
+    /// When enabled (`should_fail = true`), mock operations that simulate external
+    /// interactions will return errors instead of successful responses; when
+    /// disabled they behave normally.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut mock = MockDatabase::new();
+    /// mock.set_failure_mode(true);
+    /// // subsequent mock calls will simulate failures
+    /// ```
     pub fn set_failure_mode(&mut self, should_fail: bool) {
         self.should_fail = should_fail;
     }
 
-    /// Mock save commitment
+    /// Saves a signed commitment into the mock in-memory database, honoring the mock's configured latency and failure mode.
+    ///
+    /// The method inserts the provided `SignedCommitment` into the database's in-memory commitments map keyed by the commitment's `request_hash`.
+    ///
+    /// # Parameters
+    ///
+    /// - `commitment`: The `SignedCommitment` to persist in the mock database.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on successful save, `Err(...)` when the mock is configured to simulate a failure.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #[tokio::test]
+    /// async fn save_commitment_example() {
+    ///     use testing::mocks::MockDatabase;
+    ///     // Construct a default SignedCommitment for the example; in real tests provide a fully formed value.
+    ///     let db = MockDatabase::new();
+    ///     let commitment = crate::types::SignedCommitment::default();
+    ///     assert!(db.mock_save_commitment(&commitment).await.is_ok());
+    /// }
+    /// ```
     pub async fn mock_save_commitment(&self, commitment: &crate::types::SignedCommitment) -> Result<()> {
         if self.latency_ms > 0 {
             tokio::time::sleep(tokio::time::Duration::from_millis(self.latency_ms)).await;
@@ -228,7 +498,29 @@ impl MockDatabase {
         Ok(())
     }
 
-    /// Mock get commitment by hash
+    /// Retrieve a stored signed commitment by its request hash from the mock database.
+    ///
+    /// The method will apply the mock database's configured latency before returning. If the mock's
+    /// failure mode is enabled, this method returns an error.
+    ///
+    /// # Returns
+    ///
+    /// `Some(SignedCommitment)` if a commitment with the given hash exists, `None` otherwise.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Err` when the mock database is configured to fail.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #[tokio::test]
+    /// async fn example_mock_get_commitment_returns_none() {
+    ///     let db = MockDatabase::new();
+    ///     let result = db.mock_get_commitment("missing-hash").await.unwrap();
+    ///     assert!(result.is_none());
+    /// }
+    /// ```
     pub async fn mock_get_commitment(&self, hash: &str) -> Result<Option<crate::types::SignedCommitment>> {
         if self.latency_ms > 0 {
             tokio::time::sleep(tokio::time::Duration::from_millis(self.latency_ms)).await;
@@ -241,7 +533,24 @@ impl MockDatabase {
         Ok(self.commitments.read().await.get(hash).cloned())
     }
 
-    /// Mock commitment exists check
+    /// Check whether a commitment with the given request hash exists in the mock database.
+    ///
+    /// Returns an error if the mock database is configured to fail.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tokio::runtime::Runtime;
+    /// # let rt = Runtime::new().unwrap();
+    /// # rt.block_on(async {
+    /// let db = crate::testing::mocks::MockDatabase::new();
+    /// let commitment = crate::types::SignedCommitment::default();
+    /// let hash = commitment.request_hash.clone();
+    /// db.mock_save_commitment(&commitment).await.unwrap();
+    /// assert!(db.mock_commitment_exists(&hash).await.unwrap());
+    /// assert!(!db.mock_commitment_exists("nonexistent_hash").await.unwrap());
+    /// # });
+    /// ```
     pub async fn mock_commitment_exists(&self, hash: &str) -> Result<bool> {
         if self.latency_ms > 0 {
             tokio::time::sleep(tokio::time::Duration::from_millis(self.latency_ms)).await;
@@ -254,7 +563,26 @@ impl MockDatabase {
         Ok(self.commitments.read().await.contains_key(hash))
     }
 
-    /// Add delegation for testing
+    /// Insert a signed delegation into the in-memory store for a given slot for testing.
+    ///
+    /// Adds the provided `delegation` to the vector associated with `slot`, creating the vector if none exists.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::testing::mocks::MockConstraintsApiClient;
+    /// use crate::types::delegation::SignedDelegation;
+    ///
+    /// #[tokio::test]
+    /// async fn example_add_delegation() {
+    ///     let client = MockConstraintsApiClient::new();
+    ///     // Construct a test delegation; replace with a real SignedDelegation as needed.
+    ///     let delegation = SignedDelegation::default();
+    ///     client.add_delegation(42, delegation).await;
+    ///     let delegations = client.mock_get_delegations_for_slot(42).await.unwrap();
+    ///     assert_eq!(delegations.len(), 1);
+    /// }
+    /// ```
     pub async fn add_delegation(&self, slot: u64, delegation: SignedDelegation) {
         self.delegations.write().await
             .entry(slot)
@@ -262,7 +590,24 @@ impl MockDatabase {
             .push(delegation);
     }
 
-    /// Mock get delegations for slot
+    /// Fetches the signed delegations stored for a specific slot from the mock database.
+    ///
+    /// Returns an owned vector of `SignedDelegation` entries associated with `slot`.
+    /// If no delegations exist for the slot, an empty vector is returned.
+    /// Returns an error if the mock database is configured to fail.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::testing::mocks::MockDatabase;
+    ///
+    /// let rt = tokio::runtime::Runtime::new().unwrap();
+    /// rt.block_on(async {
+    ///     let db = MockDatabase::new();
+    ///     let delegations = db.mock_get_delegations_for_slot(42).await.unwrap();
+    ///     assert!(delegations.is_empty());
+    /// });
+    /// ```
     pub async fn mock_get_delegations_for_slot(&self, slot: u64) -> Result<Vec<SignedDelegation>> {
         if self.latency_ms > 0 {
             tokio::time::sleep(tokio::time::Duration::from_millis(self.latency_ms)).await;
@@ -275,19 +620,52 @@ impl MockDatabase {
         Ok(self.delegations.read().await.get(&slot).cloned().unwrap_or_default())
     }
 
-    /// Get all stored commitments (for testing verification)
+    /// Returns a clone of all stored commitments keyed by request hash.
+    ///
+    /// The returned map contains every commitment currently held in the mock database.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let db = crate::testing::mocks::MockDatabase::new();
+    /// let rt = tokio::runtime::Runtime::new().unwrap();
+    /// let all = rt.block_on(db.get_all_commitments());
+    /// assert!(all.is_empty());
+    /// ```
     pub async fn get_all_commitments(&self) -> HashMap<String, crate::types::SignedCommitment> {
         self.commitments.read().await.clone()
     }
 
-    /// Clear all data
+    /// Clears all stored commitments and delegations from the mock database.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let rt = tokio::runtime::Runtime::new().unwrap();
+    /// rt.block_on(async {
+    ///     let db = MockDatabase::new();
+    ///     // populate db...
+    ///     db.clear_all().await;
+    /// });
+    /// ```
     pub async fn clear_all(&self) {
         self.commitments.write().await.clear();
         self.delegations.write().await.clear();
     }
 }
 
-/// Create a test configuration with mock endpoints
+/// Build a Config populated with test-oriented values and mock endpoints for use in unit tests.
+///
+/// The returned `Config` sets deterministic, short-lived values (localhost endpoints, short timeouts,
+/// debug logging, and test addresses) suitable for isolated test environments.
+///
+/// # Examples
+///
+/// ```
+/// let cfg = create_test_config();
+/// assert_eq!(cfg.server.host, "127.0.0.1");
+/// assert_eq!(cfg.beacon_api.primary_endpoint, "http://localhost:5051");
+/// ```
 pub fn create_test_config() -> Config {
     Config {
         server: crate::config::ServerConfig {
@@ -328,7 +706,18 @@ pub fn create_test_config() -> Config {
     }
 }
 
-/// Create test BLS key pair
+/// Generate a test BLS key pair for use in tests.
+///
+/// Returns a freshly generated BLS secret key and its corresponding public key wrapped in
+/// `crate::types::delegation::BlsPublicKey`.
+///
+/// # Examples
+///
+/// ```
+/// let (secret_key, public_key) = create_test_bls_keypair();
+/// // secret_key is a `blst::min_pk::SecretKey` and public_key wraps the public key bytes
+/// assert!(!public_key.0.is_empty());
+/// ```
 pub fn create_test_bls_keypair() -> (blst::min_pk::SecretKey, crate::types::delegation::BlsPublicKey) {
     use blst::min_pk::SecretKey;
     let mut rng = rand::thread_rng();
@@ -339,7 +728,21 @@ pub fn create_test_bls_keypair() -> (blst::min_pk::SecretKey, crate::types::dele
     (secret_key, public_key_wrapper)
 }
 
-/// Create test ECDSA key pair
+/// Create a deterministic test ECDSA key pair and its Ethereum address.
+///
+/// The returned tuple contains the secp256k1 secret key and the corresponding
+/// 0x-prefixed Ethereum address derived from the uncompressed public key.
+///
+/// # Examples
+///
+/// ```
+/// let (sk, addr) = create_test_ecdsa_keypair();
+/// // secret key is a 32-byte secp256k1 key
+/// assert_eq!(sk[..].len(), 32);
+/// // address is a 0x-prefixed 20-byte (40 hex chars) Ethereum address
+/// assert!(addr.starts_with("0x"));
+/// assert_eq!(addr.len(), 42);
+/// ```
 pub fn create_test_ecdsa_keypair() -> (secp256k1::SecretKey, String) {
     let secret_key = secp256k1::SecretKey::from_slice(&[2u8; 32]).unwrap();
     let public_key = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &secret_key);

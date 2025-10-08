@@ -15,7 +15,7 @@ echo -e "${BLUE}╚════════════════════�
 # Create logs directory
 mkdir -p logs
 
-# Cleanup function
+# cleanup stops mock services and removes the gateway PID file, printing a brief cleanup banner.
 cleanup() {
   echo -e "\n${BLUE}Cleaning up...${NC}"
   ./scripts/stop-mock-services.sh

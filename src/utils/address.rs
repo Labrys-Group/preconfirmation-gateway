@@ -1,17 +1,7 @@
-//! Ethereum address utilities
-
-/// Normalize an Ethereum address for case-insensitive comparison
+/// Normalize an Ethereum address for case-insensitive comparison.
 ///
-/// This function strips the optional "0x" or "0X" prefix and converts the address
-/// to lowercase, enabling consistent case-insensitive comparisons.
-///
-/// # Arguments
-///
-/// * `addr` - The address string to normalize (with or without "0x" prefix)
-///
-/// # Returns
-///
-/// The normalized address in lowercase without "0x" prefix
+/// Strips an optional "0x" or "0X" prefix and returns the address in lowercase
+/// without the prefix.
 ///
 /// # Examples
 ///
@@ -22,6 +12,7 @@
 ///     normalize_address("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
 ///     "f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
 /// );
+///
 /// assert_eq!(
 ///     normalize_address("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
 ///     "f39fd6e51aad88f6f4ce6ab8827279cfffb92266"

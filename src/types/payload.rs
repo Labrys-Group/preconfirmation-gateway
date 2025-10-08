@@ -46,7 +46,26 @@ pub enum CommitmentPayload {
 }
 
 impl PayloadParser {
-    /// Extract slot number from a raw payload based on commitment type
+    /// Extracts the slot number from a commitment payload.
+    ///
+    /// The `commitment_type` determines how the `payload` is interpreted:
+    /// - `1`: inclusion payload
+    /// - `2`: execution payload
+    /// An unknown `commitment_type` results in an error.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(u64)` containing the extracted slot number on success, `Err` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // JSON-encoded inclusion payload example
+    /// let inclusion = InclusionPayload::new(42, vec![0x01, 0x02]);
+    /// let payload = serde_json::to_vec(&inclusion).unwrap();
+    /// let slot = PayloadParser::extract_slot(1, &payload).unwrap();
+    /// assert_eq!(slot, 42);
+    /// ```
     pub fn extract_slot(commitment_type: u64, payload: &[u8]) -> Result<u64> {
         match commitment_type {
             1 => Self::extract_slot_from_inclusion_payload(payload),
@@ -58,7 +77,20 @@ impl PayloadParser {
         }
     }
 
-    /// Parse an inclusion payload from raw bytes
+    /// Parse an inclusion payload from raw bytes.
+    ///
+    /// Accepts either a JSON-encoded InclusionPayload or an RLP-encoded [slot, signed_tx] list and returns the parsed InclusionPayload.
+    /// Returns an error if the payload cannot be parsed as either JSON or RLP.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::payloads::{InclusionPayload, PayloadParser};
+    /// // JSON example
+    /// let payload = serde_json::to_vec(&InclusionPayload::new(42, vec![1,2,3])).unwrap();
+    /// let parsed = PayloadParser::parse_inclusion_payload(&payload).unwrap();
+    /// assert_eq!(parsed.slot(), 42);
+    /// ```
     pub fn parse_inclusion_payload(payload: &[u8]) -> Result<InclusionPayload> {
         // Try JSON parsing first (most flexible)
         if let Ok(parsed) = serde_json::from_slice::<InclusionPayload>(payload) {
@@ -70,7 +102,19 @@ impl PayloadParser {
             .context("Failed to parse inclusion payload as both JSON and RLP")
     }
 
-    /// Parse an execution payload from raw bytes
+    /// Parses an execution preconfirmation payload from bytes.
+    ///
+    /// Attempts to decode the provided bytes as an `ExecutionPayload` serialized in JSON;
+    /// returns an error if decoding fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let payload = ExecutionPayload::new(42, vec![1,2,3], [0u8; 32]);
+    /// let bytes = serde_json::to_vec(&payload).unwrap();
+    /// let parsed = parse_execution_payload(&bytes).unwrap();
+    /// assert_eq!(parsed.slot(), payload.slot());
+    /// ```
     pub fn parse_execution_payload(payload: &[u8]) -> Result<ExecutionPayload> {
         // Try JSON parsing first
         if let Ok(parsed) = serde_json::from_slice::<ExecutionPayload>(payload) {
@@ -81,19 +125,63 @@ impl PayloadParser {
         Err(anyhow::anyhow!("Failed to parse execution payload"))
     }
 
-    /// Extract slot from inclusion payload
+    /// Extracts the slot number from an inclusion payload.
+    ///
+    /// Parses the provided payload as an inclusion payload (JSON first, then RLP) and returns its `slot`.
+    ///
+    /// # Returns
+    ///
+    /// The slot number contained in the parsed inclusion payload.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // JSON-encoded inclusion payload with hex-serialized signed_tx
+    /// let payload = br#"{"slot":42,"signed_tx":"0xdeadbeef"}"#;
+    /// let slot = PayloadParser::extract_slot_from_inclusion_payload(payload).unwrap();
+    /// assert_eq!(slot, 42);
+    /// ```
     fn extract_slot_from_inclusion_payload(payload: &[u8]) -> Result<u64> {
         let inclusion_payload = Self::parse_inclusion_payload(payload)?;
         Ok(inclusion_payload.slot)
     }
 
-    /// Extract slot from execution payload
+    /// Extracts the slot number from an execution payload.
+    ///
+    /// Returns the slot number contained in the parsed execution payload.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let payload = serde_json::to_vec(&ExecutionPayload::new(42, vec![], [0u8; 32])).unwrap();
+    /// let slot = PayloadParser::extract_slot_from_execution_payload(&payload).unwrap();
+    /// assert_eq!(slot, 42);
+    /// ```
     fn extract_slot_from_execution_payload(payload: &[u8]) -> Result<u64> {
         let execution_payload = Self::parse_execution_payload(payload)?;
         Ok(execution_payload.slot)
     }
 
-    /// Parse inclusion payload using RLP encoding
+    /// Parses an RLP-encoded inclusion payload into an `InclusionPayload`.
+    ///
+    /// Expects the RLP to be a list of exactly two elements: `[slot, signed_tx]`.
+    /// Returns an error if the RLP structure is invalid or if decoding of either
+    /// field fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rlp::RlpStream;
+    /// // build RLP [slot, signed_tx]
+    /// let mut s = RlpStream::new_list(2);
+    /// s.append(&42u64);
+    /// s.append(&b"\x01\x02\x03".to_vec());
+    /// let bytes = s.out().to_vec();
+    ///
+    /// let parsed = crate::parse_inclusion_payload_rlp(&bytes).unwrap();
+    /// assert_eq!(parsed.slot, 42);
+    /// assert_eq!(parsed.signed_tx, b"\x01\x02\x03".to_vec());
+    /// ```
     fn parse_inclusion_payload_rlp(payload: &[u8]) -> Result<InclusionPayload> {
         use rlp::Rlp;
 
@@ -116,14 +204,35 @@ impl PayloadParser {
         })
     }
 
-    /// Encode an inclusion payload to bytes
+    /// Serialize an `InclusionPayload` into JSON-encoded bytes.
+    ///
+    /// Returns the JSON representation of the payload as a `Vec<u8>`, or an error with context if encoding fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let payload = InclusionPayload::new(42, vec![0x01, 0x02, 0x03]);
+    /// let bytes = crate::payloads::PayloadParser::encode_inclusion_payload(&payload).unwrap();
+    /// let decoded: InclusionPayload = serde_json::from_slice(&bytes).unwrap();
+    /// assert_eq!(decoded.slot(), 42);
+    /// ```
     pub fn encode_inclusion_payload(payload: &InclusionPayload) -> Result<Vec<u8>> {
         // Default to JSON encoding for flexibility
         serde_json::to_vec(payload)
             .context("Failed to encode inclusion payload as JSON")
     }
 
-    /// Encode an inclusion payload to RLP bytes
+    /// Encodes an InclusionPayload as RLP bytes.
+    ///
+    /// Produces an RLP-encoded list containing the slot followed by the signed transaction bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let payload = InclusionPayload::new(42, vec![0x01, 0x02]);
+    /// let bytes = crate::encode_inclusion_payload_rlp(&payload).unwrap();
+    /// assert!(!bytes.is_empty());
+    /// ```
     pub fn encode_inclusion_payload_rlp(payload: &InclusionPayload) -> Result<Vec<u8>> {
         use rlp::RlpStream;
 
@@ -136,7 +245,15 @@ impl PayloadParser {
 }
 
 impl InclusionPayload {
-    /// Create a new inclusion payload
+    /// Constructs a new InclusionPayload with the given slot and signed transaction bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let p = InclusionPayload::new(42, vec![1, 2, 3]);
+    /// assert_eq!(p.slot(), 42);
+    /// assert_eq!(p.signed_tx(), &[1, 2, 3][..]);
+    /// ```
     pub fn new(slot: u64, signed_tx: Vec<u8>) -> Self {
         Self {
             slot,
@@ -144,17 +261,53 @@ impl InclusionPayload {
         }
     }
 
-    /// Get the slot number
+    /// Retrieve the inclusion payload's slot number.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let payload = InclusionPayload::new(42, vec![0x01]);
+    /// assert_eq!(payload.slot(), 42);
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// The slot number.
     pub fn slot(&self) -> u64 {
         self.slot
     }
 
-    /// Get the signed transaction bytes
+    /// Reference to the payload's signed transaction bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let p = InclusionPayload::new(42, vec![0xde, 0xad, 0xbe, 0xef]);
+    /// assert_eq!(p.signed_tx(), &[0xde, 0xad, 0xbe, 0xef]);
+    /// ```
     pub fn signed_tx(&self) -> &[u8] {
         &self.signed_tx
     }
 
-    /// Validate the payload structure
+    /// Validates the inclusion payload's fields.
+    ///
+    /// Returns an error if the signed transaction is empty or if the slot is zero.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when:
+    /// - `signed_tx` is empty.
+    /// - `slot` is zero.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #[test]
+    /// fn validate_payload() {
+    ///     let p = InclusionPayload::new(1, vec![0x01, 0x02]);
+    ///     assert!(p.validate().is_ok());
+    /// }
+    /// ```
     pub fn validate(&self) -> Result<()> {
         if self.signed_tx.is_empty() {
             return Err(anyhow::anyhow!("Signed transaction cannot be empty"));
@@ -167,8 +320,17 @@ impl InclusionPayload {
         Ok(())
     }
 
-    /// Decode the signed transaction to extract transaction hash
-    /// This is a helper for deriving fields from the signed_tx
+    /// Computes the Keccak-256 hash of the payload's `signed_tx`.
+    ///
+    /// Returns the 32-byte Keccak-256 hash of `signed_tx`. Returns an error if `signed_tx` is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let payload = InclusionPayload::new(1, vec![0x01, 0x02, 0x03]);
+    /// let hash = payload.tx_hash().expect("hash computation failed");
+    /// assert_eq!(hash.len(), 32);
+    /// ```
     pub fn tx_hash(&self) -> Result<[u8; 32]> {
         use tiny_keccak::{Hasher, Keccak};
 
@@ -186,7 +348,18 @@ impl InclusionPayload {
 }
 
 impl ExecutionPayload {
-    /// Create a new execution payload
+    /// Creates a new `ExecutionPayload` with the provided slot, transaction bytes, and expected state root.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let tx = vec![1u8, 2, 3];
+    /// let root = [0u8; 32];
+    /// let payload = ExecutionPayload::new(42, tx.clone(), root);
+    /// assert_eq!(payload.slot, 42);
+    /// assert_eq!(payload.transaction, tx);
+    /// assert_eq!(payload.expected_state_root, root);
+    /// ```
     pub fn new(slot: u64, transaction: Vec<u8>, expected_state_root: [u8; 32]) -> Self {
         Self {
             slot,
@@ -195,7 +368,18 @@ impl ExecutionPayload {
         }
     }
 
-    /// Get the slot number
+    /// Retrieve the inclusion payload's slot number.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let payload = InclusionPayload::new(42, vec![0x01]);
+    /// assert_eq!(payload.slot(), 42);
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// The slot number.
     pub fn slot(&self) -> u64 {
         self.slot
     }

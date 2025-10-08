@@ -38,7 +38,20 @@ pub struct FeeCalculation {
 }
 
 impl FeePricingEngine {
-    /// Create a new fee pricing engine
+    /// Constructs a new FeePricingEngine using the provided clients and configuration.
+    ///
+    /// Clones the fee-related configuration from `config` and stores the provided
+    /// `reth_client`, `database`, and `config` as shared references.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// let reth_client = Arc::new(/* RethApiClient */ unimplemented!());
+    /// let database = Arc::new(/* DatabaseContext */ unimplemented!());
+    /// let config = Arc::new(/* Config */ unimplemented!());
+    /// let engine = FeePricingEngine::new(reth_client, database, config);
+    /// ```
     pub fn new(
         reth_client: Arc<RethApiClient>,
         database: Arc<DatabaseContext>,
@@ -52,7 +65,31 @@ impl FeePricingEngine {
         }
     }
 
-    /// Calculate fee for a commitment request
+    /// Compute the fee for submitting a commitment at a given slot.
+    ///
+    /// This performs a full pricing calculation:
+    /// 1. obtains the current base gas price from the Reth oracle,
+    /// 2. estimates the gas required for the provided commitment type and payload,
+    /// 3. loads or creates congestion tracking for the target slot,
+    /// 4. projects the congestion and resulting per-gas price after adding the estimated gas,
+    /// 5. computes the total cost (per-gas price * estimated gas) with overflow checking.
+    ///
+    /// Errors are returned if fetching the gas price, estimating gas, accessing the database,
+    /// or calculating the total cost (overflow) fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # async fn example(engine: Arc<crate::services::FeePricingEngine>) -> anyhow::Result<()> {
+    /// let commitment_type = 1_u64;
+    /// let payload: &[u8] = b"...";
+    /// let slot = engine.get_current_slot();
+    /// let fee = engine.calculate_fee_for_commitment(commitment_type, payload, slot).await?;
+    /// assert!(fee.estimated_gas > 0);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn calculate_fee_for_commitment(
         &self,
         commitment_type: u64,
@@ -115,7 +152,29 @@ impl FeePricingEngine {
         Ok(fee_calculation)
     }
 
-    /// Apply gas usage to slot congestion (when commitment is actually made)
+    /// Apply observed gas usage to a slot's congestion data.
+    ///
+    /// This updates the persisted SlotCongestion for `slot` by adding `gas_used` (subject to the engine's scaling)
+    /// and returns the updated congestion record.
+    ///
+    /// # Parameters
+    ///
+    /// - `slot`: Target slot to apply the observed gas usage to.
+    /// - `gas_used`: Observed gas units consumed by the commitment for `slot`.
+    ///
+    /// # Returns
+    ///
+    /// The updated `SlotCongestion` after applying the observed gas usage.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn example(engine: &crate::services::fee_pricing::FeePricingEngine) {
+    /// let updated = engine.apply_gas_usage_to_slot(42, 12_345).await.unwrap();
+    /// // updated now reflects the applied gas usage for slot 42
+    /// assert!(updated.gas_used_ratio >= 0.0 && updated.gas_used_ratio <= 1.0);
+    /// # }
+    /// ```
     pub async fn apply_gas_usage_to_slot(
         &self,
         slot: u64,
@@ -139,7 +198,21 @@ impl FeePricingEngine {
         Ok(updated_congestion)
     }
 
-    /// Get current gas price from Reth with caching
+    /// Retrieves the current gas price from the configured Reth node.
+    ///
+    /// Currently this always requests fresh data from the Reth client; caching based on `fee_config.cache_ttl_secs` is planned but not yet implemented.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Reth node query fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // `engine` is a `FeePricingEngine` instance.
+    /// let info = engine.get_cached_gas_price().await.unwrap();
+    /// assert!(info.base_gas_price > 0);
+    /// ```
     async fn get_cached_gas_price(&self) -> Result<GasPriceInfo> {
         // TODO: Implement caching based on fee_config.cache_ttl_secs
         // For now, fetch fresh data each time
@@ -147,7 +220,27 @@ impl FeePricingEngine {
             .context("Failed to get gas price from Reth node")
     }
 
-    /// Estimate gas usage for a commitment based on type and payload
+    /// Estimate gas usage for a commitment based on its type and payload.
+    ///
+    /// This returns a conservative gas estimate used for congestion and fee projections:
+    /// - Commitment type `1` (inclusion): attempts to parse an inclusion payload and estimates gas as
+    ///   21,000 (base) + 16 gas per byte of the signed transaction + a 10,000 overhead. If parsing
+    ///   fails, falls back to 50,000.
+    /// - Commitment type `2` (execution): uses a fixed default estimate of 100,000.
+    /// - Other commitment types: returns an error.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(u64)` with the estimated gas for the commitment, or an `Err` if the commitment type is unknown.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Assuming `engine` is a FeePricingEngine instance
+    /// let payload = vec![0u8; 128];
+    /// let estimate = engine.estimate_gas_for_commitment(1, &payload).unwrap();
+    /// assert!(estimate >= 21_000);
+    /// ```
     fn estimate_gas_for_commitment(
         &self,
         commitment_type: u64,
@@ -225,12 +318,48 @@ impl FeePricingEngine {
         Ok(projected)
     }
 
-    /// Get current slot for fee calculations
+    /// Determine the current beacon-chain slot used for fee calculations.
+    
+    ///
+    
+    /// Returns the current slot index as a `u64`.
+    
+    ///
+    
+    /// # Examples
+    
+    ///
+    
+    /// ```
+    
+    /// let engine = /* FeePricingEngine constructed elsewhere */;
+    
+    /// let slot = engine.get_current_slot();
+    
+    /// // `slot` is the current beacon-chain slot used when computing fees
+    
+    /// ```
     pub fn get_current_slot(&self) -> u64 {
         BeaconTiming::current_slot_estimate(self.config.beacon_api.genesis_time)
     }
 
-    /// Check if a slot is within acceptable range for fee calculation
+    /// Determine whether a slot is within the acceptable window for fee calculation.
+    ///
+    /// Acceptable slots are from the engine's current slot up to 10 slots ahead (inclusive).
+    ///
+    /// # Returns
+    ///
+    /// `true` if `slot` is greater than or equal to the current slot and less than or equal to the current slot plus 10, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // `engine` is an instance of FeePricingEngine
+    /// let current = engine.get_current_slot();
+    /// assert!(engine.is_slot_acceptable_for_fees(current));
+    /// assert!(engine.is_slot_acceptable_for_fees(current + 10));
+    /// assert!(!engine.is_slot_acceptable_for_fees(current + 11));
+    /// ```
     pub fn is_slot_acceptable_for_fees(&self, slot: u64) -> bool {
         let current_slot = self.get_current_slot();
         let max_lookahead = 10; // Allow fees for next 10 slots
@@ -238,7 +367,20 @@ impl FeePricingEngine {
         slot >= current_slot && slot <= current_slot + max_lookahead
     }
 
-    /// Start background fee cache refresh service
+    /// Starts a background task that periodically refreshes the gas price cache.
+    ///
+    /// The refresh interval is computed as half of the configured `cache_ttl_secs`, clamped to at least
+    /// 1 second. The function spawns a background task to fetch the current gas price at that interval
+    /// and logs refresh successes and failures. Returns once the background task has been started.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # tokio_test::block_on(async {
+    /// let engine = /* construct FeePricingEngine */ unimplemented!();
+    /// engine.start_cache_refresh_service().await.unwrap();
+    /// # });
+    /// ```
     pub async fn start_cache_refresh_service(&self) -> Result<()> {
         info!("Starting fee pricing cache refresh service");
 
@@ -272,7 +414,30 @@ impl FeePricingEngine {
         Ok(())
     }
 
-    /// Get pricing statistics for monitoring
+    /// Return current pricing metrics for monitoring and observability.
+    ///
+    /// The returned `PricingStats` contains the engine's current slot estimate, an optional
+    /// best-effort base gas price, and aggregated congestion/fee-multiplier statistics
+    /// computed from persisted slot congestion data. `current_base_gas_price` will be
+    /// `None` if the gas-price fetch fails.
+    ///
+    /// # Returns
+    ///
+    /// A `PricingStats` struct populated with the current slot, optional base gas price,
+    /// average congestion ratio, average fee multiplier, total tracked slots, and the
+    /// highest-observed congestion slot and ratio.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use tokio::runtime::Runtime;
+    /// # async fn _example(engine: Arc<crate::services::fee_pricing::FeePricingEngine>) {
+    /// let stats = engine.get_pricing_stats().await.unwrap();
+    /// // inspect returned metrics
+    /// let _current_slot = stats.current_slot;
+    /// # }
+    /// ```
     pub async fn get_pricing_stats(&self) -> Result<PricingStats> {
         let congestion_stats = self.database.get_congestion_stats().await?;
         let current_slot = self.get_current_slot();
@@ -312,6 +477,22 @@ mod tests {
     use crate::api::reth::RethApiConfig;
     use crate::config::Config;
 
+    /// Verifies that gas estimation for inclusion commitments scales with payload size and returns values within expected bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Small payload should require more than base tx cost but remain reasonable
+    /// let small_payload = vec![0u8; 100];
+    /// let gas = engine.estimate_gas_for_commitment(1, &small_payload).unwrap();
+    /// assert!(gas > 21_000);
+    /// assert!(gas < 100_000);
+    ///
+    /// // Larger payload should not produce a smaller estimate than the smaller payload
+    /// let large_payload = vec![0u8; 1000];
+    /// let large_gas = engine.estimate_gas_for_commitment(1, &large_payload).unwrap();
+    /// assert!(large_gas >= gas);
+    /// ```
     #[tokio::test]
     async fn test_gas_estimation_inclusion() {
         let config = Config::default();

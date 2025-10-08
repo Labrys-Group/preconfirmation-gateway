@@ -10,11 +10,25 @@ use uuid::Uuid;
 
 use crate::types::{Commitment, SignedCommitment, PayloadParser};
 
-/// Save a signed commitment to the database
+/// Insert a SignedCommitment into the commitments table and record its payload slot for later constraint submission queries.
 ///
-/// This function stores a complete SignedCommitment with all its fields
-/// in the commitments table for later retrieval.
-/// It also extracts and stores the slot number from the payload for constraint submission queries.
+/// Extracts the slot number from the commitment payload when present and stores it in the row.
+///
+/// # Returns
+///
+/// `Uuid` of the newly inserted commitment row.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # use uuid::Uuid;
+/// # use crate::types::SignedCommitment;
+/// # async fn doc_example(pool: &PgPool, signed: &SignedCommitment) {
+/// let id: Uuid = crate::db::operations::save_commitment(pool, signed).await.unwrap();
+/// println!("inserted id = {}", id);
+/// # }
+/// ```
 pub async fn save_commitment(
 	pool: &PgPool,
 	signed_commitment: &SignedCommitment,
@@ -59,10 +73,26 @@ pub async fn save_commitment(
 	Ok(row.id)
 }
 
-/// Retrieve a signed commitment by request hash
+/// Look up a signed commitment by its request hash.
 ///
-/// This function looks up a commitment using its request_hash and returns
-/// the complete SignedCommitment if found.
+/// Returns the complete `SignedCommitment` if a row with the given `request_hash` exists in the database,
+/// otherwise returns `None`.
+///
+/// # Examples
+///
+/// ```
+/// # async fn _example(pool: &sqlx::PgPool) -> anyhow::Result<()> {
+/// let maybe_signed = crate::db::operations::get_commitment_by_hash(pool, "request_hash_value").await?;
+/// if let Some(signed) = maybe_signed {
+///     // use `signed.commitment` and `signed.signature`
+/// }
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Returns
+///
+/// `Some(SignedCommitment)` if a matching commitment exists, `None` otherwise.
 pub async fn get_commitment_by_hash(
 	pool: &PgPool,
 	request_hash: &str,
@@ -108,9 +138,22 @@ pub async fn get_commitment_by_hash(
 	}
 }
 
-/// Check if a commitment with the given request hash already exists
+/// Determines whether a commitment with the given request hash exists.
 ///
-/// This is useful for preventing duplicate commitments
+/// # Returns
+///
+/// `true` if a row with the provided `request_hash` exists in the `commitments` table, `false` otherwise.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # async fn example(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+/// let exists = crate::db::operations::commitment_exists(&pool, "some-request-hash").await?;
+/// println!("exists = {}", exists);
+/// # Ok(())
+/// # }
+/// ```
 pub async fn commitment_exists(pool: &PgPool, request_hash: &str) -> Result<bool> {
 	let row = sqlx::query!(
 		"SELECT EXISTS(SELECT 1 FROM commitments WHERE request_hash = $1)",
@@ -133,6 +176,22 @@ pub struct CommitmentStats {
 	pub latest_created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// Retrieve aggregated statistics about stored commitments.
+///
+/// Returns a `CommitmentStats` struct containing:
+/// - `total_count`: total number of commitments in the table,
+/// - `commitment_type_1_count`: number of commitments whose `commitment_type` equals 1,
+/// - `latest_created_at`: timestamp of the most recently created commitment, or `None` if there are no rows.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example(pool: sqlx::PgPool) -> anyhow::Result<()> {
+/// let stats = crate::db::operations::get_commitment_stats(&pool).await?;
+/// println!("total: {}", stats.total_count);
+/// # Ok(())
+/// # }
+/// ```
 pub async fn get_commitment_stats(pool: &PgPool) -> Result<CommitmentStats> {
 	let row = sqlx::query!(
 		r#"
@@ -154,10 +213,21 @@ pub async fn get_commitment_stats(pool: &PgPool) -> Result<CommitmentStats> {
 	})
 }
 
-/// Get unprocessed commitments for a specific slot
+/// Fetches unprocessed commitments for the given slot in ascending creation order.
 ///
-/// This is used by the constraint submission service to find commitments
-/// that need to be converted to constraints and submitted to the relay.
+/// Returns a vector of `SignedCommitment` for rows whose `slot_number` matches `slot` and whose
+/// `constraint_processed` flag is `false`.
+///
+/// # Examples
+///
+/// ```
+/// # async fn example(pool: &sqlx::PgPool) -> anyhow::Result<()> {
+/// let slot = 42u64;
+/// let commitments = crate::db::operations::get_unprocessed_commitments_for_slot(pool, slot).await?;
+/// assert!(commitments.iter().all(|c| c.commitment.request_hash.len() > 0));
+/// # Ok(())
+/// # }
+/// ```
 pub async fn get_unprocessed_commitments_for_slot(
 	pool: &PgPool,
 	slot: u64,
@@ -208,9 +278,23 @@ pub async fn get_unprocessed_commitments_for_slot(
 	Ok(commitments)
 }
 
-/// Mark commitments as processed after they've been converted to constraints
+/// Mark commitments identified by the given request hashes as processed.
 ///
-/// This prevents duplicate constraint submissions for the same commitment.
+/// Sets `constraint_processed = TRUE` for all rows whose `request_hash` matches any value in
+/// `request_hashes` and returns the number of rows that were updated.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # use uuid::Uuid;
+/// # async fn example(pool: &PgPool) -> Result<(), anyhow::Error> {
+/// let hashes = vec!["req_hash_1".to_string(), "req_hash_2".to_string()];
+/// let updated = mark_commitments_as_processed(pool, &hashes).await?;
+/// println!("Marked {} commitments as processed", updated);
+/// # Ok(())
+/// # }
+/// ```
 pub async fn mark_commitments_as_processed(
 	pool: &PgPool,
 	request_hashes: &[String],
@@ -240,6 +324,19 @@ mod tests {
 	use crate::types::{Commitment, SignedCommitment};
 	use sqlx::PgPool;
 
+	/// Creates a PostgreSQL connection pool configured for use by tests.
+	///
+	/// This function is a placeholder intended to establish and return a `PgPool` connected to the
+	/// test database; replace its body with test-specific connection logic.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # async fn run() {
+	/// let pool = setup_test_pool().await;
+	/// // use `pool` for test queries
+	/// # }
+	/// ```
 	async fn setup_test_pool() -> PgPool {
 		// This would connect to a test database
 		// For now, we'll skip actual DB tests until we have the database running
