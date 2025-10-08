@@ -10,7 +10,7 @@ use crate::api::beacon::BeaconApiClient;
 use crate::api::constraints::ConstraintsApiClient;
 use crate::config::Config;
 use crate::db::delegation_ops::save_delegations_batch;
-use crate::types::beacon::BeaconTiming;
+use crate::types::beacon::{BeaconTiming, timing};
 use crate::types::delegation::SignedDelegation;
 
 /// Service that proactively polls for delegation data and maintains the database
@@ -125,13 +125,18 @@ async fn poll_delegations(
     // Get current slot and calculate the range we need to poll for
     let genesis_time = config.beacon_api.genesis_time;
     let current_slot = BeaconTiming::current_slot_estimate(genesis_time);
-    let lookahead_slots = 32; // Default to 1 epoch
+
+    // Calculate lookahead slots from configured epoch count
+    let lookahead_slots = config.delegation.lookahead_epochs * timing::SLOTS_PER_EPOCH;
 
     // Poll for current slot + lookahead range
     let start_slot = current_slot;
     let end_slot = current_slot + lookahead_slots;
 
-    info!("Polling delegations for slots {} to {}", start_slot, end_slot);
+    info!(
+        "Polling delegations for slots {} to {} ({} epochs lookahead)",
+        start_slot, end_slot, config.delegation.lookahead_epochs
+    );
 
     let mut total_delegations_found = 0;
     let mut successful_saves = 0;
