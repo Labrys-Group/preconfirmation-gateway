@@ -8,13 +8,13 @@
 
 use anyhow::{Context, Result};
 use blst::{
-	min_pk::{PublicKey as BlsPublicKey, SecretKey as BlsSecretKey, Signature as BlsSignature},
 	BLST_ERROR,
+	min_pk::{PublicKey as BlsPublicKey, SecretKey as BlsSecretKey, Signature as BlsSignature},
 };
-use ethabi::{encode, Token};
+use ethabi::{Token, encode};
 
-use crate::types::delegation::{ConstraintsMessage, DelegationMessage, SignedDelegation};
 use super::keccak256;
+use crate::types::delegation::{ConstraintsMessage, DelegationMessage, SignedDelegation};
 
 /// Domain separation constants
 pub mod domains {
@@ -24,8 +24,7 @@ pub mod domains {
 	/// Parse domain separator from hex configuration string
 	pub fn parse_application_gateway_domain(hex_str: &str) -> Result<[u8; 4], anyhow::Error> {
 		let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-		let bytes = hex::decode(hex_str)
-			.map_err(|e| anyhow::anyhow!("Invalid domain hex: {}", e))?;
+		let bytes = hex::decode(hex_str).map_err(|e| anyhow::anyhow!("Invalid domain hex: {}", e))?;
 
 		if bytes.len() != 4 {
 			anyhow::bail!("Domain separator must be 4 bytes, got {}", bytes.len());
@@ -46,8 +45,8 @@ pub struct BlsManager {
 impl BlsManager {
 	/// Create new BLS manager with configurable domain
 	pub fn new(domain_hex: &str) -> Result<Self> {
-		let application_gateway_domain = domains::parse_application_gateway_domain(domain_hex)
-			.context("Invalid application gateway domain")?;
+		let application_gateway_domain =
+			domains::parse_application_gateway_domain(domain_hex).context("Invalid application gateway domain")?;
 
 		Ok(Self { application_gateway_domain })
 	}
@@ -98,7 +97,7 @@ impl BlsManager {
 			Token::Bytes(message.proposer.0.to_vec()), // BLS public key (48 bytes)
 			Token::Bytes(message.delegate.0.to_vec()), // BLS public key (48 bytes)
 			Token::Address(self.parse_ethereum_address(&message.committer)?), // Ethereum address
-			Token::Uint(message.slot.into()), // Slot number
+			Token::Uint(message.slot.into()),          // Slot number
 		];
 
 		Ok(encode(&tokens))
@@ -111,26 +110,19 @@ impl BlsManager {
 			.constraints
 			.iter()
 			.map(|c| -> Result<Token, anyhow::Error> {
-				Ok(Token::Tuple(vec![
-					Token::Uint(c.constraint_type.into()),
-					Token::Bytes(c.payload.clone()),
-				]))
+				Ok(Token::Tuple(vec![Token::Uint(c.constraint_type.into()), Token::Bytes(c.payload.clone())]))
 			})
 			.collect();
 
 		// Encode receivers list
-		let receiver_tokens: Vec<Token> = message
-			.receivers
-			.iter()
-			.map(|r| Token::Bytes(r.0.to_vec()))
-			.collect();
+		let receiver_tokens: Vec<Token> = message.receivers.iter().map(|r| Token::Bytes(r.0.to_vec())).collect();
 
 		let tokens = vec![
 			Token::Bytes(message.proposer.0.to_vec()), // BLS public key
 			Token::Bytes(message.delegate.0.to_vec()), // BLS public key
-			Token::Uint(message.slot.into()), // Slot number
-			Token::Array(constraint_tokens?), // Constraints array
-			Token::Array(receiver_tokens), // Receivers array
+			Token::Uint(message.slot.into()),          // Slot number
+			Token::Array(constraint_tokens?),          // Constraints array
+			Token::Array(receiver_tokens),             // Receivers array
 		];
 
 		Ok(encode(&tokens))
@@ -149,8 +141,7 @@ impl BlsManager {
 	/// Parse Ethereum address string to ethabi::Address
 	fn parse_ethereum_address(&self, address_str: &str) -> Result<ethabi::Address> {
 		let hex_str = address_str.strip_prefix("0x").unwrap_or(address_str);
-		let bytes = hex::decode(hex_str)
-			.context("Invalid hex string")?;
+		let bytes = hex::decode(hex_str).context("Invalid hex string")?;
 
 		if bytes.len() != 20 {
 			anyhow::bail!("Ethereum address must be 20 bytes, got {}", bytes.len());
@@ -179,29 +170,25 @@ pub mod keys {
 	/// Parse BLS private key from hex string
 	pub fn parse_private_key(hex_str: &str) -> Result<BlsSecretKey> {
 		let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-		let bytes = hex::decode(hex_str)
-			.context("Invalid hex string")?;
+		let bytes = hex::decode(hex_str).context("Invalid hex string")?;
 
 		if bytes.len() != 32 {
 			anyhow::bail!("BLS private key must be 32 bytes, got {}", bytes.len());
 		}
 
-		BlsSecretKey::from_bytes(&bytes)
-			.map_err(|e| anyhow::anyhow!("Invalid BLS private key: {:?}", e))
+		BlsSecretKey::from_bytes(&bytes).map_err(|e| anyhow::anyhow!("Invalid BLS private key: {:?}", e))
 	}
 
 	/// Parse BLS public key from hex string
 	pub fn parse_public_key(hex_str: &str) -> Result<BlsPublicKey> {
 		let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-		let bytes = hex::decode(hex_str)
-			.context("Invalid hex string")?;
+		let bytes = hex::decode(hex_str).context("Invalid hex string")?;
 
 		if bytes.len() != 48 {
 			anyhow::bail!("BLS public key must be 48 bytes, got {}", bytes.len());
 		}
 
-		BlsPublicKey::from_bytes(&bytes)
-			.map_err(|e| anyhow::anyhow!("Invalid BLS public key: {:?}", e))
+		BlsPublicKey::from_bytes(&bytes).map_err(|e| anyhow::anyhow!("Invalid BLS public key: {:?}", e))
 	}
 
 	/// Convert BLS public key to 48-byte array
@@ -216,7 +203,9 @@ pub mod keys {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::types::delegation::{BlsPublicKey as GatewayBlsPublicKey, Constraint, ConstraintsMessage, DelegationMessage};
+	use crate::types::delegation::{
+		BlsPublicKey as GatewayBlsPublicKey, Constraint, ConstraintsMessage, DelegationMessage,
+	};
 
 	#[test]
 	fn test_domain_parsing() {
@@ -249,16 +238,11 @@ mod tests {
 			proposer: GatewayBlsPublicKey([1u8; 48]),
 			delegate: GatewayBlsPublicKey(keys::pubkey_to_bytes(&public_key)),
 			slot: 12345,
-			constraints: vec![Constraint {
-				constraint_type: 1,
-				payload: vec![1, 2, 3, 4],
-			}],
+			constraints: vec![Constraint { constraint_type: 1, payload: vec![1, 2, 3, 4] }],
 			receivers: vec![GatewayBlsPublicKey([2u8; 48])],
 		};
 
-		let signature_bytes = bls_manager
-			.sign_constraints_message(&message, &private_key)
-			.unwrap();
+		let signature_bytes = bls_manager.sign_constraints_message(&message, &private_key).unwrap();
 
 		assert_eq!(signature_bytes.len(), 96);
 

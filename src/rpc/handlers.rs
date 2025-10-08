@@ -1,143 +1,128 @@
-use std::sync::Arc;
 use jsonrpsee::Extensions;
 use jsonrpsee::core::RpcResult;
-use tracing::{debug, info, warn, error, instrument};
+use std::sync::Arc;
+use tracing::{debug, error, info, instrument, warn};
 
-use super::super::types::{
-    Commitment, CommitmentRequest, FeeInfo, RpcContext, SignedCommitment, SlotInfoResponse,
-    PayloadParser, BeaconTiming,
-};
-use super::super::types::rpc::{Offering, SlotInfo};
 use super::super::types::beacon::timing;
+use super::super::types::rpc::{Offering, SlotInfo};
+use super::super::types::{
+	BeaconTiming, Commitment, CommitmentRequest, FeeInfo, PayloadParser, RpcContext, SignedCommitment, SlotInfoResponse,
+};
 use crate::crypto::{generate_request_hash, sign_commitment};
 use crate::db::delegation_ops::get_delegations_for_slot;
 use crate::utils::address::normalize_address;
 
 /// Validate payload and extract slot number
 fn validate_and_extract_slot(commitment_type: u64, payload: &[u8]) -> Result<u64, String> {
-    PayloadParser::extract_slot(commitment_type, payload)
-        .map_err(|e| format!("Failed to extract slot from payload: {}", e))
+	PayloadParser::extract_slot(commitment_type, payload)
+		.map_err(|e| format!("Failed to extract slot from payload: {}", e))
 }
 
 /// Check if we have valid delegation authority for the given slot and committer
-async fn verify_delegation_authority(
-    context: &RpcContext,
-    slot: u64,
-    committer_address: &str
-) -> Result<(), String> {
-    // Get delegations for this slot from the database
-    let delegations = get_delegations_for_slot(context.database.pool(), slot).await
-        .map_err(|e| format!("Failed to query delegations for slot {}: {}", slot, e))?;
+async fn verify_delegation_authority(context: &RpcContext, slot: u64, committer_address: &str) -> Result<(), String> {
+	// Get delegations for this slot from the database
+	let delegations = get_delegations_for_slot(context.database.pool(), slot)
+		.await
+		.map_err(|e| format!("Failed to query delegations for slot {}: {}", slot, e))?;
 
-    // Check if we have any delegation for this slot and committer
-    let canonical_committer = normalize_address(committer_address);
-    let matching_delegation = delegations.iter().find(|delegation| {
-        normalize_address(&delegation.message.committer) == canonical_committer
-            && delegation.is_valid_for_slot(slot)
-    });
+	// Check if we have any delegation for this slot and committer
+	let canonical_committer = normalize_address(committer_address);
+	let matching_delegation = delegations.iter().find(|delegation| {
+		normalize_address(&delegation.message.committer) == canonical_committer && delegation.is_valid_for_slot(slot)
+	});
 
-    let delegation = match matching_delegation {
-        Some(d) => d,
-        None => {
-            return Err(format!(
-                "No valid delegation found for slot {} and committer {}. Cannot sign commitment without delegation authority.",
-                slot, committer_address
-            ));
-        }
-    };
+	let delegation = match matching_delegation {
+		Some(d) => d,
+		None => {
+			return Err(format!(
+				"No valid delegation found for slot {} and committer {}. Cannot sign commitment without delegation authority.",
+				slot, committer_address
+			));
+		}
+	};
 
-    // CRITICAL SECURITY: Verify the BLS signature on the delegation
-    let bls_manager = crate::crypto::bls::BlsManager::new(&context.config.delegation.domain_application_gateway)
-        .map_err(|e| format!("Failed to create BLS manager: {}", e))?;
+	// CRITICAL SECURITY: Verify the BLS signature on the delegation
+	let bls_manager = crate::crypto::bls::BlsManager::new(&context.config.delegation.domain_application_gateway)
+		.map_err(|e| format!("Failed to create BLS manager: {}", e))?;
 
-    match bls_manager.verify_delegation_signature(delegation) {
-        Ok(true) => {
-            debug!(
-                "BLS signature verified for delegation slot {} committer {}",
-                slot, committer_address
-            );
-        }
-        Ok(false) => {
-            return Err(format!(
-                "Invalid BLS signature on delegation for slot {} and committer {}. Rejecting potentially tampered delegation.",
-                slot, committer_address
-            ));
-        }
-        Err(e) => {
-            return Err(format!(
-                "Failed to verify BLS signature on delegation for slot {}: {}",
-                slot, e
-            ));
-        }
-    }
+	match bls_manager.verify_delegation_signature(delegation) {
+		Ok(true) => {
+			debug!("BLS signature verified for delegation slot {} committer {}", slot, committer_address);
+		}
+		Ok(false) => {
+			return Err(format!(
+				"Invalid BLS signature on delegation for slot {} and committer {}. Rejecting potentially tampered delegation.",
+				slot, committer_address
+			));
+		}
+		Err(e) => {
+			return Err(format!("Failed to verify BLS signature on delegation for slot {}: {}", slot, e));
+		}
+	}
 
-    // CRITICAL SECURITY: Verify that the proposer in the delegation is actually
-    // the scheduled validator for this slot according to the beacon chain
-    match context.beacon_client.get_proposer_for_slot(slot).await {
-        Ok(Some(proposer_duty)) => {
-            // Parse the beacon API's public key from hex string
-            let scheduled_proposer = match proposer_duty.parse_pubkey() {
-                Ok(pubkey) => pubkey,
-                Err(e) => {
-                    return Err(format!(
-                        "Failed to parse proposer public key from beacon API for slot {}: {}",
-                        slot, e
-                    ));
-                }
-            };
+	// CRITICAL SECURITY: Verify that the proposer in the delegation is actually
+	// the scheduled validator for this slot according to the beacon chain
+	match context.beacon_client.get_proposer_for_slot(slot).await {
+		Ok(Some(proposer_duty)) => {
+			// Parse the beacon API's public key from hex string
+			let scheduled_proposer = match proposer_duty.parse_pubkey() {
+				Ok(pubkey) => pubkey,
+				Err(e) => {
+					return Err(format!(
+						"Failed to parse proposer public key from beacon API for slot {}: {}",
+						slot, e
+					));
+				}
+			};
 
-            let delegation_proposer = &delegation.message.proposer;
+			let delegation_proposer = &delegation.message.proposer;
 
-            if scheduled_proposer.0 != delegation_proposer.0 {
-                return Err(format!(
-                    "Delegation proposer mismatch for slot {}: delegation claims proposer 0x{}, but beacon chain shows 0x{}. Rejecting potentially fraudulent delegation.",
-                    slot,
-                    hex::encode(delegation_proposer.0),
-                    hex::encode(scheduled_proposer.0)
-                ));
-            }
+			if scheduled_proposer.0 != delegation_proposer.0 {
+				return Err(format!(
+					"Delegation proposer mismatch for slot {}: delegation claims proposer 0x{}, but beacon chain shows 0x{}. Rejecting potentially fraudulent delegation.",
+					slot,
+					hex::encode(delegation_proposer.0),
+					hex::encode(scheduled_proposer.0)
+				));
+			}
 
-            info!(
-                "Beacon validation passed: proposer 0x{} is confirmed for slot {}",
-                hex::encode(scheduled_proposer.0),
-                slot
-            );
-        }
-        Ok(None) => {
-            return Err(format!(
-                "No proposer scheduled for slot {} according to beacon chain. Cannot validate delegation authority.",
-                slot
-            ));
-        }
-        Err(e) => {
-            return Err(format!(
-                "Failed to query beacon chain for slot {}: {}. Cannot validate delegation without beacon chain confirmation.",
-                slot, e
-            ));
-        }
-    }
+			info!(
+				"Beacon validation passed: proposer 0x{} is confirmed for slot {}",
+				hex::encode(scheduled_proposer.0),
+				slot
+			);
+		}
+		Ok(None) => {
+			return Err(format!(
+				"No proposer scheduled for slot {} according to beacon chain. Cannot validate delegation authority.",
+				slot
+			));
+		}
+		Err(e) => {
+			return Err(format!(
+				"Failed to query beacon chain for slot {}: {}. Cannot validate delegation without beacon chain confirmation.",
+				slot, e
+			));
+		}
+	}
 
-    info!(
-        "Delegation authority verified for slot {} and committer {}",
-        slot, committer_address
-    );
-    Ok(())
+	info!("Delegation authority verified for slot {} and committer {}", slot, committer_address);
+	Ok(())
 }
 
 /// Find the appropriate ECDSA key for signing based on the committer address
 fn find_signing_key_for_committer<'a>(
-    context: &'a RpcContext,
-    committer_address: &str,
+	context: &'a RpcContext,
+	committer_address: &str,
 ) -> Result<&'a secp256k1::SecretKey, String> {
-    if normalize_address(committer_address) == normalize_address(&context.config.signing.committer_address) {
-        return Ok(&context.config.signing.ecdsa_private_key);
-    }
+	if normalize_address(committer_address) == normalize_address(&context.config.signing.committer_address) {
+		return Ok(&context.config.signing.ecdsa_private_key);
+	}
 
-    Err(format!(
-        "No signing key found for committer address: {}. Available address: {}",
-        committer_address,
-        context.config.signing.committer_address
-    ))
+	Err(format!(
+		"No signing key found for committer address: {}. Available address: {}",
+		committer_address, context.config.signing.committer_address
+	))
 }
 
 #[instrument(name = "commitment_request", skip(context, _extensions))]
@@ -158,41 +143,36 @@ pub async fn commitment_request_handler(
 	}
 
 	// Extract slot from payload - CRITICAL: This must succeed before any signing
-	let slot = validate_and_extract_slot(request.commitment_type, &request.payload)
-		.map_err(|e| {
-			warn!("Payload validation failed: {}", e);
-			jsonrpsee::types::error::ErrorCode::InvalidParams
-		})?;
+	let slot = validate_and_extract_slot(request.commitment_type, &request.payload).map_err(|e| {
+		warn!("Payload validation failed: {}", e);
+		jsonrpsee::types::error::ErrorCode::InvalidParams
+	})?;
 
 	info!("Extracted slot {} from commitment payload", slot);
 
 	// DELEGATION-FIRST SECURITY: Verify delegation authority BEFORE any signing
-	verify_delegation_authority(&context, slot, &request.slasher).await
-		.map_err(|e| {
-			error!("Delegation verification failed: {}", e);
-			jsonrpsee::types::error::ErrorCode::InvalidRequest
-		})?;
+	verify_delegation_authority(&context, slot, &request.slasher).await.map_err(|e| {
+		error!("Delegation verification failed: {}", e);
+		jsonrpsee::types::error::ErrorCode::InvalidRequest
+	})?;
 
 	// Find the appropriate signing key for this committer
-	let signing_key = find_signing_key_for_committer(&context, &request.slasher)
-		.map_err(|e| {
-			error!("No signing key found: {}", e);
-			jsonrpsee::types::error::ErrorCode::InvalidRequest
-		})?;
+	let signing_key = find_signing_key_for_committer(&context, &request.slasher).map_err(|e| {
+		error!("No signing key found: {}", e);
+		jsonrpsee::types::error::ErrorCode::InvalidRequest
+	})?;
 
 	// Generate request hash
-	let request_hash = generate_request_hash(&request)
-		.map_err(|e| {
-			error!("Failed to generate request hash: {}", e);
-			jsonrpsee::types::error::ErrorCode::InternalError
-		})?;
+	let request_hash = generate_request_hash(&request).map_err(|e| {
+		error!("Failed to generate request hash: {}", e);
+		jsonrpsee::types::error::ErrorCode::InternalError
+	})?;
 
 	// Check if commitment already exists to prevent duplicates
-	if context.database.commitment_exists(&request_hash).await
-		.map_err(|e| {
-			error!("Database error checking commitment existence: {}", e);
-			jsonrpsee::types::error::ErrorCode::InternalError
-		})? {
+	if context.database.commitment_exists(&request_hash).await.map_err(|e| {
+		error!("Database error checking commitment existence: {}", e);
+		jsonrpsee::types::error::ErrorCode::InternalError
+	})? {
 		warn!("Duplicate commitment request: {}", request_hash);
 		return Err(jsonrpsee::types::error::ErrorCode::InvalidRequest.into());
 	}
@@ -206,27 +186,23 @@ pub async fn commitment_request_handler(
 	};
 
 	// Sign the commitment with the appropriate key
-	let signature = sign_commitment(&commitment, signing_key)
-		.map_err(|e| {
-			error!("Failed to sign commitment: {}", e);
-			jsonrpsee::types::error::ErrorCode::InternalError
-		})?;
+	let signature = sign_commitment(&commitment, signing_key).map_err(|e| {
+		error!("Failed to sign commitment: {}", e);
+		jsonrpsee::types::error::ErrorCode::InternalError
+	})?;
 
-	let signed_commitment = SignedCommitment {
-		commitment,
-		signature,
-	};
+	let signed_commitment = SignedCommitment { commitment, signature };
 
 	// Save to database
-	context.database.save_commitment(&signed_commitment).await
-		.map_err(|e| {
-			error!("Failed to save commitment to database: {}", e);
-			jsonrpsee::types::error::ErrorCode::InternalError
-		})?;
+	context.database.save_commitment(&signed_commitment).await.map_err(|e| {
+		error!("Failed to save commitment to database: {}", e);
+		jsonrpsee::types::error::ErrorCode::InternalError
+	})?;
 
 	// Track gas usage for congestion-based fee pricing
 	// Calculate fee to get gas estimation, then apply it to slot congestion
-	let fee_calc = context.fee_engine
+	let fee_calc = context
+		.fee_engine
 		.calculate_fee_for_commitment(request.commitment_type, &request.payload, slot)
 		.await
 		.map_err(|e| {
@@ -305,14 +281,11 @@ pub fn slots_handler(
 	for slot in start_slot..end_slot {
 		// Create offering for Hooli chain with inclusion commitments (type 1)
 		let hooli_offering = Offering {
-			chain_id: 560048, // Hooli chain ID
+			chain_id: 560048,          // Hooli chain ID
 			commitment_types: vec![1], // Only support inclusion commitments
 		};
 
-		let slot_info = SlotInfo {
-			slot,
-			offerings: vec![hooli_offering],
-		};
+		let slot_info = SlotInfo { slot, offerings: vec![hooli_offering] };
 
 		slots.push(slot_info);
 	}
@@ -320,12 +293,7 @@ pub fn slots_handler(
 	let slots_count = slots.len();
 	let response = SlotInfoResponse { slots };
 
-	info!(
-		"Slots request processed successfully: {} slots from {} to {}",
-		slots_count,
-		start_slot,
-		end_slot
-	);
+	info!("Slots request processed successfully: {} slots from {} to {}", slots_count, start_slot, end_slot);
 	Ok(response)
 }
 
@@ -345,11 +313,10 @@ pub async fn fee_handler(
 	}
 
 	// Extract slot from payload for fee calculation
-	let slot = validate_and_extract_slot(request.commitment_type, &request.payload)
-		.map_err(|e| {
-			warn!("Payload validation failed during fee calculation: {}", e);
-			jsonrpsee::types::error::ErrorCode::InvalidParams
-		})?;
+	let slot = validate_and_extract_slot(request.commitment_type, &request.payload).map_err(|e| {
+		warn!("Payload validation failed during fee calculation: {}", e);
+		jsonrpsee::types::error::ErrorCode::InvalidParams
+	})?;
 
 	info!("Calculating fee for slot {} with commitment type {}", slot, request.commitment_type);
 
@@ -360,12 +327,9 @@ pub async fn fee_handler(
 	}
 
 	// Calculate dynamic fee using the pricing engine
-	let fee_calculation = context.fee_engine
-		.calculate_fee_for_commitment(
-			request.commitment_type,
-			&request.payload,
-			slot,
-		)
+	let fee_calculation = context
+		.fee_engine
+		.calculate_fee_for_commitment(request.commitment_type, &request.payload, slot)
 		.await
 		.map_err(|e| {
 			error!("Failed to calculate fee for slot {}: {}", slot, e);
@@ -384,10 +348,7 @@ pub async fn fee_handler(
 	let congestion_ppm = (fee_calculation.congestion_ratio.clamp(0.0, 1.0) * 1_000_000.0) as u64;
 	fee_payload.extend_from_slice(&congestion_ppm.to_le_bytes());
 
-	let fee_info = FeeInfo {
-		fee_payload,
-		commitment_type: request.commitment_type,
-	};
+	let fee_info = FeeInfo { fee_payload, commitment_type: request.commitment_type };
 
 	info!(
 		"Fee calculation completed for slot {}: total_cost={} wei, price={} wei/gas, congestion={:.2}%",
@@ -403,28 +364,25 @@ pub async fn fee_handler(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::types::{CommitmentRequest, payload::InclusionPayload, payload::PayloadParser};
 	use crate::config::Config;
 	use crate::db::DatabaseContext;
+	use crate::types::{CommitmentRequest, payload::InclusionPayload, payload::PayloadParser};
 	use sqlx::PgPool;
 	use std::sync::Arc;
 
 	// Helper to create a test RPC context with minimal configuration
 	fn create_test_context() -> Arc<RpcContext> {
-		use crate::crypto::parse_private_key;
 		use crate::crypto::bls::keys;
+		use crate::crypto::parse_private_key;
 
-		let private_key = parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80").unwrap();
-		let bls_key = keys::parse_private_key("0x1234567890123456789012345678901234567890123456789012345678901234").unwrap();
+		let private_key =
+			parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80").unwrap();
+		let bls_key =
+			keys::parse_private_key("0x1234567890123456789012345678901234567890123456789012345678901234").unwrap();
 
 		let config = Config {
-			server: crate::config::ServerConfig {
-				host: "127.0.0.1".to_string(),
-				port: 8545,
-			},
-			database: crate::config::DatabaseConfig {
-				url: "postgresql://test:test@localhost/test_db".to_string(),
-			},
+			server: crate::config::ServerConfig { host: "127.0.0.1".to_string(), port: 8545 },
+			database: crate::config::DatabaseConfig { url: "postgresql://test:test@localhost/test_db".to_string() },
 			logging: crate::config::LoggingConfig {
 				level: "info".to_string(),
 				enable_method_tracing: false,
@@ -461,26 +419,21 @@ mod tests {
 		};
 
 		// Create a test database pool (won't actually connect in unit tests)
-		let pool = PgPool::connect_lazy(&config.database.url)
-			.expect("Failed to create test pool");
+		let pool = PgPool::connect_lazy(&config.database.url).expect("Failed to create test pool");
 		let database = DatabaseContext::new(pool);
 
 		// For testing purposes, create a minimal fee engine
-		use crate::api::reth::{RethApiClient, RethApiConfig};
 		use crate::api::beacon::BeaconApiClient;
+		use crate::api::reth::{RethApiClient, RethApiConfig};
 		use crate::services::fee_pricing::FeePricingEngine;
 
-		let reth_client = Arc::new(
-			RethApiClient::new(RethApiConfig::default()).unwrap()
-		);
+		let reth_client = Arc::new(RethApiClient::new(RethApiConfig::default()).unwrap());
 		let database_arc = Arc::new(database.clone());
 		let config_arc = Arc::new(config.clone());
 		let fee_engine = Arc::new(FeePricingEngine::new(reth_client, database_arc, config_arc.clone()));
 
 		// Create beacon API client for testing
-		let beacon_client = Arc::new(
-			BeaconApiClient::new(config.beacon_api.clone()).unwrap()
-		);
+		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
 
 		Arc::new(RpcContext::new(database, config, fee_engine, beacon_client))
 	}
@@ -517,9 +470,10 @@ mod tests {
 	#[test]
 	fn test_find_signing_key_for_committer_success() {
 		// Test key finding logic directly without database context
-		use crate::crypto::{parse_private_key, ecdsa_to_address};
+		use crate::crypto::{ecdsa_to_address, parse_private_key};
 
-		let private_key = parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80").unwrap();
+		let private_key =
+			parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80").unwrap();
 		let address = ecdsa_to_address(&private_key).unwrap();
 
 		// Test that we can find a key for the derived address
@@ -532,10 +486,12 @@ mod tests {
 	#[test]
 	fn test_find_signing_key_for_committer_not_found() {
 		// Test that different keys produce different addresses
-		use crate::crypto::{parse_private_key, ecdsa_to_address};
+		use crate::crypto::{ecdsa_to_address, parse_private_key};
 
-		let private_key1 = parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80").unwrap();
-		let private_key2 = parse_private_key("59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d").unwrap();
+		let private_key1 =
+			parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80").unwrap();
+		let private_key2 =
+			parse_private_key("59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d").unwrap();
 
 		let address1 = ecdsa_to_address(&private_key1).unwrap();
 		let address2 = ecdsa_to_address(&private_key2).unwrap();
@@ -565,10 +521,7 @@ mod tests {
 
 			// We can't call the handler directly due to database dependencies,
 			// but we can test the validation functions
-			let slot_result = validate_and_extract_slot(
-				invalid_request.commitment_type,
-				&invalid_request.payload
-			);
+			let slot_result = validate_and_extract_slot(invalid_request.commitment_type, &invalid_request.payload);
 			assert!(slot_result.is_err());
 
 			// Test 2: Valid commitment type but invalid payload
@@ -578,22 +531,15 @@ mod tests {
 				slasher: context.config.validation.slasher_address.clone(),
 			};
 
-			let slot_result = validate_and_extract_slot(
-				invalid_payload_request.commitment_type,
-				&invalid_payload_request.payload
-			);
+			let slot_result =
+				validate_and_extract_slot(invalid_payload_request.commitment_type, &invalid_payload_request.payload);
 			assert!(slot_result.is_err());
 
 			// Test 3: Valid payload structure
-			let valid_request = TestFixtures::create_inclusion_commitment_request(
-				12345,
-				&context.config.validation.slasher_address
-			);
+			let valid_request =
+				TestFixtures::create_inclusion_commitment_request(12345, &context.config.validation.slasher_address);
 
-			let slot_result = validate_and_extract_slot(
-				valid_request.commitment_type,
-				&valid_request.payload
-			);
+			let slot_result = validate_and_extract_slot(valid_request.commitment_type, &valid_request.payload);
 			assert!(slot_result.is_ok());
 			assert_eq!(slot_result.unwrap(), 12345);
 		}
@@ -601,10 +547,11 @@ mod tests {
 		#[test]
 		fn test_signing_key_management() {
 			// Test the ECDSA address derivation logic directly
-			use crate::crypto::{parse_private_key, ecdsa_to_address};
+			use crate::crypto::{ecdsa_to_address, parse_private_key};
 
 			// Test known private key to address mapping
-			let private_key = parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80").unwrap();
+			let private_key =
+				parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80").unwrap();
 			let derived_address = ecdsa_to_address(&private_key).unwrap();
 
 			// This is the expected address for this private key (from Hardhat)
@@ -617,10 +564,8 @@ mod tests {
 		#[test]
 		fn test_request_hash_generation_consistency() {
 			// Test that request hash generation is deterministic
-			let request = TestFixtures::create_inclusion_commitment_request(
-				12345,
-				"0x1234567890123456789012345678901234567890"
-			);
+			let request =
+				TestFixtures::create_inclusion_commitment_request(12345, "0x1234567890123456789012345678901234567890");
 
 			let hash1 = generate_request_hash(&request).unwrap();
 			let hash2 = generate_request_hash(&request).unwrap();
@@ -632,10 +577,8 @@ mod tests {
 		#[test]
 		fn test_commitment_structure_validation() {
 			// Test that our commitment structures are properly formed
-			let request = TestFixtures::create_inclusion_commitment_request(
-				12345,
-				"0x1234567890123456789012345678901234567890"
-			);
+			let request =
+				TestFixtures::create_inclusion_commitment_request(12345, "0x1234567890123456789012345678901234567890");
 
 			// Validate that we can extract slot
 			let slot = PayloadParser::extract_slot(request.commitment_type, &request.payload).unwrap();
@@ -652,17 +595,12 @@ mod tests {
 		#[test]
 		fn test_slots_handler_service_catalog() {
 			// Test the slots handler logic without database dependencies
-			use crate::config::{Config, BeaconApiConfig, DelegationConfig};
+			use crate::config::{BeaconApiConfig, Config, DelegationConfig};
 
 			// Create minimal config for testing
 			let config = Config {
-				server: crate::config::ServerConfig {
-					host: "127.0.0.1".to_string(),
-					port: 8545,
-				},
-				database: crate::config::DatabaseConfig {
-					url: "postgresql://test:test@localhost/test_db".to_string(),
-				},
+				server: crate::config::ServerConfig { host: "127.0.0.1".to_string(), port: 8545 },
+				database: crate::config::DatabaseConfig { url: "postgresql://test:test@localhost/test_db".to_string() },
 				logging: crate::config::LoggingConfig {
 					level: "info".to_string(),
 					enable_method_tracing: false,
@@ -704,14 +642,11 @@ mod tests {
 			let mut expected_slots = Vec::new();
 			for slot in expected_start_slot..expected_end_slot {
 				let hooli_offering = Offering {
-					chain_id: 560048, // Hooli chain ID
+					chain_id: 560048,          // Hooli chain ID
 					commitment_types: vec![1], // Only support inclusion commitments
 				};
 
-				let slot_info = SlotInfo {
-					slot,
-					offerings: vec![hooli_offering],
-				};
+				let slot_info = SlotInfo { slot, offerings: vec![hooli_offering] };
 
 				expected_slots.push(slot_info);
 			}
@@ -734,8 +669,8 @@ mod tests {
 
 			// Verify slots are in ascending order
 			for i in 1..expected_slots.len() {
-				assert!(expected_slots[i].slot > expected_slots[i-1].slot);
-				assert_eq!(expected_slots[i].slot, expected_slots[i-1].slot + 1);
+				assert!(expected_slots[i].slot > expected_slots[i - 1].slot);
+				assert_eq!(expected_slots[i].slot, expected_slots[i - 1].slot + 1);
 			}
 		}
 	}

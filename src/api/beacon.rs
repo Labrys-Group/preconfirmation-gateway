@@ -88,9 +88,7 @@ impl BeaconApiClient {
 		let duties = self.get_proposer_duties(epoch).await?;
 
 		// Find the duty for the specific slot
-		Ok(duties.data.into_iter().find(|duty| {
-			duty.parse_slot().unwrap_or(0) == slot
-		}))
+		Ok(duties.data.into_iter().find(|duty| duty.parse_slot().unwrap_or(0) == slot))
 	}
 
 	/// Internal method to make HTTP requests with error handling
@@ -107,10 +105,8 @@ impl BeaconApiClient {
 		debug!(url = %url, "Making beacon API request");
 
 		let request = self.client.get(&url);
-		let response = self.add_headers(request)
-			.send()
-			.await
-			.with_context(|| format!("Failed to send request to {}", url))?;
+		let response =
+			self.add_headers(request).send().await.with_context(|| format!("Failed to send request to {}", url))?;
 
 		if !response.status().is_success() {
 			let status = response.status();
@@ -118,19 +114,14 @@ impl BeaconApiClient {
 			anyhow::bail!("Beacon API request failed with status {}: {}", status, error_text);
 		}
 
-		let result: T = response
-			.json()
-			.await
-			.with_context(|| format!("Failed to parse response from {}", url))?;
+		let result: T = response.json().await.with_context(|| format!("Failed to parse response from {}", url))?;
 
 		Ok(result)
 	}
 
 	/// Add necessary headers to the request
 	fn add_headers(&self, request: RequestBuilder) -> RequestBuilder {
-		request
-			.header("Content-Type", "application/json")
-			.header("User-Agent", "preconfirmation-gateway/0.1.0")
+		request.header("Content-Type", "application/json").header("User-Agent", "preconfirmation-gateway/0.1.0")
 	}
 }
 
@@ -142,9 +133,7 @@ mod tests {
 	fn create_test_config() -> BeaconApiConfig {
 		BeaconApiConfig {
 			primary_endpoint: "https://eth-mainnet.g.alchemy.com/v2/test".to_string(),
-			fallback_endpoints: vec![
-				"https://beacon-nd-123-456-789.p2pify.com".to_string()
-			],
+			fallback_endpoints: vec!["https://beacon-nd-123-456-789.p2pify.com".to_string()],
 			request_timeout_secs: 30,
 			genesis_time: 1606824023, // Ethereum mainnet genesis
 		}

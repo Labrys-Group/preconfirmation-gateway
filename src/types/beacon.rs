@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::delegation::BlsPublicKey;
+use serde::{Deserialize, Serialize};
 
 /// Beacon chain slot timing constants
 pub mod timing {
@@ -91,10 +91,7 @@ impl BeaconTiming {
 	/// Get current slot based on genesis time
 	/// Note: This is a simplified calculation, production should use actual beacon state
 	pub fn current_slot_estimate(genesis_time: u64) -> u64 {
-		let now = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap()
-			.as_secs();
+		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 
 		if now < genesis_time {
 			return 0;
@@ -106,10 +103,7 @@ impl BeaconTiming {
 	/// Calculate time until slot starts (in seconds)
 	pub fn time_until_slot(genesis_time: u64, target_slot: u64) -> i64 {
 		let slot_start_time = genesis_time + (target_slot * timing::SLOT_DURATION_SECONDS);
-		let now = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap()
-			.as_secs();
+		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 
 		slot_start_time as i64 - now as i64
 	}
@@ -122,10 +116,7 @@ impl BeaconTiming {
 	/// Check if we're still within the constraint submission window
 	pub fn is_within_constraint_window(genesis_time: u64, slot: u64) -> bool {
 		let deadline = Self::constraint_deadline_for_slot(genesis_time, slot);
-		let now = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap()
-			.as_secs();
+		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 
 		now <= deadline
 	}
@@ -156,7 +147,9 @@ mod tests {
 	fn test_pubkey_parsing() {
 		let duty = ValidatorDuty {
 			validator_index: "123".to_string(),
-			pubkey: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+			pubkey:
+				"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+					.to_string(),
 			slot: "456".to_string(),
 		};
 
@@ -166,7 +159,8 @@ mod tests {
 		// Verify parsing works without 0x prefix too
 		let duty_no_prefix = ValidatorDuty {
 			validator_index: "123".to_string(),
-			pubkey: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+			pubkey: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+				.to_string(),
 			slot: "456".to_string(),
 		};
 

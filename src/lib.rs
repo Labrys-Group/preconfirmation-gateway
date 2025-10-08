@@ -12,8 +12,6 @@ pub mod utils;
 
 // Re-export commonly used types and functions for easier access
 pub use config::{Config, ValidationConfig};
-pub use db::{create_pool, test_connection, DatabaseContext};
+pub use db::{DatabaseContext, create_pool, test_connection};
 pub use rpc::handlers::{commitment_request_handler, commitment_result_handler, fee_handler, slots_handler};
-pub use types::{
-	Commitment, CommitmentRequest, FeeInfo, RpcContext, SignedCommitment, SlotInfoResponse,
-};
+pub use types::{Commitment, CommitmentRequest, FeeInfo, RpcContext, SignedCommitment, SlotInfoResponse};

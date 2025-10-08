@@ -19,38 +19,27 @@ async fn main() -> anyhow::Result<()> {
 		request_timeout_secs: config.reth.request_timeout_secs,
 		max_retries: config.reth.max_retries,
 	};
-	let reth_client = std::sync::Arc::new(
-		api::reth::RethApiClient::new(reth_api_config)?
-	);
+	let reth_client = std::sync::Arc::new(api::reth::RethApiClient::new(reth_api_config)?);
 
 	// Initialize fee pricing engine
-	let fee_engine = std::sync::Arc::new(
-		services::fee_pricing::FeePricingEngine::new(
-			reth_client,
-			std::sync::Arc::new(db_context.clone()),
-			std::sync::Arc::new(config.clone()),
-		)
-	);
+	let fee_engine = std::sync::Arc::new(services::fee_pricing::FeePricingEngine::new(
+		reth_client,
+		std::sync::Arc::new(db_context.clone()),
+		std::sync::Arc::new(config.clone()),
+	));
 
 	// Start fee pricing cache refresh service
 	fee_engine.start_cache_refresh_service().await?;
 	tracing::info!("Fee pricing cache refresh service started");
 
 	// Initialize beacon API client (needed for RPC context and background services)
-	let beacon_client = std::sync::Arc::new(
-		api::beacon::BeaconApiClient::new(config.beacon_api.clone())?
-	);
+	let beacon_client = std::sync::Arc::new(api::beacon::BeaconApiClient::new(config.beacon_api.clone())?);
 
 	// Create RPC context with database context, config, fee engine, and beacon client
-	let rpc_context = types::RpcContext::new(
-		db_context.clone(),
-		config.clone(),
-		fee_engine.clone(),
-		beacon_client.clone(),
-	);
-	let constraints_client = std::sync::Arc::new(
-		api::constraints::ConstraintsApiClient::new(config.constraints_api.clone())?
-	);
+	let rpc_context =
+		types::RpcContext::new(db_context.clone(), config.clone(), fee_engine.clone(), beacon_client.clone());
+	let constraints_client =
+		std::sync::Arc::new(api::constraints::ConstraintsApiClient::new(config.constraints_api.clone())?);
 
 	// Start delegation polling service
 	let delegation_service = services::delegation_polling::DelegationPollingService::new(
@@ -58,7 +47,8 @@ async fn main() -> anyhow::Result<()> {
 		constraints_client.clone(),
 		std::sync::Arc::new(db_context.pool().clone()),
 		std::sync::Arc::new(config.clone()),
-	).await?;
+	)
+	.await?;
 
 	delegation_service.start().await?;
 	tracing::info!("Delegation polling service started");
@@ -69,9 +59,7 @@ async fn main() -> anyhow::Result<()> {
 	}
 
 	// Initialize BLS Manager for constraint signing
-	let bls_manager = std::sync::Arc::new(
-		crypto::bls::BlsManager::new(&config.delegation.domain_application_gateway)?
-	);
+	let bls_manager = std::sync::Arc::new(crypto::bls::BlsManager::new(&config.delegation.domain_application_gateway)?);
 
 	// Start constraint submission service
 	let constraint_service = services::constraint_submission::ConstraintSubmissionService::new(
@@ -79,15 +67,14 @@ async fn main() -> anyhow::Result<()> {
 		bls_manager,
 		std::sync::Arc::new(db_context.pool().clone()),
 		std::sync::Arc::new(config.clone()),
-	).await?;
+	)
+	.await?;
 
 	constraint_service.start().await?;
 	tracing::info!("Constraint submission service started");
 
 	// Initialize Prometheus metrics
-	let metrics_registry = std::sync::Arc::new(
-		preconfirmation_gateway::metrics::MetricsRegistry::new()?
-	);
+	let metrics_registry = std::sync::Arc::new(preconfirmation_gateway::metrics::MetricsRegistry::new()?);
 	tracing::info!("Prometheus metrics registry initialized");
 
 	// Start background metrics updater
@@ -96,17 +83,15 @@ async fn main() -> anyhow::Result<()> {
 	let fee_for_metrics = fee_engine.clone();
 
 	let metrics_updater = tokio::spawn(async move {
-		use tokio::time::{interval, Duration};
+		use tokio::time::{Duration, interval};
 		let mut ticker = interval(Duration::from_secs(15));
 
 		loop {
 			ticker.tick().await;
 			// Update metrics directly here to avoid type issues
 			if let Ok(commitment_stats) = db_for_metrics.get_stats().await {
-				metrics_for_updater.update_commitment_stats(
-					commitment_stats.total_count,
-					commitment_stats.commitment_type_1_count
-				);
+				metrics_for_updater
+					.update_commitment_stats(commitment_stats.total_count, commitment_stats.commitment_type_1_count);
 			}
 			if let Ok(delegation_stats) = db_for_metrics.get_delegation_stats().await {
 				metrics_for_updater.update_delegation_stats(
@@ -114,21 +99,19 @@ async fn main() -> anyhow::Result<()> {
 					delegation_stats.active_count,
 					delegation_stats.unique_proposers,
 					delegation_stats.unique_delegates,
-					delegation_stats.slots_covered
+					delegation_stats.slots_covered,
 				);
 			}
 			if let Ok(congestion_stats) = db_for_metrics.get_congestion_stats().await {
 				metrics_for_updater.update_congestion_stats(
 					congestion_stats.current_average_congestion,
 					congestion_stats.highest_congestion_ratio,
-					congestion_stats.average_fee_multiplier
+					congestion_stats.average_fee_multiplier,
 				);
 			}
 			if let Ok(pricing_stats) = fee_for_metrics.get_pricing_stats().await {
-				metrics_for_updater.update_pricing_stats(
-					pricing_stats.current_slot,
-					pricing_stats.current_base_gas_price
-				);
+				metrics_for_updater
+					.update_pricing_stats(pricing_stats.current_slot, pricing_stats.current_base_gas_price);
 			}
 		}
 	});
@@ -138,9 +121,9 @@ async fn main() -> anyhow::Result<()> {
 	let metrics_server = {
 		let metrics_registry = metrics_registry.clone();
 		tokio::spawn(async move {
-			use std::convert::Infallible;
 			use hyper::service::{make_service_fn, service_fn};
 			use hyper::{Body, Request, Response, Server};
+			use std::convert::Infallible;
 
 			async fn metrics_handler(
 				metrics: std::sync::Arc<preconfirmation_gateway::metrics::MetricsRegistry>,
@@ -154,10 +137,7 @@ async fn main() -> anyhow::Result<()> {
 						.unwrap()),
 					Err(e) => {
 						tracing::error!("Failed to render metrics: {}", e);
-						Ok(Response::builder()
-							.status(500)
-							.body(Body::from("Internal Server Error"))
-							.unwrap())
+						Ok(Response::builder().status(500).body(Body::from("Internal Server Error")).unwrap())
 					}
 				}
 			}
@@ -166,11 +146,7 @@ async fn main() -> anyhow::Result<()> {
 
 			let make_svc = make_service_fn(move |_conn| {
 				let metrics = metrics_registry.clone();
-				async move {
-					Ok::<_, Infallible>(service_fn(move |req| {
-						metrics_handler(metrics.clone(), req)
-					}))
-				}
+				async move { Ok::<_, Infallible>(service_fn(move |req| metrics_handler(metrics.clone(), req))) }
 			});
 
 			let server = Server::bind(&addr).serve(make_svc);

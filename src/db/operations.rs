@@ -4,26 +4,22 @@
 //! according to the Gateway specification.
 
 use anyhow::{Context, Result};
-use sqlx::{types::chrono, PgPool};
+use sqlx::{PgPool, types::chrono};
 use std::convert::TryFrom;
 use uuid::Uuid;
 
-use crate::types::{Commitment, SignedCommitment, PayloadParser};
+use crate::types::{Commitment, PayloadParser, SignedCommitment};
 
 /// Save a signed commitment to the database
 ///
 /// This function stores a complete SignedCommitment with all its fields
 /// in the commitments table for later retrieval.
 /// It also extracts and stores the slot number from the payload for constraint submission queries.
-pub async fn save_commitment(
-	pool: &PgPool,
-	signed_commitment: &SignedCommitment,
-) -> Result<Uuid> {
+pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment) -> Result<Uuid> {
 	let id = Uuid::new_v4();
 	let commitment = &signed_commitment.commitment;
 
-	let commitment_type = i64::try_from(commitment.commitment_type)
-		.context("commitment_type exceeds i64::MAX")?;
+	let commitment_type = i64::try_from(commitment.commitment_type).context("commitment_type exceeds i64::MAX")?;
 
 	// Extract slot from payload for constraint submission queries
 	let slot_number = PayloadParser::extract_slot(commitment.commitment_type, &commitment.payload)
@@ -63,10 +59,7 @@ pub async fn save_commitment(
 ///
 /// This function looks up a commitment using its request_hash and returns
 /// the complete SignedCommitment if found.
-pub async fn get_commitment_by_hash(
-	pool: &PgPool,
-	request_hash: &str,
-) -> Result<Option<SignedCommitment>> {
+pub async fn get_commitment_by_hash(pool: &PgPool, request_hash: &str) -> Result<Option<SignedCommitment>> {
 	let row = sqlx::query!(
 		r#"
 		SELECT
@@ -87,8 +80,7 @@ pub async fn get_commitment_by_hash(
 
 	match row {
 		Some(row) => {
-			let commitment_type = u64::try_from(row.commitment_type)
-				.context("stored commitment_type is negative")?;
+			let commitment_type = u64::try_from(row.commitment_type).context("stored commitment_type is negative")?;
 
 			let commitment = Commitment {
 				commitment_type,
@@ -97,10 +89,7 @@ pub async fn get_commitment_by_hash(
 				slasher: row.slasher,
 			};
 
-			let signed_commitment = SignedCommitment {
-				commitment,
-				signature: row.signature,
-			};
+			let signed_commitment = SignedCommitment { commitment, signature: row.signature };
 
 			Ok(Some(signed_commitment))
 		}
@@ -112,13 +101,10 @@ pub async fn get_commitment_by_hash(
 ///
 /// This is useful for preventing duplicate commitments
 pub async fn commitment_exists(pool: &PgPool, request_hash: &str) -> Result<bool> {
-	let row = sqlx::query!(
-		"SELECT EXISTS(SELECT 1 FROM commitments WHERE request_hash = $1)",
-		request_hash
-	)
-	.fetch_one(pool)
-	.await
-	.context("Failed to check if commitment exists")?;
+	let row = sqlx::query!("SELECT EXISTS(SELECT 1 FROM commitments WHERE request_hash = $1)", request_hash)
+		.fetch_one(pool)
+		.await
+		.context("Failed to check if commitment exists")?;
 
 	Ok(row.exists.unwrap_or(false))
 }
@@ -158,12 +144,8 @@ pub async fn get_commitment_stats(pool: &PgPool) -> Result<CommitmentStats> {
 ///
 /// This is used by the constraint submission service to find commitments
 /// that need to be converted to constraints and submitted to the relay.
-pub async fn get_unprocessed_commitments_for_slot(
-	pool: &PgPool,
-	slot: u64,
-) -> Result<Vec<SignedCommitment>> {
-	let slot_i64 = i64::try_from(slot)
-		.context("slot exceeds i64::MAX")?;
+pub async fn get_unprocessed_commitments_for_slot(pool: &PgPool, slot: u64) -> Result<Vec<SignedCommitment>> {
+	let slot_i64 = i64::try_from(slot).context("slot exceeds i64::MAX")?;
 
 	let rows = sqlx::query!(
 		r#"
@@ -187,20 +169,12 @@ pub async fn get_unprocessed_commitments_for_slot(
 
 	let mut commitments = Vec::new();
 	for row in rows {
-		let commitment_type = u64::try_from(row.commitment_type)
-			.context("stored commitment_type is negative")?;
+		let commitment_type = u64::try_from(row.commitment_type).context("stored commitment_type is negative")?;
 
-		let commitment = Commitment {
-			commitment_type,
-			payload: row.payload,
-			request_hash: row.request_hash,
-			slasher: row.slasher,
-		};
+		let commitment =
+			Commitment { commitment_type, payload: row.payload, request_hash: row.request_hash, slasher: row.slasher };
 
-		let signed_commitment = SignedCommitment {
-			commitment,
-			signature: row.signature,
-		};
+		let signed_commitment = SignedCommitment { commitment, signature: row.signature };
 
 		commitments.push(signed_commitment);
 	}
@@ -211,10 +185,7 @@ pub async fn get_unprocessed_commitments_for_slot(
 /// Mark commitments as processed after they've been converted to constraints
 ///
 /// This prevents duplicate constraint submissions for the same commitment.
-pub async fn mark_commitments_as_processed(
-	pool: &PgPool,
-	request_hashes: &[String],
-) -> Result<u64> {
+pub async fn mark_commitments_as_processed(pool: &PgPool, request_hashes: &[String]) -> Result<u64> {
 	if request_hashes.is_empty() {
 		return Ok(0);
 	}
@@ -268,10 +239,7 @@ mod tests {
 		assert!(!id.is_nil());
 
 		// Retrieve commitment
-		let retrieved = get_commitment_by_hash(&pool, &commitment.request_hash)
-			.await
-			.unwrap()
-			.unwrap();
+		let retrieved = get_commitment_by_hash(&pool, &commitment.request_hash).await.unwrap().unwrap();
 
 		assert_eq!(retrieved.commitment.commitment_type, commitment.commitment_type);
 		assert_eq!(retrieved.commitment.payload, commitment.payload);

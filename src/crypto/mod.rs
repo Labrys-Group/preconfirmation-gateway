@@ -9,8 +9,8 @@
 pub mod bls;
 
 use anyhow::{Context, Result};
-use ethabi::{encode, Token};
-use secp256k1::{ecdsa::Signature, Message, PublicKey, SecretKey, Secp256k1};
+use ethabi::{Token, encode};
+use secp256k1::{Message, PublicKey, Secp256k1, SecretKey, ecdsa::Signature};
 use tiny_keccak::{Hasher, Keccak};
 
 use crate::types::{Commitment, CommitmentRequest};
@@ -71,15 +71,13 @@ pub fn abi_encode_commitment(commitment: &Commitment) -> Result<Vec<u8>> {
 ///       signature = ECDSA.sign(message, committer_private_key)
 pub fn sign_commitment(commitment: &Commitment, private_key: &SecretKey) -> Result<String> {
 	// 1. ABI encode the commitment
-	let encoded = abi_encode_commitment(commitment)
-		.context("Failed to ABI encode commitment")?;
+	let encoded = abi_encode_commitment(commitment).context("Failed to ABI encode commitment")?;
 
 	// 2. Compute Keccak256 hash
 	let message_hash = keccak256(&encoded);
 
 	// 3. Create secp256k1 message
-	let message = Message::from_slice(&message_hash)
-		.context("Failed to create message from hash")?;
+	let message = Message::from_slice(&message_hash).context("Failed to create message from hash")?;
 
 	// 4. Sign with ECDSA - simple!
 	let secp = Secp256k1::new();
@@ -101,20 +99,17 @@ pub fn verify_commitment_signature(
 	public_key: &PublicKey,
 ) -> Result<bool> {
 	// 1. ABI encode the commitment
-	let encoded = abi_encode_commitment(commitment)
-		.context("Failed to ABI encode commitment")?;
+	let encoded = abi_encode_commitment(commitment).context("Failed to ABI encode commitment")?;
 
 	// 2. Compute Keccak256 hash
 	let message_hash = keccak256(&encoded);
 
 	// 3. Create secp256k1 message
-	let message = Message::from_slice(&message_hash)
-		.context("Failed to create message from hash")?;
+	let message = Message::from_slice(&message_hash).context("Failed to create message from hash")?;
 
 	// 4. Parse signature (64 bytes: r + s)
 	let signature_bytes = parse_hex_bytes(signature_hex, 64)?;
-	let signature = Signature::from_compact(&signature_bytes)
-		.context("Failed to parse signature")?;
+	let signature = Signature::from_compact(&signature_bytes).context("Failed to parse signature")?;
 
 	// 5. Verify signature
 	let secp = Secp256k1::new();
@@ -124,8 +119,7 @@ pub fn verify_commitment_signature(
 /// Parse a private key from hex string
 pub fn parse_private_key(hex_str: &str) -> Result<SecretKey> {
 	let key_bytes = parse_hex_bytes(hex_str, 32)?;
-	SecretKey::from_slice(&key_bytes)
-		.context("Invalid private key")
+	SecretKey::from_slice(&key_bytes).context("Invalid private key")
 }
 
 /// Parse an Ethereum address from hex string to ethabi::Address
@@ -137,8 +131,7 @@ fn parse_ethereum_address(address_str: &str) -> Result<ethabi::Address> {
 /// Parse hex string (with or without 0x prefix) to bytes
 pub fn parse_hex_bytes(hex_str: &str, expected_len: usize) -> Result<Vec<u8>> {
 	let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-	let bytes = hex::decode(hex_str)
-		.context("Invalid hex string")?;
+	let bytes = hex::decode(hex_str).context("Invalid hex string")?;
 
 	if bytes.len() != expected_len {
 		anyhow::bail!("Expected {} bytes, got {}", expected_len, bytes.len());

@@ -2,13 +2,12 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use blst::{min_pk::PublicKey as BlsPublicKey, min_pk::SecretKey as BlsSecretKey};
-use serde::{Deserialize, Serialize};
 use secp256k1::SecretKey;
+use serde::{Deserialize, Serialize};
 
 use crate::crypto;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
 	pub server: ServerConfig,
 	pub database: DatabaseConfig,
@@ -126,7 +125,6 @@ pub struct SigningConfig {
 	pub committer_address: String,
 }
 
-
 impl Default for ServerConfig {
 	fn default() -> Self {
 		Self { host: "127.0.0.1".to_string(), port: 8080 }
@@ -156,9 +154,7 @@ impl Default for LoggingConfig {
 
 impl Default for ValidationConfig {
 	fn default() -> Self {
-		Self {
-			slasher_address: "0x0000000000000000000000000000000000000000".to_string(),
-		}
+		Self { slasher_address: "0x0000000000000000000000000000000000000000".to_string() }
 	}
 }
 
@@ -199,25 +195,18 @@ impl Default for DelegationConfig {
 
 impl Default for SigningConfig {
 	fn default() -> Self {
-		let ecdsa_private_key = crypto::parse_private_key(
-			"ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-		)
-			.expect("Failed to parse default private key");
+		let ecdsa_private_key =
+			crypto::parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
+				.expect("Failed to parse default private key");
 
 		let bls_key_bytes = [0x01u8; 32];
-		let bls_private_key = BlsSecretKey::from_bytes(&bls_key_bytes)
-			.expect("Failed to create default BLS private key");
+		let bls_private_key =
+			BlsSecretKey::from_bytes(&bls_key_bytes).expect("Failed to create default BLS private key");
 		let bls_public_key = bls_private_key.sk_to_pk();
 
-		let committer_address = crypto::ecdsa_to_address(&ecdsa_private_key)
-			.expect("Failed to derive default address");
+		let committer_address = crypto::ecdsa_to_address(&ecdsa_private_key).expect("Failed to derive default address");
 
-		Self {
-			ecdsa_private_key,
-			bls_private_key,
-			bls_public_key,
-			committer_address,
-		}
+		Self { ecdsa_private_key, bls_private_key, bls_public_key, committer_address }
 	}
 }
 
@@ -226,37 +215,33 @@ impl SigningConfig {
 	/// Fails if required environment variables are not set
 	pub fn load() -> Result<Self> {
 		// Load ECDSA private key from COMMITTER_PRIVATE_KEY (required)
-		let private_key_hex = std::env::var("COMMITTER_PRIVATE_KEY")
-			.context("COMMITTER_PRIVATE_KEY environment variable is required. Set it to a valid ECDSA private key (64 hex characters)")?;
+		let private_key_hex = std::env::var("COMMITTER_PRIVATE_KEY").context(
+			"COMMITTER_PRIVATE_KEY environment variable is required. Set it to a valid ECDSA private key (64 hex characters)",
+		)?;
 
 		let ecdsa_private_key = crypto::parse_private_key(&private_key_hex)
 			.context("Invalid COMMITTER_PRIVATE_KEY format. Expected 64 hex characters (32 bytes)")?;
 
 		// Load BLS private key (required)
-		let bls_hex = std::env::var("BLS_PRIVATE_KEY")
-			.context("BLS_PRIVATE_KEY environment variable is required. Set it to a valid BLS private key (64 hex characters)")?;
+		let bls_hex = std::env::var("BLS_PRIVATE_KEY").context(
+			"BLS_PRIVATE_KEY environment variable is required. Set it to a valid BLS private key (64 hex characters)",
+		)?;
 
 		let (bls_private_key, bls_public_key) = Self::parse_bls_key(&bls_hex)
 			.context("Invalid BLS_PRIVATE_KEY format. Expected 64 hex characters (32 bytes)")?;
 
-		let committer_address = crypto::ecdsa_to_address(&ecdsa_private_key)
-			.context("Failed to derive committer address")?;
+		let committer_address =
+			crypto::ecdsa_to_address(&ecdsa_private_key).context("Failed to derive committer address")?;
 
-		Ok(Self {
-			ecdsa_private_key,
-			bls_private_key,
-			bls_public_key,
-			committer_address,
-		})
+		Ok(Self { ecdsa_private_key, bls_private_key, bls_public_key, committer_address })
 	}
 
 	/// Parse BLS private key and derive public key
 	fn parse_bls_key(hex_str: &str) -> Result<(BlsSecretKey, BlsPublicKey)> {
-		let key_bytes = crypto::parse_hex_bytes(hex_str, 32)
-			.context("Invalid BLS private key hex")?;
+		let key_bytes = crypto::parse_hex_bytes(hex_str, 32).context("Invalid BLS private key hex")?;
 
-		let private_key = BlsSecretKey::from_bytes(&key_bytes)
-			.map_err(|e| anyhow::anyhow!("Invalid BLS private key: {:?}", e))?;
+		let private_key =
+			BlsSecretKey::from_bytes(&key_bytes).map_err(|e| anyhow::anyhow!("Invalid BLS private key: {:?}", e))?;
 
 		let public_key = private_key.sk_to_pk();
 
@@ -320,12 +305,7 @@ impl Config {
 		}
 
 		// Check for common placeholder values that indicate the endpoint is not configured
-		let placeholder_indicators = [
-			"${BEACON_API_ENDPOINT}",
-			"YOUR_API_KEY",
-			"YOUR_PROJECT_ID",
-			"REPLACE_ME",
-		];
+		let placeholder_indicators = ["${BEACON_API_ENDPOINT}", "YOUR_API_KEY", "YOUR_PROJECT_ID", "REPLACE_ME"];
 
 		for placeholder in &placeholder_indicators {
 			if endpoint.contains(placeholder) {
@@ -338,10 +318,7 @@ impl Config {
 
 		// Basic URL validation
 		if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
-			anyhow::bail!(
-				"Beacon API endpoint must be a valid HTTP/HTTPS URL, got: {}",
-				endpoint
-			);
+			anyhow::bail!("Beacon API endpoint must be a valid HTTP/HTTPS URL, got: {}", endpoint);
 		}
 
 		Ok(())
@@ -358,11 +335,8 @@ impl Config {
 		}
 
 		// Check for common placeholder values that indicate the endpoint is not configured
-		let placeholder_indicators = [
-			format!("${{{}}}", env_var_name),
-			"REPLACE_ME".to_string(),
-			"example.com".to_string(),
-		];
+		let placeholder_indicators =
+			[format!("${{{}}}", env_var_name), "REPLACE_ME".to_string(), "example.com".to_string()];
 
 		for placeholder in &placeholder_indicators {
 			if endpoint.contains(placeholder) {
@@ -377,11 +351,7 @@ impl Config {
 
 		// Basic URL validation
 		if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
-			anyhow::bail!(
-				"{} endpoint must be a valid HTTP/HTTPS URL, got: {}",
-				service_name,
-				endpoint
-			);
+			anyhow::bail!("{} endpoint must be a valid HTTP/HTTPS URL, got: {}", service_name, endpoint);
 		}
 
 		Ok(())
@@ -424,11 +394,11 @@ impl Default for RethConfig {
 impl Default for FeeConfig {
 	fn default() -> Self {
 		Self {
-			scaling_factor: 2.0,          // k=2 provides reasonable exponential scaling
+			scaling_factor: 2.0,           // k=2 provides reasonable exponential scaling
 			default_gas_limit: 30_000_000, // 30M gas typical block limit
 			min_fee_multiplier: 1.0,       // Never less than base price
 			max_fee_multiplier: 100.0,     // Cap at 100x base price
-			cache_ttl_secs: 60,           // Cache fees for 1 minute
+			cache_ttl_secs: 60,            // Cache fees for 1 minute
 		}
 	}
 }

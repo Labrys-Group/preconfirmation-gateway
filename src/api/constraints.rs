@@ -65,7 +65,8 @@ impl ConstraintsApiClient {
 
 		debug!(slot = slot, url = %url, "Fetching delegations");
 
-		let response = self.client
+		let response = self
+			.client
 			.get(&url)
 			.header("Content-Type", "application/json")
 			.header("User-Agent", "preconfirmation-gateway/0.1.0")
@@ -75,16 +76,10 @@ impl ConstraintsApiClient {
 
 		match response.status() {
 			StatusCode::OK => {
-				let delegations_response: DelegationsResponse = response
-					.json()
-					.await
-					.context("Failed to parse delegations response")?;
+				let delegations_response: DelegationsResponse =
+					response.json().await.context("Failed to parse delegations response")?;
 
-				debug!(
-					slot = slot,
-					count = delegations_response.delegations.len(),
-					"Retrieved delegations"
-				);
+				debug!(slot = slot, count = delegations_response.delegations.len(), "Retrieved delegations");
 
 				Ok(delegations_response.delegations)
 			}
@@ -95,12 +90,7 @@ impl ConstraintsApiClient {
 			}
 			status => {
 				let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-				anyhow::bail!(
-					"Failed to fetch delegations for slot {}: HTTP {} - {}",
-					slot,
-					status,
-					error_text
-				);
+				anyhow::bail!("Failed to fetch delegations for slot {}: HTTP {} - {}", slot, status, error_text);
 			}
 		}
 	}
@@ -121,8 +111,7 @@ impl ConstraintsApiClient {
 		);
 
 		// Serialize constraints for submission
-		let submission_payload = serde_json::to_value(constraints)
-			.context("Failed to serialize constraints")?;
+		let submission_payload = serde_json::to_value(constraints).context("Failed to serialize constraints")?;
 
 		let mut attempt = 0;
 		let mut last_error = None;
@@ -131,7 +120,8 @@ impl ConstraintsApiClient {
 		while attempt < self.config.max_retries {
 			attempt += 1;
 
-			match self.client
+			match self
+				.client
 				.post(&url)
 				.header("Content-Type", "application/json")
 				.header("User-Agent", "preconfirmation-gateway/0.1.0")
@@ -142,10 +132,8 @@ impl ConstraintsApiClient {
 				Ok(response) => {
 					match response.status() {
 						StatusCode::OK | StatusCode::ACCEPTED => {
-							let result: ConstraintSubmissionResponse = response
-								.json()
-								.await
-								.context("Failed to parse constraint submission response")?;
+							let result: ConstraintSubmissionResponse =
+								response.json().await.context("Failed to parse constraint submission response")?;
 
 							debug!(
 								slot = constraints.message.slot,
@@ -182,8 +170,7 @@ impl ConstraintsApiClient {
 							continue;
 						}
 						status => {
-							let error_text = response.text().await
-								.unwrap_or_else(|_| "Unknown error".to_string());
+							let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
 
 							// Try to parse as API error
 							if let Ok(api_error) = serde_json::from_str::<ConstraintsApiError>(&error_text) {
@@ -228,11 +215,7 @@ impl ConstraintsApiClient {
 		}
 
 		// All retries exhausted
-		error!(
-			slot = constraints.message.slot,
-			attempts = attempt,
-			"Failed to submit constraints after all retries"
-		);
+		error!(slot = constraints.message.slot, attempts = attempt, "Failed to submit constraints after all retries");
 
 		Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Unknown submission error")))
 	}
@@ -240,11 +223,7 @@ impl ConstraintsApiClient {
 	/// Build full URL from endpoint
 	fn build_url(&self, endpoint: &str) -> String {
 		let base = &self.config.relay_endpoint;
-		if base.ends_with('/') {
-			format!("{}{}", base, endpoint)
-		} else {
-			format!("{}/{}", base, endpoint)
-		}
+		if base.ends_with('/') { format!("{}{}", base, endpoint) } else { format!("{}/{}", base, endpoint) }
 	}
 }
 
@@ -258,10 +237,7 @@ mod tests {
 			relay_endpoint: "https://relay.example.com".to_string(),
 			request_timeout_secs: 10,
 			max_retries: 3,
-			authorized_builders: vec![
-				"0x1234".to_string(),
-				"0x5678".to_string(),
-			],
+			authorized_builders: vec!["0x1234".to_string(), "0x5678".to_string()],
 		}
 	}
 

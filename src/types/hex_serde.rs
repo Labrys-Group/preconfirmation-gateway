@@ -14,7 +14,6 @@
 ///     data: Vec<u8>,
 /// }
 /// ```
-
 use serde::{Deserialize, Deserializer, Serializer};
 
 /// Serialize a Vec<u8> as a hex string with "0x" prefix

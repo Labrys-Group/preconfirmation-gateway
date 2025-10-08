@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use crate::{config::Config, db::DatabaseContext};
-use crate::services::fee_pricing::FeePricingEngine;
 use crate::api::beacon::BeaconApiClient;
+use crate::services::fee_pricing::FeePricingEngine;
+use crate::{config::Config, db::DatabaseContext};
+use std::sync::Arc;
 
 /// RPC context that provides access to shared resources for all RPC handlers
 #[derive(Clone)]

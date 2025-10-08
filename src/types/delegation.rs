@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize, Deserializer, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// BLS Public Key representation (48 bytes)
 /// Custom serialization to handle byte arrays properly
@@ -29,10 +29,7 @@ impl<'de> Deserialize<'de> for BlsPublicKey {
 		let bytes = hex::decode(hex_str).map_err(serde::de::Error::custom)?;
 
 		if bytes.len() != 48 {
-			return Err(serde::de::Error::custom(format!(
-				"Expected 48 bytes for BLS public key, got {}",
-				bytes.len()
-			)));
+			return Err(serde::de::Error::custom(format!("Expected 48 bytes for BLS public key, got {}", bytes.len())));
 		}
 
 		let mut key = [0u8; 48];
@@ -60,10 +57,7 @@ impl<'de> Deserialize<'de> for BlsSignature {
 		let bytes = hex::decode(hex_str).map_err(serde::de::Error::custom)?;
 
 		if bytes.len() != 96 {
-			return Err(serde::de::Error::custom(format!(
-				"Expected 96 bytes for BLS signature, got {}",
-				bytes.len()
-			)));
+			return Err(serde::de::Error::custom(format!("Expected 96 bytes for BLS signature, got {}", bytes.len())));
 		}
 
 		let mut sig = [0u8; 96];
@@ -242,13 +236,7 @@ impl ConstraintsMessage {
 		constraints: Vec<Constraint>,
 		receivers: Vec<BlsPublicKey>,
 	) -> Self {
-		Self {
-			proposer,
-			delegate,
-			slot,
-			constraints,
-			receivers,
-		}
+		Self { proposer, delegate, slot, constraints, receivers }
 	}
 
 	/// Add a constraint to the message
