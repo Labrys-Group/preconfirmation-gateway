@@ -163,7 +163,7 @@ pub fn sign_commitment(commitment: &Commitment, private_key: &SecretKey) -> Resu
 	let secp = Secp256k1::new();
 	let signature = secp.sign_ecdsa(&message, private_key);
 
-	// 5. Serialize as DER-encoded bytes and return as hex
+	// 5. Serialize as compact 64-byte (r || s) and return as hex
 	let signature_bytes = signature.serialize_compact(); // 64 bytes (r + s)
 
 	// Return as hex string with 0x prefix
