@@ -8,6 +8,7 @@ pub mod server;
 pub mod services;
 pub mod testing;
 pub mod types;
+pub mod utils;
 
 // Re-export commonly used types and functions for easier access
 pub use config::{Config, ValidationConfig};

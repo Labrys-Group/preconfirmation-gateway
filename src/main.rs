@@ -6,6 +6,7 @@ mod rpc;
 mod server;
 mod services;
 mod types;
+mod utils;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

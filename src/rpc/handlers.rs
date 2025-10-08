@@ -11,6 +11,7 @@ use super::super::types::rpc::{Offering, SlotInfo};
 use super::super::types::beacon::timing;
 use crate::crypto::{generate_request_hash, sign_commitment};
 use crate::db::delegation_ops::get_delegations_for_slot;
+use crate::utils::address::normalize_address;
 
 /// Validate payload and extract slot number
 fn validate_and_extract_slot(commitment_type: u64, payload: &[u8]) -> Result<u64, String> {
@@ -29,10 +30,9 @@ async fn verify_delegation_authority(
         .map_err(|e| format!("Failed to query delegations for slot {}: {}", slot, e))?;
 
     // Check if we have any delegation for this slot and committer
-    let normalize = |addr: &str| addr.trim_start_matches("0x").to_ascii_lowercase();
-    let canonical_committer = normalize(committer_address);
+    let canonical_committer = normalize_address(committer_address);
     let matching_delegation = delegations.iter().find(|delegation| {
-        normalize(&delegation.message.committer) == canonical_committer
+        normalize_address(&delegation.message.committer) == canonical_committer
             && delegation.is_valid_for_slot(slot)
     });
 
@@ -104,8 +104,7 @@ fn find_signing_key_for_committer<'a>(
     context: &'a RpcContext,
     committer_address: &str,
 ) -> Result<&'a secp256k1::SecretKey, String> {
-    let norm = |s: &str| s.trim_start_matches("0x").to_ascii_lowercase();
-    if norm(committer_address) == norm(&context.config.signing.committer_address) {
+    if normalize_address(committer_address) == normalize_address(&context.config.signing.committer_address) {
         return Ok(&context.config.signing.ecdsa_private_key);
     }
 
