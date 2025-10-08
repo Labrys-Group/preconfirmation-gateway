@@ -122,13 +122,8 @@ pub async fn commitment_request_handler(
 ) -> RpcResult<SignedCommitment> {
 	info!("Processing commitment request with delegation-first security");
 
-	// Parse params as sequential values: commitment_type, payload, slasher
-	let (commitment_type, payload, slasher): (u64, Vec<u8>, String) = params.parse()?;
-	let request = CommitmentRequest {
-		commitment_type,
-		payload,
-		slasher,
-	};
+	// Parse params as a CommitmentRequest object
+	let request: CommitmentRequest = params.one()?;
 
 	// Validate commitment_type
 	if request.commitment_type != 1 {
@@ -315,7 +310,7 @@ pub async fn fee_handler(
 	_extensions: Extensions,
 ) -> RpcResult<FeeInfo> {
 	info!("Processing fee request with dynamic pricing");
-	let request: CommitmentRequest = params.parse()?;
+	let request: CommitmentRequest = params.one()?;
 
 	// Validate commitment_type
 	if request.commitment_type != 1 {

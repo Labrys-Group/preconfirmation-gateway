@@ -4,6 +4,28 @@ use serde::{Deserialize, Serialize};
 /// Parser and utilities for commitment payloads
 pub struct PayloadParser;
 
+/// Custom serde module for hex string <-> Vec<u8> conversion
+mod hex_bytes {
+	use serde::{Deserialize, Deserializer, Serializer};
+
+	pub fn serialize<S>(bytes: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		let hex_string = format!("0x{}", hex::encode(bytes));
+		serializer.serialize_str(&hex_string)
+	}
+
+	pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let s = String::deserialize(deserializer)?;
+		let s = s.strip_prefix("0x").unwrap_or(&s);
+		hex::decode(s).map_err(serde::de::Error::custom)
+	}
+}
+
 /// Structured representation of an inclusion preconfirmation payload
 /// Matches the on-chain InclusionPayload struct:
 /// - slot: uint64
@@ -14,6 +36,7 @@ pub struct InclusionPayload {
     pub slot: u64,
     /// The full signed transaction to be included (RLP-encoded Ethereum transaction)
     /// This can be decoded to extract tx_hash, nonce, gas_limit, and other fields
+    #[serde(with = "hex_bytes")]
     pub signed_tx: Vec<u8>,
 }
 
@@ -23,6 +46,7 @@ pub struct ExecutionPayload {
     /// The slot number for execution preconfirmation
     pub slot: u64,
     /// The transaction to execute
+    #[serde(with = "hex_bytes")]
     pub transaction: Vec<u8>,
     /// Expected state root after execution
     pub expected_state_root: [u8; 32],

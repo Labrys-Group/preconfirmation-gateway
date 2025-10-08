@@ -122,9 +122,19 @@ fi
 
 # Test 2: Fee endpoint
 echo -n "  Testing fee endpoint... "
+
+# Get current slot for realistic testing
+CURRENT_SLOT=$(curl -s -X POST http://localhost:8080 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"slots","params":[],"id":1}' | jq -r '.result.slots[0].slot')
+
+# Create a JSON-encoded inclusion payload
+INCLUSION_JSON="{\"slot\":$CURRENT_SLOT,\"signed_tx\":\"0xdeadbeef\"}"
+TEST_PAYLOAD="0x$(echo -n "$INCLUSION_JSON" | xxd -p | tr -d '\n')"
+
 FEE_RESPONSE=$(curl -s -X POST http://localhost:8080 \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"fee","params":[1,560048],"id":1}')
+  -d "{\"jsonrpc\":\"2.0\",\"method\":\"fee\",\"params\":[{\"commitment_type\":1,\"payload\":\"$TEST_PAYLOAD\",\"slasher\":\"0x0000000000000000000000000000000000000000\"}],\"id\":1}")
 
 if echo "$FEE_RESPONSE" | jq -e '.result' > /dev/null 2>&1; then
   echo -e "${GREEN}✓${NC}"
@@ -136,13 +146,13 @@ fi
 # Test 3: Commitment request
 echo -n "  Testing commitment request... "
 
-# Create a test payload (ABI-encoded inclusion payload)
-# This is a simplified version - in production you'd use proper ABI encoding
-TEST_PAYLOAD="0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000539"
+# Use the default Hardhat test account address (matches ECDSA_PRIVATE_KEY_1)
+# Must match mock-relay/server.ts MOCK_COMMITTER_ADDRESS (lowercase)
+COMMITTER_ADDRESS="0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
 
 COMMITMENT_RESPONSE=$(curl -s -X POST http://localhost:8080 \
   -H "Content-Type: application/json" \
-  -d "{\"jsonrpc\":\"2.0\",\"method\":\"commitmentRequest\",\"params\":[{\"commitment_type\":1,\"payload\":\"$TEST_PAYLOAD\",\"slasher\":\"0x0000000000000000000000000000000000000000\"}],\"id\":1}")
+  -d "{\"jsonrpc\":\"2.0\",\"method\":\"commitmentRequest\",\"params\":[{\"commitment_type\":1,\"payload\":\"$TEST_PAYLOAD\",\"slasher\":\"$COMMITTER_ADDRESS\"}],\"id\":1}")
 
 if echo "$COMMITMENT_RESPONSE" | jq -e '.result.signature' > /dev/null 2>&1; then
   REQUEST_HASH=$(echo "$COMMITMENT_RESPONSE" | jq -r '.result.commitment.request_hash')

@@ -276,6 +276,9 @@ impl Config {
 	pub fn load() -> Result<Self> {
 		let mut config = Self::load_from_file("config.toml")?;
 
+		// Substitute environment variables in configuration
+		Self::substitute_env_vars(&mut config)?;
+
 		// Load signing config from environment variables
 		config.signing = SigningConfig::load()
 			.unwrap_or_else(|_| {
@@ -287,6 +290,34 @@ impl Config {
 		Self::validate_beacon_endpoint(&config.beacon_api.primary_endpoint)?;
 
 		Ok(config)
+	}
+
+	/// Substitute environment variables in configuration strings
+	/// Replaces ${VAR_NAME} with the value of environment variable VAR_NAME
+	fn substitute_env_vars(config: &mut Self) -> Result<()> {
+		// Substitute in beacon API endpoint
+		if config.beacon_api.primary_endpoint.contains("${BEACON_API_ENDPOINT}") {
+			if let Ok(endpoint) = std::env::var("BEACON_API_ENDPOINT") {
+				config.beacon_api.primary_endpoint = endpoint;
+			}
+			// If env var not set, leave the placeholder for validation to catch
+		}
+
+		// Substitute in reth endpoint
+		if config.reth.endpoint.contains("${RETH_ENDPOINT}") {
+			if let Ok(endpoint) = std::env::var("RETH_ENDPOINT") {
+				config.reth.endpoint = endpoint;
+			}
+		}
+
+		// Substitute in constraints API endpoint
+		if config.constraints_api.relay_endpoint.contains("${CONSTRAINTS_API_ENDPOINT}") {
+			if let Ok(endpoint) = std::env::var("CONSTRAINTS_API_ENDPOINT") {
+				config.constraints_api.relay_endpoint = endpoint;
+			}
+		}
+
+		Ok(())
 	}
 
 	/// Validate that the beacon API endpoint is properly configured
