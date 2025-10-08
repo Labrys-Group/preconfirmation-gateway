@@ -212,8 +212,15 @@ impl FeePricingEngine {
             .max(self.fee_config.min_fee_multiplier)
             .min(self.fee_config.max_fee_multiplier);
 
-        // Recalculate final price with bounds
-        projected.current_tx_price = (projected.base_gas_price as f64 * projected.calculated_fee_multiplier) as u64;
+        // Recalculate final price with bounds, rounding up to avoid undercharging
+        // Use ceil() to ensure we never charge less than the multiplier indicates
+        // (e.g., 1 wei * 1.5 = 1.5 wei should round up to 2 wei, not down to 1 wei)
+        let scaled_price = (projected.base_gas_price as f64 * projected.calculated_fee_multiplier).ceil();
+        projected.current_tx_price = if scaled_price.is_finite() && scaled_price <= u64::MAX as f64 {
+            scaled_price as u64
+        } else {
+            u64::MAX
+        };
 
         Ok(projected)
     }
