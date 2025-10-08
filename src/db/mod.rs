@@ -463,7 +463,6 @@ impl DatabaseContext {
 	/// # Ok(())
 	/// # }
 	/// ```
-	—
 	pub async fn get_or_create_slot_congestion(
 		&self,
 		slot: u64,

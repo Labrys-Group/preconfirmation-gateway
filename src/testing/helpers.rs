@@ -61,7 +61,6 @@ impl TestHelpers {
     /// // use `rpc_ctx` in tests...
     /// ```
     pub fn create_test_rpc_context(config: Arc<Config>) -> Arc<RpcContext> {
-    pub fn create_test_rpc_context(config: Arc<Config>) -> Arc<RpcContext> {
         // Create a test database pool (using an in-memory SQLite for testing would be ideal,
         // but for now we'll create a minimal PgPool that won't actually connect)
         let database_url = "postgresql://test:test@localhost/test_db";
