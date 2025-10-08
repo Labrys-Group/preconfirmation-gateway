@@ -237,7 +237,8 @@ async fn process_delegation_constraints(
     );
 
     // Query the database for pending commitments that need constraint submission
-    let constraints = create_constraints_from_commitments(_db_pool, slot).await?;
+    // Returns both the constraints and the hashes of commitments that were converted
+    let (constraints, processed_hashes) = create_constraints_from_commitments(_db_pool, slot).await?;
 
     if constraints.is_empty() {
         debug!("No constraints to submit for slot {}", slot);
@@ -271,6 +272,15 @@ async fn process_delegation_constraints(
         "Successfully submitted constraints for slot {} with response: {:?}",
         slot, submission_response
     );
+
+    // Only mark commitments as processed after successful submission
+    if !processed_hashes.is_empty() {
+        let marked = crate::db::operations::mark_commitments_as_processed(_db_pool, &processed_hashes)
+            .await
+            .context("Failed to mark commitments as processed")?;
+
+        debug!("Marked {} commitments as processed for slot {} after successful submission", marked, slot);
+    }
 
     Ok(())
 }
@@ -346,10 +356,12 @@ async fn submit_constraint(
 }
 
 /// Create constraints from committed transactions for a specific slot
+/// Returns a tuple of (constraints, request_hashes) where request_hashes contains
+/// only the hashes of commitments that were successfully converted to constraints
 async fn create_constraints_from_commitments(
     db_pool: &PgPool,
     slot: u64,
-) -> Result<Vec<Constraint>> {
+) -> Result<(Vec<Constraint>, Vec<String>)> {
     debug!("Creating constraints from commitments for slot {}", slot);
 
     // Query the database for unprocessed commitments for this slot
@@ -359,46 +371,40 @@ async fn create_constraints_from_commitments(
 
     if commitments.is_empty() {
         debug!("No unprocessed commitments found for slot {}", slot);
-        return Ok(vec![]);
+        return Ok((vec![], vec![]));
     }
 
     debug!("Found {} unprocessed commitments for slot {}", commitments.len(), slot);
 
-    // Convert commitments to constraints
-    let constraints: Vec<Constraint> = commitments
-        .iter()
-        .filter_map(|signed_commitment| {
-            let commitment = &signed_commitment.commitment;
+    // Convert commitments to constraints, tracking which ones were converted
+    let mut constraints = Vec::new();
+    let mut processed_hashes = Vec::new();
 
-            // Only process inclusion commitments (type 1)
-            if commitment.commitment_type == 1 {
-                Some(Constraint::from_inclusion_commitment(commitment.payload.clone()))
-            } else {
-                warn!(
-                    "Skipping commitment with unsupported type {} for slot {}",
-                    commitment.commitment_type, slot
-                );
-                None
-            }
-        })
-        .collect();
+    for signed_commitment in &commitments {
+        let commitment = &signed_commitment.commitment;
 
-    // Mark the commitments as processed to prevent duplicate submissions
-    let request_hashes: Vec<String> = commitments
-        .iter()
-        .map(|sc| sc.commitment.request_hash.clone())
-        .collect();
-
-    if !request_hashes.is_empty() {
-        let marked = crate::db::operations::mark_commitments_as_processed(db_pool, &request_hashes)
-            .await
-            .context("Failed to mark commitments as processed")?;
-
-        debug!("Marked {} commitments as processed for slot {}", marked, slot);
+        // Only process inclusion commitments (type 1)
+        if commitment.commitment_type == 1 {
+            constraints.push(Constraint::from_inclusion_commitment(commitment.payload.clone()));
+            processed_hashes.push(commitment.request_hash.clone());
+        } else {
+            warn!(
+                "Skipping commitment with unsupported type {} for slot {}",
+                commitment.commitment_type, slot
+            );
+            // Don't add to processed_hashes - we only track successfully converted commitments
+        }
     }
 
-    info!("Created {} constraints from commitments for slot {}", constraints.len(), slot);
-    Ok(constraints)
+    info!(
+        "Created {} constraints from {} commitments for slot {} ({} skipped)",
+        constraints.len(),
+        commitments.len(),
+        slot,
+        commitments.len() - constraints.len()
+    );
+
+    Ok((constraints, processed_hashes))
 }
 
 #[cfg(test)]
