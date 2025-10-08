@@ -20,7 +20,16 @@ let passed = 0;
 let failed = 0;
 const failures: string[] = [];
 
-// Helper function to make JSON-RPC calls
+/**
+ * Send a JSON-RPC 2.0 request to the specified endpoint and return the parsed response.
+ *
+ * @param url - The HTTP endpoint to POST the JSON-RPC request to
+ * @param method - The JSON-RPC method name to invoke
+ * @param params - Positional parameters to include in the request (defaults to an empty array)
+ * @param id - The request identifier (defaults to 1)
+ * @returns The parsed JSON response body from the server
+ * @throws Error if the HTTP response status is not OK; the error message includes the status code and status text
+ */
 async function jsonRpc(url: string, method: string, params: any[] = [], id: number = 1) {
   const response = await fetch(url, {
     method: 'POST',
@@ -40,7 +49,15 @@ async function jsonRpc(url: string, method: string, params: any[] = [], id: numb
   return await response.json();
 }
 
-// Test assertion helper
+/**
+ * Record the outcome of a test assertion and log the result.
+ *
+ * Increments the global pass or fail counters, records the failure message when the assertion fails,
+ * and prints a checked or crossed marker followed by the provided message to the console.
+ *
+ * @param condition - The assertion condition; treated as pass when true, fail when false
+ * @param message - Human-readable description of the assertion used for logging and failure reporting
+ */
 function assert(condition: boolean, message: string) {
   if (condition) {
     passed++;
@@ -52,7 +69,15 @@ function assert(condition: boolean, message: string) {
   }
 }
 
-// Test helpers
+/**
+ * Checks the health endpoint of a service and records the outcome via `assert`.
+ *
+ * Sends an HTTP GET to `${url}/health` and asserts that the response has an OK status;
+ * on network or other errors the assertion is recorded as a failure with the error message.
+ *
+ * @param url - Base URL of the service to check (e.g., `http://localhost:3000`)
+ * @param name - Human-readable service name used in assertion messages
+ */
 async function testServiceHealth(url: string, name: string) {
   try {
     const response = await fetch(`${url}/health`);
@@ -62,7 +87,14 @@ async function testServiceHealth(url: string, name: string) {
   }
 }
 
-// Main test suite
+/**
+ * Orchestrates and runs the end-to-end test suite for the Preconfirmation Gateway.
+ *
+ * Executes a sequence of integration checks against the gateway and configured mock services:
+ * health checks, slots and fee endpoints, commitment request/result flows, mock relay integration,
+ * and error-handling scenarios. Records pass/fail counts, prints a summary, logs failed test messages,
+ * and terminates the process with a non-zero exit code when any test fails.
+ */
 async function runTests() {
   console.log('\n═══════════════════════════════════════════════════════');
   console.log('  E2E Test Suite - Preconfirmation Gateway');

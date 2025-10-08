@@ -37,7 +37,10 @@ interface JsonRpcResponse {
 }
 
 /**
- * Handle JSON-RPC requests
+ * Dispatches a JSON-RPC 2.0 request to the mock handler and produces the corresponding JSON-RPC response.
+ *
+ * @param req - The JSON-RPC request object containing `jsonrpc`, `method`, optional `params`, and `id`.
+ * @returns A JSON-RPC response containing a `result` for supported methods or an `error` with code `-32601` if the method is not supported.
  */
 function handleJsonRpcRequest(req: JsonRpcRequest): JsonRpcResponse {
   const { method, params, id } = req;

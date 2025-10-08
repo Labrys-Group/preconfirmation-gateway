@@ -32,7 +32,32 @@ pub struct PendingConstraint {
 }
 
 impl ConstraintSubmissionService {
-    /// Create a new constraint submission service
+    /// Constructs a new ConstraintSubmissionService using the provided clients, database pool, and configuration,
+    /// and initializes its background job scheduler.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the internal JobScheduler cannot be created.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let constraints_client = Arc::new(/* ConstraintsApiClient */);
+    /// let bls_manager = Arc::new(/* BlsManager */);
+    /// let db_pool = Arc::new(/* PgPool */);
+    /// let config = Arc::new(/* Config */);
+    ///
+    /// let service = ConstraintSubmissionService::new(
+    ///     constraints_client,
+    ///     bls_manager,
+    ///     db_pool,
+    ///     config,
+    /// ).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn new(
         constraints_client: Arc<ConstraintsApiClient>,
         bls_manager: Arc<BlsManager>,
@@ -51,7 +76,20 @@ impl ConstraintSubmissionService {
         })
     }
 
-    /// Start the constraint submission service
+    /// Starts the constraint submission service and begins periodic processing of pending constraints.
+    ///
+    /// The service schedules a recurring job (every 2 seconds) that processes pending constraint
+    /// submissions and starts the internal scheduler. Returns an error if scheduling or starting
+    /// the scheduler fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # async fn example(service: Arc<crate::services::constraint_submission::ConstraintSubmissionService>) {
+    /// service.start().await.unwrap();
+    /// # }
+    /// ```
     pub async fn start(&self) -> Result<()> {
         info!("Starting constraint submission service");
 
@@ -90,7 +128,19 @@ impl ConstraintSubmissionService {
         Ok(())
     }
 
-    /// Stop the constraint submission service
+    /// Stops the constraint submission service by shutting down its internal scheduler.
+    ///
+    /// Returns `Ok(())` if the scheduler shuts down successfully, or an error with context on failure.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut service = /* create or obtain ConstraintSubmissionService */ todo!();
+    /// service.stop().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn stop(&mut self) -> Result<()> {
         info!("Stopping constraint submission service");
         self.scheduler.shutdown().await
@@ -99,7 +149,22 @@ impl ConstraintSubmissionService {
         Ok(())
     }
 
-    /// Submit a single constraint immediately (for urgent/manual submission)
+    /// Submits a single constraint for the given slot and committer immediately.
+    ///
+    /// Returns the string result returned by the constraints API upon successful submission.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example(service: &crate::services::constraint_submission::ConstraintSubmissionService) -> anyhow::Result<()> {
+    /// let slot = 123;
+    /// let payload = vec![1, 2, 3];
+    /// let committer = "0xcommitter".to_string();
+    /// let result = service.submit_constraint_now(slot, payload, committer).await?;
+    /// println!("submission result: {}", result);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn submit_constraint_now(
         &self,
         slot: u64,
@@ -117,13 +182,39 @@ impl ConstraintSubmissionService {
         ).await
     }
 
-    /// Check if we're within the submission window for a given slot
+    /// Determine whether a beacon slot falls inside the constraint submission window.
+    ///
+    /// The window is computed relative to the configured genesis time.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the slot is within the submission window, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // `svc` is a prepared `ConstraintSubmissionService`
+    /// let slot: u64 = 12345;
+    /// let within = svc.is_within_submission_window(slot);
+    /// ```
     pub fn is_within_submission_window(&self, slot: u64) -> bool {
         let genesis_time = self.config.beacon_api.genesis_time;
         BeaconTiming::is_within_constraint_window(genesis_time, slot)
     }
 
-    /// Calculate the submission deadline for a given slot
+    /// Compute the submission deadline for a specific beacon slot.
+    ///
+    /// Returns a `SystemTime` representing the absolute deadline by which constraints for the
+    /// given `slot` should be submitted, based on the configured genesis time and beacon timing.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assuming `service` is a properly constructed ConstraintSubmissionService:
+    /// // let deadline = service.get_submission_deadline(42);
+    /// // The deadline is an absolute SystemTime (offset from UNIX_EPOCH).
+    /// // assert!(deadline.duration_since(std::time::UNIX_EPOCH).is_ok());
+    /// ```
     pub fn get_submission_deadline(&self, slot: u64) -> SystemTime {
         let genesis_time = self.config.beacon_api.genesis_time;
         let deadline_timestamp = BeaconTiming::constraint_deadline_for_slot(genesis_time, slot);
@@ -131,7 +222,25 @@ impl ConstraintSubmissionService {
     }
 }
 
-/// Core constraint submission processing logic
+/// Process pending constraint submissions for the current slot and a short lookahead.
+///
+/// Attempts to process constraint submissions for each slot from the current slot up to
+/// three slots ahead. For each slot within the constraint submission window, this function
+/// invokes per-slot processing and logs recoverable errors without aborting the overall loop.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example(
+/// #     constraints_client: std::sync::Arc<ConstraintsApiClient>,
+/// #     bls_manager: std::sync::Arc<BlsManager>,
+/// #     db_pool: std::sync::Arc<PgPool>,
+/// #     config: std::sync::Arc<Config>,
+/// # ) -> anyhow::Result<()> {
+/// process_pending_constraints(constraints_client, bls_manager, db_pool, config).await?;
+/// # Ok(())
+/// # }
+/// ```
 async fn process_pending_constraints(
     constraints_client: Arc<ConstraintsApiClient>,
     bls_manager: Arc<BlsManager>,
@@ -170,7 +279,35 @@ async fn process_pending_constraints(
     Ok(())
 }
 
-/// Process constraints for a specific slot
+/// Processes delegation constraints for a given slot.
+///
+/// Fetches delegations for `slot`, filters delegations that match the configured
+/// BLS public key, and invokes per-delegation constraint processing for each
+/// matching delegation. Per-delegation errors are logged and do not stop
+/// processing of other delegations.
+///
+/// Returns `Ok(())` when processing completes for the slot. Returns an error if
+/// delegations cannot be retrieved from the database.
+///
+/// # Examples
+///
+/// ```
+/// # async fn example(
+/// #     constraints_client: &crate::clients::ConstraintsApiClient,
+/// #     bls_manager: &crate::bls::BlsManager,
+/// #     db_pool: &sqlx::PgPool,
+/// #     config: &crate::config::Config,
+/// # ) -> anyhow::Result<()> {
+/// process_constraints_for_slot(
+///     constraints_client,
+///     bls_manager,
+///     db_pool,
+///     config,
+///     42,
+/// ).await?;
+/// # Ok(())
+/// # }
+/// ```
 async fn process_constraints_for_slot(
     constraints_client: &ConstraintsApiClient,
     bls_manager: &BlsManager,
@@ -222,7 +359,45 @@ async fn process_constraints_for_slot(
     Ok(())
 }
 
-/// Process constraints for a specific delegation
+/// Process and submit constraints for a single delegation at a given slot.
+///
+/// This function gathers unprocessed inclusion commitments for `slot`, converts them into
+/// constraints, signs a constraints message using `bls_manager` and `signing_config`, submits
+/// the signed message via `constraints_client`, and on successful submission marks the
+/// corresponding commitments as processed in the database.
+///
+/// # Behavior
+///
+/// - If no constraints are produced for the slot, the function returns without side effects.
+/// - On successful submission, the function marks the processed commitment hashes in the database.
+/// - Any error encountered while creating constraints, signing, submitting, or marking commitments
+///   is returned.
+///
+/// # Examples
+///
+/// ```
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # // The following is a minimal usage sketch. Replace the placeholders with real instances.
+/// # use std::sync::Arc;
+/// # use tokio;
+/// # use crate::services::constraint_submission::process_delegation_constraints;
+/// # use crate::clients::constraints::ConstraintsApiClient;
+/// # use crate::crypto::bls::BlsManager;
+/// # use sqlx::PgPool;
+/// # use crate::types::delegation::SignedDelegation;
+/// # use crate::config::SigningConfig;
+/// let constraints_client = ConstraintsApiClient::new(/* ... */);
+/// let bls_manager = BlsManager::new(/* ... */);
+/// let db_pool = PgPool::connect("postgres://user:pass@localhost/db").await?;
+/// let delegation = SignedDelegation::default(); // replace with real delegation
+/// let signing_config = SigningConfig::default(); // replace with real signing config
+/// let slot = 12345;
+///
+/// // Call the async function (must be inside an async context)
+/// process_delegation_constraints(&constraints_client, &bls_manager, &db_pool, &delegation, &signing_config, slot).await?;
+/// # Ok(())
+/// # }
+/// ```
 async fn process_delegation_constraints(
     constraints_client: &ConstraintsApiClient,
     bls_manager: &BlsManager,
@@ -285,7 +460,59 @@ async fn process_delegation_constraints(
     Ok(())
 }
 
-/// Submit a constraint immediately
+/// Submits a single constraint for the given slot immediately.
+///
+/// This validates the provided committer address against the configured committer,
+/// finds the matching delegation for the slot, converts the provided payload into
+/// a `Constraint`, signs the resulting `ConstraintsMessage` with the configured BLS key,
+/// and submits the signed constraints to the constraints API. The submission is bounded
+/// by a short timeout to avoid exceeding overall deadlines.
+///
+/// # Errors
+///
+/// Returns an error if the committer address does not match configuration, no matching
+/// delegation is found for the slot and committer, signing fails, the API submission
+/// fails, or the submission times out.
+///
+/// # Returns
+///
+/// A `String` representation of the API submission response.
+///
+/// # Examples
+///
+/// ```
+/// # use std::sync::Arc;
+/// # use tokio::runtime::Runtime;
+/// # fn example() {
+/// # let rt = Runtime::new().unwrap();
+/// # rt.block_on(async {
+/// // Placeholder values shown for illustrative purposes only.
+/// // In real code supply actual client, manager, pool, and config instances.
+/// let constraints_client: ConstraintsApiClient = unimplemented!();
+/// let bls_manager: BlsManager = unimplemented!();
+/// let db_pool: PgPool = unimplemented!();
+/// let config: Config = unimplemented!();
+/// let slot = 42u64;
+/// let payload = vec![0u8; 32];
+/// let committer_address = config.signing.committer_address.clone();
+///
+/// let result = submit_constraint(
+///     &constraints_client,
+///     &bls_manager,
+///     &db_pool,
+///     &config,
+///     slot,
+///     payload,
+///     committer_address,
+/// ).await;
+///
+/// match result {
+///     Ok(resp) => println!("Submitted: {}", resp),
+///     Err(e) => eprintln!("Submission failed: {:?}", e),
+/// }
+/// # });
+/// # }
+/// ```
 async fn submit_constraint(
     constraints_client: &ConstraintsApiClient,
     bls_manager: &BlsManager,
@@ -355,9 +582,31 @@ async fn submit_constraint(
     Ok(format!("{:?}", submission_result))
 }
 
-/// Create constraints from committed transactions for a specific slot
-/// Returns a tuple of (constraints, request_hashes) where request_hashes contains
-/// only the hashes of commitments that were successfully converted to constraints
+/// Build constraint objects from unprocessed commitments for a slot.
+///
+/// Queries the database for unprocessed commitments at the given slot, converts inclusion
+/// commitments (commitment_type == 1) into `Constraint` values, and returns those constraints
+/// along with the request hashes of commitments that were successfully converted.
+///
+/// # Returns
+///
+/// A tuple where the first element is a `Vec<Constraint>` created from inclusion commitments,
+/// and the second element is a `Vec<String>` containing the `request_hash` values for commitments
+/// that were converted into constraints.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use anyhow::Result;
+/// # use sqlx::PgPool;
+/// # use crate::services::constraint_submission::create_constraints_from_commitments;
+/// # async fn example(pool: &PgPool) -> Result<()> {
+/// let slot: u64 = 42;
+/// let (constraints, processed_hashes) = create_constraints_from_commitments(pool, slot).await?;
+/// println!("Created {} constraints, processed {} hashes", constraints.len(), processed_hashes.len());
+/// # Ok(())
+/// # }
+/// ```
 async fn create_constraints_from_commitments(
     db_pool: &PgPool,
     slot: u64,

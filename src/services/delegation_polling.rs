@@ -23,7 +23,39 @@ pub struct DelegationPollingService {
 }
 
 impl DelegationPollingService {
-    /// Create a new delegation polling service
+    /// Creates a DelegationPollingService using the provided clients, database pool, and configuration.
+    ///
+    /// The function initializes an internal job scheduler and returns a service instance ready to
+    /// schedule and run delegation polling and cleanup jobs.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(DelegationPollingService)` containing the constructed service on success, or an error if
+    /// the job scheduler could not be created.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// // Construct or obtain these values from your application context.
+    /// let beacon_client: Arc<BeaconApiClient> = Arc::new(/* ... */);
+    /// let constraints_client: Arc<ConstraintsApiClient> = Arc::new(/* ... */);
+    /// let db_pool: Arc<sqlx::PgPool> = Arc::new(/* ... */);
+    /// let config: Arc<Config> = Arc::new(/* ... */);
+    ///
+    /// // Create the service (in an async context)
+    /// let svc = tokio::runtime::Runtime::new()
+    ///     .unwrap()
+    ///     .block_on(async {
+    ///         DelegationPollingService::new(
+    ///             beacon_client,
+    ///             constraints_client,
+    ///             db_pool,
+    ///             config,
+    ///         ).await
+    ///     })
+    ///     .unwrap();
+    /// ```
     pub async fn new(
         beacon_client: Arc<BeaconApiClient>,
         constraints_client: Arc<ConstraintsApiClient>,
@@ -42,7 +74,26 @@ impl DelegationPollingService {
         })
     }
 
-    /// Start the delegation polling service with scheduled tasks
+    /// Starts the delegation polling service and schedules its background jobs.
+    ///
+    /// This schedules two recurring tasks and starts the job scheduler:
+    /// - a delegation polling job that runs every 30 seconds and invokes `poll_delegations`,
+    /// - a cleanup job that runs every 5 minutes and invokes `cleanup_expired_delegations`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if creating or adding either scheduled job fails, or if the scheduler fails to start.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use anyhow::Result;
+    /// # async fn example(svc: Arc<crate::services::delegation_polling::DelegationPollingService>) -> Result<()> {
+    /// svc.start().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn start(&self) -> Result<()> {
         info!("Starting delegation polling service");
 
@@ -93,7 +144,18 @@ impl DelegationPollingService {
         Ok(())
     }
 
-    /// Stop the delegation polling service
+    /// Stops the delegation polling service by shutting down its job scheduler.
+    ///
+    /// # Errors
+    /// Returns an error if the job scheduler fails to shut down.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn example(mut svc: crate::services::delegation_polling::DelegationPollingService) {
+    /// svc.stop().await.unwrap();
+    /// # }
+    /// ```
     pub async fn stop(&mut self) -> Result<()> {
         info!("Stopping delegation polling service");
         self.scheduler.shutdown().await
@@ -102,7 +164,24 @@ impl DelegationPollingService {
         Ok(())
     }
 
-    /// Poll delegations once (for testing or manual execution)
+    /// Trigger a single delegation polling cycle.
+    ///
+    /// This runs the same polling routine used by the scheduled job but executes it immediately,
+    /// intended for testing or manual invocation.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example() -> anyhow::Result<()> {
+    /// // obtain a DelegationPollingService instance named `svc`
+    /// svc.poll_once().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the polling completed successfully, `Err` if an error occurred during polling.
     pub async fn poll_once(&self) -> Result<()> {
         poll_delegations(
             Arc::clone(&self.beacon_client),
@@ -113,7 +192,32 @@ impl DelegationPollingService {
     }
 }
 
-/// Core delegation polling logic
+/// Runs a single delegation polling cycle across a lookahead slot range and persists any discovered delegations.
+///
+/// The function computes the current slot from the configured genesis time, adds the configured lookahead (in epochs)
+/// to form a start..=end slot range, then polls each slot for delegations via the constraints API and saves any found
+/// delegations to the database. It logs per-slot results and a summary of total delegations found, successful saves,
+/// and errors.
+///
+/// Returns `Ok(())` when the polling cycle completes; returns an error if fetching or saving delegations fails in a way
+/// that is propagated.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::sync::Arc;
+/// # async fn example() -> anyhow::Result<()> {
+/// // Prepare clients, pool and config (omitted)
+/// let beacon_client: Arc<BeaconApiClient> = Arc::new(/* ... */);
+/// let constraints_client: Arc<ConstraintsApiClient> = Arc::new(/* ... */);
+/// let db_pool: Arc<PgPool> = Arc::new(/* ... */);
+/// let config: Arc<Config> = Arc::new(/* ... */);
+///
+/// // Run a single polling cycle
+/// poll_delegations(beacon_client, constraints_client, db_pool, config).await?;
+/// # Ok(())
+/// # }
+/// ```
 async fn poll_delegations(
     _beacon_client: Arc<BeaconApiClient>,
     constraints_client: Arc<ConstraintsApiClient>,
@@ -187,7 +291,23 @@ async fn poll_delegations(
     Ok(())
 }
 
-/// Poll delegations for a specific slot
+/// Retrieve and persist delegations for a specific slot that involve the local BLS key.
+///
+/// The function fetches delegations for `slot` from the constraints API, filters those that
+/// involve `our_bls_pubkey` (currently all fetched delegations are accepted), saves the
+/// relevant delegations to the database, and returns how many were persisted.
+///
+/// # Returns
+///
+/// The number of delegations saved to the database.
+///
+/// # Examples
+///
+/// ```ignore
+/// // Example usage (requires initialized clients, pool and BLS key)
+/// let saved = poll_delegations_for_slot(&constraints_client, &db_pool, 42, &our_bls_pubkey).await.unwrap();
+/// println!("Saved {} delegations", saved);
+/// ```
 async fn poll_delegations_for_slot(
     constraints_client: &ConstraintsApiClient,
     db_pool: &PgPool,
@@ -236,7 +356,27 @@ async fn poll_delegations_for_slot(
     Ok(saved_count)
 }
 
-/// Clean up expired delegations from the database
+/// Deactivates delegations in the database that have expired according to the configured genesis time.
+///
+/// Computes the current slot from the service configuration's genesis time and deactivates any delegations whose slot is less than the computed current slot.
+///
+/// # Errors
+/// Returns an error if the database deactivation operation fails.
+///
+/// # Examples
+///
+/// ```
+/// # use std::sync::Arc;
+/// # use tokio;
+/// # use crate::services::delegation_polling::cleanup_expired_delegations;
+/// # use crate::Config;
+/// # use sqlx::PgPool;
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let config = Arc::new(Config::default());
+/// let db_pool = Arc::new(PgPool::connect("postgres://user:pass@localhost/db").await.unwrap());
+/// cleanup_expired_delegations(db_pool, config).await.unwrap();
+/// # });
+/// ```
 async fn cleanup_expired_delegations(db_pool: Arc<PgPool>, config: Arc<Config>) -> Result<()> {
     debug!("Starting expired delegation cleanup");
 

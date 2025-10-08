@@ -45,7 +45,25 @@ pub struct ConstraintsApiError {
 }
 
 impl ConstraintsApiClient {
-	/// Create a new Constraints API client
+	/// Creates a new ConstraintsApiClient configured from `config`.
+	///
+	/// The created client uses the request timeout specified by `config.request_timeout_secs`.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the underlying HTTP client cannot be constructed.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let cfg = ConstraintsApiConfig {
+	///     request_timeout_secs: 5,
+	///     relay_endpoint: "https://relay.example.com".to_string(),
+	///     max_retries: 3,
+	///     authorized_builders: vec![],
+	/// };
+	/// let client = ConstraintsApiClient::new(cfg).expect("client creation failed");
+	/// ```
 	pub fn new(config: ConstraintsApiConfig) -> Result<Self> {
 		let client = Client::builder()
 			.timeout(Duration::from_secs(config.request_timeout_secs))
@@ -55,10 +73,20 @@ impl ConstraintsApiClient {
 		Ok(Self { client, config })
 	}
 
-	/// Retrieve delegations for a specific slot
+	/// Fetches delegations for a given slot from the Constraints Relay API.
 	///
-	/// This is called proactively to fetch delegation authority from proposers
-	/// before commitment requests arrive for that slot.
+	/// On success, returns the list of `SignedDelegation` messages associated with `slot`.
+	/// If the API responds with 404 Not Found, this function returns an empty vector.
+	/// For other HTTP error responses or request/parse failures, an error is returned.
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # async fn example_usage(client: &crate::api::constraints::ConstraintsApiClient) -> anyhow::Result<()> {
+	/// let delegations = client.get_delegations_for_slot(12345).await?;
+	/// println!("Got {} delegations", delegations.len());
+	/// # Ok(()) }
+	/// ```
 	pub async fn get_delegations_for_slot(&self, slot: u64) -> Result<Vec<SignedDelegation>> {
 		let endpoint = format!("constraints/v1/delegations/{}", slot);
 		let url = self.build_url(&endpoint);
@@ -105,10 +133,24 @@ impl ConstraintsApiClient {
 		}
 	}
 
-	/// Submit signed constraints to the relay
+	/// Submit signed constraints to the relay for the target slot.
 	///
-	/// This must be called within the 8-second deadline for the target slot.
-	/// The relay will forward constraints to authorized builders.
+	/// Attempts to POST the provided `SignedConstraints` to the relay's builder constraints endpoint,
+	/// honoring the client's configured retry and backoff policy. On success returns the relay's
+	/// `ConstraintSubmissionResponse`; on persistent failure returns the last observed error.
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # use crate::api::constraints::{ConstraintsApiClient, ConstraintsApiConfig, SignedConstraints};
+	/// # async fn _example() {
+	/// // Construct a client and a SignedConstraints value appropriate for your environment,
+	/// // then submit:
+	/// // let client = ConstraintsApiClient::new(config).unwrap();
+	/// // let constraints = SignedConstraints { /* ... */ };
+	/// // let response = client.submit_constraints(&constraints).await.unwrap();
+	/// # }
+	/// ```
 	pub async fn submit_constraints(&self, constraints: &SignedConstraints) -> Result<ConstraintSubmissionResponse> {
 		let endpoint = "constraints/v0/builder/constraints";
 		let url = self.build_url(endpoint);
@@ -237,7 +279,19 @@ impl ConstraintsApiClient {
 		Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Unknown submission error")))
 	}
 
-	/// Build full URL from endpoint
+	/// Appends the given API endpoint path to the client's configured relay endpoint, ensuring exactly one `/` separates them.
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// // When base has no trailing slash
+	/// let url = client.build_url("test/endpoint");
+	/// assert_eq!(url, "https://relay.example.com/test/endpoint");
+	///
+	/// // When base ends with a trailing slash
+	/// let url2 = client.build_url("test/endpoint");
+	/// assert_eq!(url2, "https://relay.example.com/test/endpoint");
+	/// ```
 	fn build_url(&self, endpoint: &str) -> String {
 		let base = &self.config.relay_endpoint;
 		if base.ends_with('/') {
@@ -253,6 +307,20 @@ mod tests {
 	use super::*;
 	use crate::config::ConstraintsApiConfig;
 
+	/// Creates a sample `ConstraintsApiConfig` pre-filled with deterministic test values.
+	///
+	/// The configuration uses "https://relay.example.com" as the relay endpoint, a 10-second
+	/// request timeout, a maximum of 3 retries, and two example authorized builder IDs.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let cfg = create_test_config();
+	/// assert_eq!(cfg.relay_endpoint, "https://relay.example.com");
+	/// assert_eq!(cfg.request_timeout_secs, 10);
+	/// assert_eq!(cfg.max_retries, 3);
+	/// assert!(cfg.authorized_builders.contains(&"0x1234".to_string()));
+	/// ```
 	fn create_test_config() -> ConstraintsApiConfig {
 		ConstraintsApiConfig {
 			relay_endpoint: "https://relay.example.com".to_string(),

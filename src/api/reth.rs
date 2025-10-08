@@ -27,7 +27,22 @@ pub struct GasPriceInfo {
 }
 
 impl GasPriceInfo {
-    /// Safely convert gas price to u64, clamping to u64::MAX if too large
+    /// Convert the stored gas price to a primitive integer, clamping to the maximum representable value on overflow.
+    ///
+    /// Returns the gas price as a `u64`; if the stored `U256` value is greater than `u64::MAX`, this returns `u64::MAX`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use primitive_types::U256;
+    ///
+    /// let info = crate::api::reth::GasPriceInfo { gas_price: U256::from(20u64), block_number: 0, timestamp: 0 };
+    /// assert_eq!(info.gas_price_as_u64_clamped(), 20u64);
+    ///
+    /// let big_price = U256::from(u128::MAX);
+    /// let big_info = crate::api::reth::GasPriceInfo { gas_price: big_price, block_number: 0, timestamp: 0 };
+    /// assert_eq!(big_info.gas_price_as_u64_clamped(), u64::MAX);
+    /// ```
     pub fn gas_price_as_u64_clamped(&self) -> u64 {
         if self.gas_price > U256::from(u64::MAX) {
             u64::MAX
@@ -36,7 +51,19 @@ impl GasPriceInfo {
         }
     }
 
-    /// Try to convert gas price to u64, returning error if too large
+    /// Convert the stored `gas_price` to a `u64` if it does not overflow.
+    ///
+    /// Returns `Ok(u64)` containing the gas price when the value is less than or equal to `u64::MAX`,
+    /// and an `Err` describing the overflow when the gas price is larger than `u64::MAX`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use primitive_types::U256;
+    ///
+    /// let info = GasPriceInfo { gas_price: U256::from(20u64), block_number: 0, timestamp: 0 };
+    /// assert_eq!(info.gas_price_as_u64_checked().unwrap(), 20u64);
+    /// ```
     pub fn gas_price_as_u64_checked(&self) -> Result<u64> {
         if self.gas_price > U256::from(u64::MAX) {
             Err(anyhow::anyhow!(
@@ -55,6 +82,20 @@ mod u256_serde {
     use ethers_core::types::U256;
     use serde::{Deserialize, Deserializer, Serializer};
 
+    /// Serializes a `U256` into a hex string prefixed with `0x`.
+    ///
+    /// The value is formatted in lowercase hexadecimal without leading zeros (except zero itself)
+    /// and emitted as a JSON string like `"0x1a2b3c"`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use serde_json::to_string;
+    /// use primitive_types::U256;
+    /// let v = U256::from(0x1a_u64);
+    /// let s = to_string(&format!("0x{:x}", v)).unwrap(); // mimic serializer output
+    /// assert_eq!(s, "\"0x1a\"");
+    /// ```
     pub fn serialize<S>(value: &U256, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -62,6 +103,18 @@ mod u256_serde {
         serializer.serialize_str(&format!("0x{:x}", value))
     }
 
+    /// Deserialize a hex string (optionally prefixed with "0x") into a `U256`.
+    ///
+    /// Accepts a hex-like string, strips a leading `"0x"` if present, and parses the remainder as base-16.
+    /// Returns a serde deserialization error if the string is not a valid hexadecimal representation for `U256`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use primitive_types::U256;
+    /// let v: U256 = serde_json::from_str("\"0x1dcd6500\"").unwrap();
+    /// assert_eq!(v, U256::from(0x1dcd6500u64));
+    /// ```
     pub fn deserialize<'de, D>(deserializer: D) -> Result<U256, D::Error>
     where
         D: Deserializer<'de>,
@@ -84,6 +137,16 @@ pub struct RethApiConfig {
 }
 
 impl Default for RethApiConfig {
+    /// Constructs a default RethApiConfig with a local RPC endpoint, a short request timeout, and a small retry count.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let cfg = crate::RethApiConfig::default();
+    /// assert_eq!(cfg.endpoint, "http://localhost:8545");
+    /// assert_eq!(cfg.request_timeout_secs, 10);
+    /// assert_eq!(cfg.max_retries, 3);
+    /// ```
     fn default() -> Self {
         Self {
             endpoint: "http://localhost:8545".to_string(),
@@ -94,7 +157,22 @@ impl Default for RethApiConfig {
 }
 
 impl RethApiClient {
-    /// Create a new Reth API client
+    /// Constructs a new `RethApiClient` from the provided configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying HTTP client cannot be created with the configured timeout.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let cfg = RethApiConfig {
+    ///     endpoint: "http://localhost:8545".to_string(),
+    ///     request_timeout_secs: 5,
+    ///     max_retries: 3,
+    /// };
+    /// let client = RethApiClient::new(cfg).expect("failed to create RethApiClient");
+    /// ```
     pub fn new(config: RethApiConfig) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.request_timeout_secs))
@@ -108,7 +186,30 @@ impl RethApiClient {
         })
     }
 
-    /// Get current gas price using eth_gasPrice
+    /// Fetches the current gas price from the configured Reth node and returns it with context.
+    ///
+    /// The returned `GasPriceInfo` contains the gas price as a `U256`, the block number at which
+    /// the price was observed (or `0` if the block number could not be fetched), and the UNIX
+    /// epoch timestamp (seconds) when the price was retrieved.
+    ///
+    /// # Returns
+    ///
+    /// `GasPriceInfo` containing the current gas price, the block number (or `0` if unavailable),
+    /// and the retrieval timestamp (seconds since the UNIX epoch).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::time::Duration;
+    /// # use tokio::runtime::Runtime;
+    /// # use crate::api::reth::{RethApiClient, RethApiConfig};
+    /// let rt = Runtime::new().unwrap();
+    /// let config = RethApiConfig { endpoint: "http://localhost:8545".into(), request_timeout_secs: 10, max_retries: 3 };
+    /// let client = RethApiClient::new(config).unwrap();
+    /// let info = rt.block_on(async { client.get_gas_price().await.unwrap() });
+    /// // gas_price is a U256, block_number is a u64, timestamp is seconds since epoch
+    /// assert!(info.timestamp > 0);
+    /// ```
     pub async fn get_gas_price(&self) -> Result<GasPriceInfo> {
         debug!("Fetching gas price from Reth node: {}", self.endpoint);
 
@@ -155,7 +256,21 @@ impl RethApiClient {
         Ok(gas_price_info)
     }
 
-    /// Get current block number
+    /// Retrieves the current block number from the configured Reth node.
+    ///
+    /// # Returns
+    ///
+    /// The current block number as a `u64`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example(client: &crate::RethApiClient) -> anyhow::Result<()> {
+    /// let block = client.get_block_number().await?;
+    /// println!("block: {}", block);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn get_block_number(&self) -> Result<u64> {
         let payload = json!({
             "jsonrpc": "2.0",
@@ -179,7 +294,37 @@ impl RethApiClient {
         Ok(block_number)
     }
 
-    /// Make a JSON-RPC call to the Reth node
+    /// Perform a JSON-RPC POST to the configured Reth endpoint with retry logic.
+    ///
+    /// This method sends the provided JSON-RPC `payload` to the client's endpoint, retries on
+    /// transient network or HTTP failures up to the client's configured `max_retries`, and
+    /// treats a JSON `"error"` field in the RPC response as a failure.
+    ///
+    /// The `payload` should be a complete JSON-RPC request object (for example, produced by
+    /// `serde_json::json!`).
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Value)` with the parsed JSON-RPC response when a successful response without an `"error"`
+    /// field is received, `Err` with context if all retries are exhausted or if the RPC response
+    /// contains an `"error"` object.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use serde_json::json;
+    ///
+    /// // `client` is an existing `RethApiClient` instance.
+    /// let payload = json!({
+    ///     "jsonrpc": "2.0",
+    ///     "method": "web3_clientVersion",
+    ///     "params": [],
+    ///     "id": 1
+    /// });
+    ///
+    /// // Inside an async context:
+    /// // let resp = client.make_rpc_call(payload).await?;
+    /// ```
     async fn make_rpc_call(&self, payload: Value) -> Result<Value> {
         let mut attempts = 0;
         let max_retries = self.max_retries;

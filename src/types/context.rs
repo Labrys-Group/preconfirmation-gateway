@@ -17,7 +17,20 @@ pub struct RpcContext {
 }
 
 impl RpcContext {
-	/// Create a new RPC context with the given database context, config, fee engine, and beacon client
+	/// Creates a new RpcContext composed of the provided database context, configuration, fee pricing engine, and Beacon API client.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::sync::Arc;
+	/// // Construct or obtain the required components...
+	/// let database = DatabaseContext::new();
+	/// let config = Config::default();
+	/// let fee_engine = Arc::new(FeePricingEngine::new());
+	/// let beacon_client = Arc::new(BeaconApiClient::new());
+	///
+	/// let ctx = RpcContext::new(database, config, fee_engine, beacon_client);
+	/// ```
 	pub fn new(
 		database: DatabaseContext,
 		config: Config,
@@ -27,12 +40,36 @@ impl RpcContext {
 		Self { database, config, fee_engine, beacon_client }
 	}
 
-	/// Get reference to the database context
+	/// Accesses the RpcContext's database context.
+	///
+	/// Provides a shared reference to the underlying DatabaseContext held by this RpcContext.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// // Construct RpcContext with appropriate values (placeholders shown)
+	/// let ctx = RpcContext::new(db, config, fee_engine, beacon_client);
+	/// let db_ref: &DatabaseContext = ctx.database();
+	/// ```
 	pub fn database(&self) -> &DatabaseContext {
 		&self.database
 	}
 
-	/// Get reference to the beacon API client
+	/// Returns a reference to the internal Beacon API client.
+	///
+	/// # Returns
+	///
+	/// A reference to the `Arc<BeaconApiClient>` stored in the context.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use std::sync::Arc;
+	/// // assume db, config, fee_engine, beacon_client are available in scope
+	/// let ctx = RpcContext::new(db, config, fee_engine, beacon_client.clone());
+	/// let client_ref: &Arc<BeaconApiClient> = ctx.beacon_client();
+	/// assert!(Arc::ptr_eq(client_ref, &beacon_client));
+	/// ```
 	pub fn beacon_client(&self) -> &Arc<BeaconApiClient> {
 		&self.beacon_client
 	}
