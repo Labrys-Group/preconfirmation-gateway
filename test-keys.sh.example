@@ -1,33 +1,40 @@
 #!/bin/bash
 # Example test keys file for integration testing
 #
-# IMPORTANT: This is an EXAMPLE file containing test keys for local development.
-# Copy this file to test-keys.sh and update with your own test keys.
+# ⚠️  SECURITY WARNING ⚠️
+# This file contains ONLY PLACEHOLDERS - no real cryptographic keys.
+# You MUST replace the placeholder values below with your own generated keys.
 #
 # DO NOT commit test-keys.sh to git - it is in .gitignore
+# DO NOT use these placeholder values - they will not work
 #
 # Usage:
-#   cp test-keys.sh.example test-keys.sh
-#   # Edit test-keys.sh with your keys
-#   export KEYS_FILE="test-keys.sh"
-#   ./scripts/integration-test.sh
+#   1. Copy this file: cp test-keys.sh.example test-keys.sh
+#   2. Generate your own keys (see instructions below)
+#   3. Edit test-keys.sh and replace ALL placeholders with actual keys
+#   4. Run tests: export KEYS_FILE="test-keys.sh" && ./scripts/integration-test.sh
 
-# ECDSA private key for commitment signing (64 hex characters)
-# IMPORTANT: Replace with your own key! DO NOT use these placeholder values.
-#
+# ============================================================================
+# ECDSA Private Key (64 hex characters, do NOT include 0x prefix)
+# ============================================================================
 # For local testing with mock relay, the key must correspond to address:
-# 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 (Hardhat default account #0)
+#   0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 (Hardhat default account #0)
 #
-# To generate a new key:
-#   - Use Hardhat: npx hardhat node (account #0)
-#   - Or use cast: cast wallet new
-#   - Or use any Ethereum key generation tool
-export ECDSA_PRIVATE_KEY_1="<YOUR_ECDSA_PRIVATE_KEY_HERE>"
+# Generate a key using one of these methods:
+#   - Hardhat: npx hardhat node (prints account #0 private key)
+#   - Foundry: cast wallet new
+#   - Any Ethereum key generation tool
+#
+# REPLACE THE PLACEHOLDER BELOW WITH YOUR ACTUAL KEY:
+export ECDSA_PRIVATE_KEY_1="YOUR_64_CHAR_ECDSA_PRIVATE_KEY_WITHOUT_0x_PREFIX"
 
-# BLS private key for constraint signing (64 hex characters, 32 bytes)
-# IMPORTANT: Replace with your own key! DO NOT use this placeholder value.
+# ============================================================================
+# BLS Private Key (64 hex characters, 32 bytes, do NOT include 0x prefix)
+# ============================================================================
+# Generate a key using one of these methods:
+#   - OpenSSL: openssl rand -hex 32
+#   - Unix: head -c 32 /dev/urandom | xxd -p -c 32
+#   - Python: python3 -c "import secrets; print(secrets.token_hex(32))"
 #
-# To generate a new BLS key, use a secure random generator:
-#   - openssl rand -hex 32
-#   - Or use: head -c 32 /dev/urandom | xxd -p -c 32
-export BLS_PRIVATE_KEY_1="<YOUR_BLS_PRIVATE_KEY_HERE>"
+# REPLACE THE PLACEHOLDER BELOW WITH YOUR ACTUAL KEY:
+export BLS_PRIVATE_KEY_1="YOUR_64_CHAR_BLS_PRIVATE_KEY_WITHOUT_0x_PREFIX"
