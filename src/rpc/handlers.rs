@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use jsonrpsee::Extensions;
 use jsonrpsee::core::RpcResult;
-use tracing::{info, warn, error, instrument};
+use tracing::{debug, info, warn, error, instrument};
 
 use super::super::types::{
     Commitment, CommitmentRequest, FeeInfo, RpcContext, SignedCommitment, SlotInfoResponse,
@@ -45,6 +45,31 @@ async fn verify_delegation_authority(
             ));
         }
     };
+
+    // CRITICAL SECURITY: Verify the BLS signature on the delegation
+    let bls_manager = crate::crypto::bls::BlsManager::new(&context.config.delegation.domain_application_gateway)
+        .map_err(|e| format!("Failed to create BLS manager: {}", e))?;
+
+    match bls_manager.verify_delegation_signature(delegation) {
+        Ok(true) => {
+            debug!(
+                "BLS signature verified for delegation slot {} committer {}",
+                slot, committer_address
+            );
+        }
+        Ok(false) => {
+            return Err(format!(
+                "Invalid BLS signature on delegation for slot {} and committer {}. Rejecting potentially tampered delegation.",
+                slot, committer_address
+            ));
+        }
+        Err(e) => {
+            return Err(format!(
+                "Failed to verify BLS signature on delegation for slot {}: {}",
+                slot, e
+            ));
+        }
+    }
 
     // CRITICAL SECURITY: Verify that the proposer in the delegation is actually
     // the scheduled validator for this slot according to the beacon chain

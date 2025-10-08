@@ -9,6 +9,7 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 use crate::api::beacon::BeaconApiClient;
 use crate::api::constraints::ConstraintsApiClient;
 use crate::config::Config;
+use crate::crypto::bls::BlsManager;
 use crate::db::delegation_ops::save_delegations_batch;
 use crate::types::beacon::{BeaconTiming, timing};
 use crate::types::delegation::SignedDelegation;
@@ -203,19 +204,14 @@ async fn poll_delegations_for_slot(
     }
 
     // Filter to only delegations that involve our BLS key as delegate
-    let _our_bls_pubkey_bytes = our_bls_pubkey.to_bytes();
+    let our_bls_pubkey_bytes = our_bls_pubkey.to_bytes();
 
-    // TODO: Re-enable key filtering after matching keys with mock relay
-    // For now, accept all delegations for testing
-    let relevant_delegations: Vec<SignedDelegation> = delegations;
-    /*
     let relevant_delegations: Vec<SignedDelegation> = delegations
         .into_iter()
         .filter(|delegation| {
             delegation.message.delegate.0 == our_bls_pubkey_bytes
         })
         .collect();
-    */
 
     if relevant_delegations.is_empty() {
         return Ok(0);
@@ -227,8 +223,57 @@ async fn poll_delegations_for_slot(
         slot
     );
 
+    // Verify BLS signatures on delegations before saving
+    let bls_manager = BlsManager::new("0x00446567")
+        .context("Failed to create BLS manager for signature verification")?;
+
+    let mut verified_delegations = Vec::new();
+    let mut invalid_count = 0;
+
+    for delegation in relevant_delegations {
+        match bls_manager.verify_delegation_signature(&delegation) {
+            Ok(true) => {
+                verified_delegations.push(delegation);
+            }
+            Ok(false) => {
+                warn!(
+                    "Invalid BLS signature on delegation for slot {}, proposer 0x{}, delegate 0x{}",
+                    slot,
+                    hex::encode(&delegation.message.proposer.0),
+                    hex::encode(&delegation.message.delegate.0)
+                );
+                invalid_count += 1;
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to verify BLS signature on delegation for slot {}: {}",
+                    slot, e
+                );
+                invalid_count += 1;
+            }
+        }
+    }
+
+    if invalid_count > 0 {
+        warn!(
+            "Rejected {} delegations for slot {} due to invalid signatures",
+            invalid_count, slot
+        );
+    }
+
+    if verified_delegations.is_empty() {
+        debug!("No verified delegations to save for slot {}", slot);
+        return Ok(0);
+    }
+
+    debug!(
+        "Verified {} delegations with valid BLS signatures for slot {}",
+        verified_delegations.len(),
+        slot
+    );
+
     // Save the delegations to the database
-    let saved_ids = save_delegations_batch(db_pool, &relevant_delegations).await
+    let saved_ids = save_delegations_batch(db_pool, &verified_delegations).await
         .with_context(|| format!("Failed to save delegations for slot {}", slot))?;
 
     let saved_count = saved_ids.len();
