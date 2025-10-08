@@ -110,9 +110,9 @@ Integration tests require cryptographic keys to be provided via environment vari
 #### Option 1: Environment Variables
 
 ```bash
-# Generate or provide your own test keys
-export ECDSA_PRIVATE_KEY_1="<your_ecdsa_private_key>"  # 64 hex characters
-export BLS_PRIVATE_KEY_1="<your_bls_private_key>"      # 64 hex characters
+# IMPORTANT: Replace placeholders with actual keys - DO NOT use these literal values!
+export ECDSA_PRIVATE_KEY_1="0x<64-hex-characters>"  # ECDSA private key
+export BLS_PRIVATE_KEY_1="0x<64-hex-characters>"    # BLS private key
 ./scripts/integration-test.sh
 ```
 
@@ -121,9 +121,11 @@ export BLS_PRIVATE_KEY_1="<your_bls_private_key>"      # 64 hex characters
 # For ECDSA (must match mock relay address 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266):
 # Use Hardhat account #0, or generate with: cast wallet new
 
-# For BLS:
+# For BLS (generates a random 32-byte key):
 openssl rand -hex 32
 ```
+
+> **Note:** You must provide your own cryptographic keys. The placeholders above are not valid keys.
 
 #### Option 2: Keys File (Recommended)
 
@@ -140,12 +142,13 @@ export KEYS_FILE="test-keys.sh"
 ./scripts/integration-test.sh
 ```
 
-**Important Notes:**
+**Important Security Notes:**
+- **NEVER commit actual private keys to version control** - all key material must be injected at runtime
+- `test-keys.sh` is in `.gitignore` and **must never be committed** to the repository
+- The example file (`test-keys.sh.example`) contains only placeholders like `<YOUR_ECDSA_PRIVATE_KEY_HERE>`, not real keys
+- Developers must generate and inject their own secrets via environment variables or the keys file
 - The ECDSA key must correspond to address `0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` to match the mock relay configuration
-- **NEVER commit actual private keys to version control**
-- `test-keys.sh` is in `.gitignore` and should never be committed
-- For CI/CD, set keys as secrets in your pipeline configuration
-- The example file (`test-keys.sh.example`) contains only placeholders, not real keys
+- For CI/CD, set keys as secrets in your pipeline configuration (e.g., GitHub Actions secrets)
 
 ### Run Tests
 
