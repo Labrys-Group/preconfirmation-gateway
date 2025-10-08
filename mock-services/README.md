@@ -235,7 +235,7 @@ cat logs/mock-reth.log
 
 ## Architecture
 
-```
+```text
 ┌─────────────┐
 │   Gateway   │
 │  (port 8080)│
