@@ -196,7 +196,7 @@ impl ConstraintsApiClient {
 
 							// Wait before retry (exponential backoff with overflow protection)
 							let shift = attempt.min(10); // Cap shift to prevent overflow
-							let delay_ms = 100u64.saturating_mul(1u64.saturating_shl(shift as u32));
+							let delay_ms = 100u64.saturating_mul(2u64.saturating_pow(shift as u32));
 							let delay = Duration::from_millis(delay_ms.min(30_000)); // Max 30 seconds
 							tokio::time::sleep(delay).await;
 
@@ -252,7 +252,7 @@ impl ConstraintsApiClient {
 
 					// Wait before retry (exponential backoff with overflow protection)
 					let shift = attempt.min(10); // Cap shift to prevent overflow
-					let delay_ms = 100u64.saturating_mul(1u64.saturating_shl(shift as u32));
+					let delay_ms = 100u64.saturating_mul(2u64.saturating_pow(shift as u32));
 					let delay = Duration::from_millis(delay_ms.min(30_000)); // Max 30 seconds
 					tokio::time::sleep(delay).await;
 					continue;

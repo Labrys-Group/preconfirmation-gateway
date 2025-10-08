@@ -237,41 +237,23 @@ fn parse_ethereum_address(address_str: &str) -> Result<ethabi::Address> {
 }
 
 /// Converts a hex string (with optional `0x` prefix) into a byte vector of a specified length.
-
 ///
-
 /// Returns an error if the string is not valid hex or if the decoded byte length does not equal `expected_len`.
-
 ///
-
 /// # Parameters
-
 ///
-
 /// - `hex_str`: Hex-encoded input string, may start with `0x`.
-
 /// - `expected_len`: Required length of the resulting byte vector in bytes.
-
 ///
-
 /// # Returns
-
 ///
-
 /// A `Vec<u8>` containing the decoded bytes of length `expected_len`.
-
 ///
-
 /// # Examples
-
 ///
-
 /// ```
-
 /// let b = crate::crypto::parse_hex_bytes("0x0102ff", 3).unwrap();
-
 /// assert_eq!(b, vec![0x01, 0x02, 0xff]);
-
 /// ```
 pub fn parse_hex_bytes(hex_str: &str, expected_len: usize) -> Result<Vec<u8>> {
 	let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
