@@ -12,12 +12,15 @@ echo -e "${BLUE}Starting mock services for integration testing...${NC}\n"
 # Ensure logs directory exists for log redirection and PID files
 mkdir -p logs
 
-# Function to check if a port is in use
+# port_in_use checks whether the given TCP port is currently in use.
 port_in_use() {
   lsof -i ":$1" >/dev/null 2>&1
 }
 
-# Function to wait for service to be healthy
+# wait_for_service waits until the given health URL responds or the retry limit is reached.
+# Arguments:
+#   url  - health endpoint to poll (e.g. http://localhost:3501/health)
+#   name - human-readable service name used in status messages (e.g. "mock-relay")
 wait_for_service() {
   local url=$1
   local name=$2

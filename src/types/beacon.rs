@@ -44,7 +44,21 @@ pub struct BeaconState {
 
 /// Helper functions for beacon chain operations
 impl ValidatorDuty {
-	/// Parse BLS public key from hex string to fixed array
+	/// Parses this duty's BLS public key from a hex string and returns it as a 48-byte `BlsPublicKey`.
+	///
+	/// The method accepts an optional `0x` prefix, decodes the hex into bytes, and validates the result is exactly 48 bytes.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let duty = ValidatorDuty {
+	///     validator_index: "0".to_string(),
+	///     pubkey: format!("0x{}", "00".repeat(48)),
+	///     slot: "0".to_string(),
+	/// };
+	/// let pk = duty.parse_pubkey().unwrap();
+	/// assert_eq!(pk.0.len(), 48);
+	/// ```
 	pub fn parse_pubkey(&self) -> Result<BlsPublicKey, hex::FromHexError> {
 		let pubkey_str = self.pubkey.strip_prefix("0x").unwrap_or(&self.pubkey);
 		let bytes = hex::decode(pubkey_str)?;
@@ -58,12 +72,40 @@ impl ValidatorDuty {
 		Ok(BlsPublicKey(pubkey))
 	}
 
-	/// Parse slot number from string
+	/// Parse the validator duty's slot field into an integer slot number.
+	///
+	/// Returns `Ok(u64)` containing the parsed slot number on success, or `Err(std::num::ParseIntError)` if the stored string is not a valid unsigned integer.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let vd = ValidatorDuty {
+	///     validator_index: "0".to_string(),
+	///     pubkey: "00".to_string(),
+	///     slot: "123".to_string(),
+	/// };
+	/// let slot = vd.parse_slot().unwrap();
+	/// assert_eq!(slot, 123);
+	/// ```
 	pub fn parse_slot(&self) -> Result<u64, std::num::ParseIntError> {
 		self.slot.parse::<u64>()
 	}
 
-	/// Parse validator index from string
+	/// Parses the `validator_index` field into a `u64`.
+	///
+	/// Returns `Ok(u64)` containing the parsed validator index, or `Err(std::num::ParseIntError)`
+	/// if the `validator_index` string is not a valid unsigned 64-bit integer.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let v = ValidatorDuty {
+	///     validator_index: "123".to_string(),
+	///     pubkey: "0x".to_string(),
+	///     slot: "0".to_string(),
+	/// };
+	/// assert_eq!(v.parse_validator_index().unwrap(), 123u64);
+	/// ```
 	pub fn parse_validator_index(&self) -> Result<u64, std::num::ParseIntError> {
 		self.validator_index.parse::<u64>()
 	}
@@ -73,23 +115,61 @@ impl ValidatorDuty {
 pub struct BeaconTiming;
 
 impl BeaconTiming {
-	/// Calculate epoch from slot number
+	/// Converts a slot number to its corresponding epoch.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let epoch = slot_to_epoch(64);
+	/// assert_eq!(epoch, 2);
+	/// ```
 	pub fn slot_to_epoch(slot: u64) -> u64 {
 		slot / timing::SLOTS_PER_EPOCH
 	}
 
-	/// Calculate first slot of an epoch
+	/// Compute the first slot index of the given epoch.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let first = epoch_to_first_slot(0);
+	/// assert_eq!(first, 0);
+	///
+	/// let first_epoch_one = epoch_to_first_slot(1);
+	/// assert_eq!(first_epoch_one, timing::SLOTS_PER_EPOCH);
+	/// ```
 	pub fn epoch_to_first_slot(epoch: u64) -> u64 {
 		epoch * timing::SLOTS_PER_EPOCH
 	}
 
-	/// Calculate last slot of an epoch
+	/// Compute the last slot index of a given epoch.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let last = epoch_to_last_slot(0);
+	/// assert_eq!(last, timing::SLOTS_PER_EPOCH - 1);
+	/// ```
 	pub fn epoch_to_last_slot(epoch: u64) -> u64 {
 		(epoch + 1) * timing::SLOTS_PER_EPOCH - 1
 	}
 
-	/// Get current slot based on genesis time
-	/// Note: This is a simplified calculation, production should use actual beacon state
+	/// Estimate the current beacon slot from the chain genesis time.
+	///
+	/// Returns the slot index computed from the difference between the current system time and `genesis_time`.
+	/// If the current system time is before `genesis_time`, this returns `0`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// // When genesis is in the future, the estimated slot is 0.
+	/// let future_genesis = std::time::SystemTime::now()
+	///     .duration_since(std::time::UNIX_EPOCH)
+	///     .unwrap()
+	///     .as_secs() + 60;
+	/// let slot = current_slot_estimate(future_genesis);
+	/// assert_eq!(slot, 0);
+	/// ```
 	pub fn current_slot_estimate(genesis_time: u64) -> u64 {
 		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 
@@ -100,7 +180,27 @@ impl BeaconTiming {
 		(now - genesis_time) / timing::SLOT_DURATION_SECONDS
 	}
 
-	/// Calculate time until slot starts (in seconds)
+	/// Compute the number of seconds from the current system time until the start of a given slot.
+	///
+	/// The returned value is negative if the slot has already started.
+	///
+	/// # Parameters
+	///
+	/// - `genesis_time`: Unix epoch seconds when the chain genesis occurred.
+	/// - `target_slot`: Slot number whose start time is being queried.
+	///
+	/// # Returns
+	///
+	/// `i64` number of seconds until the start of `target_slot`; negative if the slot start time is in the past.
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// let genesis = 1_700_000_000u64; // example genesis timestamp
+	/// let slot = 10u64;
+	/// let secs = time_until_slot(genesis, slot);
+	/// println!("Seconds until slot {}: {}", slot, secs);
+	/// ```
 	pub fn time_until_slot(genesis_time: u64, target_slot: u64) -> i64 {
 		let slot_start_time = genesis_time + (target_slot * timing::SLOT_DURATION_SECONDS);
 		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
@@ -108,12 +208,37 @@ impl BeaconTiming {
 		slot_start_time as i64 - now as i64
 	}
 
-	/// Calculate constraint submission deadline for a slot
+	/// Returns the Unix timestamp (seconds since epoch) of the deadline for submitting constraints for a given slot.
+	///
+	/// The deadline is computed relative to the provided genesis time.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let deadline = constraint_deadline_for_slot(0, 1);
+	/// assert_eq!(deadline, timing::SLOT_DURATION_SECONDS + timing::CONSTRAINTS_SUBMISSION_DEADLINE);
+	/// ```
 	pub fn constraint_deadline_for_slot(genesis_time: u64, slot: u64) -> u64 {
 		genesis_time + (slot * timing::SLOT_DURATION_SECONDS) + timing::CONSTRAINTS_SUBMISSION_DEADLINE
 	}
 
-	/// Check if we're still within the constraint submission window
+	/// Determines whether the current system time is within the constraint submission window for a slot.
+	///
+	/// # Arguments
+	///
+	/// * `genesis_time` - Unix timestamp (seconds) of chain genesis.
+	/// * `slot` - Slot index to check the deadline for.
+	///
+	/// # Returns
+	///
+	/// `true` if the current system time is less than or equal to the constraint submission deadline for the given slot, `false` otherwise.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// // Check the window for a slot given a far-future genesis time (deterministic example)
+	/// let _ = BeaconTiming::is_within_constraint_window(10_000_000_000, 0);
+	/// ```
 	pub fn is_within_constraint_window(genesis_time: u64, slot: u64) -> bool {
 		let deadline = Self::constraint_deadline_for_slot(genesis_time, slot);
 		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();

@@ -17,7 +17,14 @@ use crate::types::{Commitment, CommitmentRequest};
 
 // Re-export BLS functionality for convenience
 
-/// Compute Keccak256 hash of input bytes
+/// Computes the Keccak-256 hash of the given bytes.
+///
+/// # Examples
+///
+/// ```
+/// let h = keccak256(b"hello world");
+/// assert_eq!(h.len(), 32);
+/// ```
 pub fn keccak256(input: &[u8]) -> [u8; 32] {
 	let mut keccak = Keccak::v256();
 	keccak.update(input);
@@ -26,9 +33,23 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
 	output
 }
 
-/// Generate request hash from a CommitmentRequest
+/// Produces a 0x-prefixed Keccak-256 hash that binds a `CommitmentRequest` to its original request.
 ///
-/// According to the spec, this binds a commitment to its original request
+/// The function ABI-encodes the provided `CommitmentRequest`, computes the Keccak-256 digest of the encoded bytes,
+/// and returns the result as a hex string prefixed with `0x`.
+///
+/// # Returns
+///
+/// A 0x-prefixed hex string containing the 32-byte Keccak-256 hash of the ABI-encoded request.
+///
+/// # Examples
+///
+/// ```
+/// // Given a prepared `CommitmentRequest` named `req`:
+/// let hash = generate_request_hash(&req).unwrap();
+/// assert!(hash.starts_with("0x"));
+/// assert_eq!(hash.len(), 66); // "0x" + 64 hex chars
+/// ```
 pub fn generate_request_hash(request: &CommitmentRequest) -> Result<String> {
 	// ABI encode the CommitmentRequest
 	let encoded = abi_encode_commitment_request(request)?;
@@ -40,7 +61,31 @@ pub fn generate_request_hash(request: &CommitmentRequest) -> Result<String> {
 	Ok(format!("0x{}", hex::encode(hash)))
 }
 
-/// ABI encode a CommitmentRequest according to the Gateway spec
+/// Encode a CommitmentRequest into Ethereum ABI bytes following the Gateway specification.
+///
+/// The encoded tuple contains, in order:
+/// 1. `commitment_type` encoded as an unsigned integer.
+/// 2. `payload` encoded as raw bytes.
+/// 3. `slasher` encoded as a 20-byte Ethereum address parsed from the request's string.
+///
+/// # Errors
+///
+/// Returns an error if the `slasher` address cannot be parsed or if encoding fails.
+///
+/// # Examples
+///
+/// ```
+/// // Construct a simple CommitmentRequest and encode it.
+/// // The actual field types of `CommitmentRequest` must match those used in your crate.
+/// let request = CommitmentRequest {
+///     commitment_type: 1u8,
+///     payload: vec![0x01, 0x02],
+///     slasher: "0x0000000000000000000000000000000000000000".to_string(),
+/// };
+///
+/// let encoded = abi_encode_commitment_request(&request).expect("encoding failed");
+/// assert!(!encoded.is_empty());
+/// ```
 pub fn abi_encode_commitment_request(request: &CommitmentRequest) -> Result<Vec<u8>> {
 	let tokens = vec![
 		Token::Uint(request.commitment_type.into()),
@@ -51,9 +96,28 @@ pub fn abi_encode_commitment_request(request: &CommitmentRequest) -> Result<Vec<
 	Ok(encode(&tokens))
 }
 
-/// ABI encode a Commitment according to the Gateway spec
+/// Encode a Commitment into Ethereum ABI bytes according to the Gateway spec.
 ///
-/// The Gateway spec states: message = keccak256(abi.encode(commitment))
+/// The encoded tuple contains, in order:
+/// - `commitment_type` as an unsigned integer,
+/// - `payload` as `bytes`,
+/// - `request_hash` as a 32-byte fixed-length byte array parsed from hex,
+/// - `slasher` as an Ethereum address parsed from hex.
+///
+/// # Examples
+///
+/// ```
+/// // Construct a Commitment with appropriate fields and encode it.
+/// // Types and constructors depend on the surrounding crate.
+/// let commitment = Commitment {
+///     commitment_type: 1u64.into(),
+///     payload: vec![1, 2, 3],
+///     request_hash: "0x0000000000000000000000000000000000000000000000000000000000000000".into(),
+///     slasher: "0x0000000000000000000000000000000000000000".into(),
+/// };
+/// let encoded = abi_encode_commitment(&commitment).unwrap();
+/// assert!(!encoded.is_empty());
+/// ```
 pub fn abi_encode_commitment(commitment: &Commitment) -> Result<Vec<u8>> {
 	let tokens = vec![
 		Token::Uint(commitment.commitment_type.into()),
@@ -65,10 +129,24 @@ pub fn abi_encode_commitment(commitment: &Commitment) -> Result<Vec<u8>> {
 	Ok(encode(&tokens))
 }
 
-/// Sign a commitment using ECDSA according to the Gateway spec
+/// Signs a Commitment using ECDSA (secp256k1) according to the Gateway specification.
 ///
-/// Spec: message = keccak256(abi.encode(commitment))
-///       signature = ECDSA.sign(message, committer_private_key)
+/// The signed message is the Keccak-256 hash of the ABI-encoded commitment. The returned
+/// signature is the 64-byte compact form (r || s) encoded as a 0x-prefixed hex string.
+///
+/// # Returns
+///
+/// Ok with the signature as a `0x`-prefixed hex string containing 64 bytes (r||s) when signing succeeds,
+/// or an `Err` if ABI encoding, hashing, message construction, or signing fails.
+///
+/// # Examples
+///
+/// ```
+/// // Given `commitment: Commitment` and `sk: SecretKey` in scope:
+/// let sig = sign_commitment(&commitment, &sk).unwrap();
+/// assert!(sig.starts_with("0x"));
+/// assert_eq!(hex::decode(&sig[2..]).unwrap().len(), 64);
+/// ```
 pub fn sign_commitment(commitment: &Commitment, private_key: &SecretKey) -> Result<String> {
 	// 1. ABI encode the commitment
 	let encoded = abi_encode_commitment(commitment).context("Failed to ABI encode commitment")?;
@@ -83,16 +161,25 @@ pub fn sign_commitment(commitment: &Commitment, private_key: &SecretKey) -> Resu
 	let secp = Secp256k1::new();
 	let signature = secp.sign_ecdsa(&message, private_key);
 
-	// 5. Serialize as DER-encoded bytes and return as hex
+	// 5. Serialize as compact 64-byte (r || s) and return as hex
 	let signature_bytes = signature.serialize_compact(); // 64 bytes (r + s)
 
 	// Return as hex string with 0x prefix
 	Ok(format!("0x{}", hex::encode(signature_bytes)))
 }
 
-/// Verify an ECDSA signature for a commitment
+/// Verifies an ECDSA signature for a commitment using the provided public key.
 ///
-/// This is useful for testing and validation
+/// Returns `true` if the signature is valid for the commitment and public key, `false` otherwise.
+///
+/// # Examples
+///
+/// ```no_run
+/// // `commitment`, `signature_hex`, and `public_key` are assumed to be constructed earlier.
+/// let is_valid = crate::crypto::verify_commitment_signature(&commitment, &signature_hex, &public_key)
+///     .expect("signature verification failed");
+/// println!("signature valid: {}", is_valid);
+/// ```
 pub fn verify_commitment_signature(
 	commitment: &Commitment,
 	signature_hex: &str,
@@ -116,19 +203,76 @@ pub fn verify_commitment_signature(
 	Ok(secp.verify_ecdsa(&message, &signature, public_key).is_ok())
 }
 
-/// Parse a private key from hex string
+/// Parses a 32-byte ECDSA (secp256k1) private key from a hex string.
+///
+/// Accepts hex strings with or without a `0x` prefix and returns a `SecretKey` on success.
+/// Returns an error if hex decoding fails or the decoded bytes do not form a valid 32-byte private key.
+///
+/// # Examples
+///
+/// ```
+/// let sk = parse_private_key("0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap();
+/// let _ = sk; // use the SecretKey as needed
+/// ```
 pub fn parse_private_key(hex_str: &str) -> Result<SecretKey> {
 	let key_bytes = parse_hex_bytes(hex_str, 32)?;
 	SecretKey::from_slice(&key_bytes).context("Invalid private key")
 }
 
-/// Parse an Ethereum address from hex string to ethabi::Address
+/// Parse an Ethereum address from a hex string into an `ethabi::Address`.
+///
+/// The input may include a `0x` prefix. Returns an error if the string is not valid hex
+/// or does not represent exactly 20 bytes (the length of an Ethereum address).
+///
+/// # Examples
+///
+/// ```
+/// let s = "0x11223344556677889900aabbccddeeff00112233";
+/// let addr = crate::crypto::parse_ethereum_address(s).unwrap();
+/// assert_eq!(addr.len(), 20);
+/// ```
 fn parse_ethereum_address(address_str: &str) -> Result<ethabi::Address> {
 	let address_bytes = parse_hex_bytes(address_str, 20)?;
 	Ok(ethabi::Address::from_slice(&address_bytes))
 }
 
-/// Parse hex string (with or without 0x prefix) to bytes
+/// Converts a hex string (with optional `0x` prefix) into a byte vector of a specified length.
+
+///
+
+/// Returns an error if the string is not valid hex or if the decoded byte length does not equal `expected_len`.
+
+///
+
+/// # Parameters
+
+///
+
+/// - `hex_str`: Hex-encoded input string, may start with `0x`.
+
+/// - `expected_len`: Required length of the resulting byte vector in bytes.
+
+///
+
+/// # Returns
+
+///
+
+/// A `Vec<u8>` containing the decoded bytes of length `expected_len`.
+
+///
+
+/// # Examples
+
+///
+
+/// ```
+
+/// let b = crate::crypto::parse_hex_bytes("0x0102ff", 3).unwrap();
+
+/// assert_eq!(b, vec![0x01, 0x02, 0xff]);
+
+/// ```
 pub fn parse_hex_bytes(hex_str: &str, expected_len: usize) -> Result<Vec<u8>> {
 	let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
 	let bytes = hex::decode(hex_str).context("Invalid hex string")?;
@@ -140,7 +284,20 @@ pub fn parse_hex_bytes(hex_str: &str, expected_len: usize) -> Result<Vec<u8>> {
 	Ok(bytes)
 }
 
-/// Derive Ethereum address from ECDSA private key
+/// Derives the Ethereum address corresponding to an ECDSA secp256k1 private key.
+///
+/// Returns the canonical 0x-prefixed hexadecimal Ethereum address produced from the
+/// uncompressed public key (last 20 bytes of the Keccak-256 hash).
+///
+/// # Examples
+///
+/// ```
+/// use secp256k1::SecretKey;
+/// // Example private key: 32 bytes with value 1
+/// let sk = SecretKey::from_slice(&[1u8; 32]).unwrap();
+/// let addr = ecdsa_to_address(&sk).unwrap();
+/// assert!(addr.starts_with("0x") && addr.len() == 42);
+/// ```
 pub fn ecdsa_to_address(private_key: &SecretKey) -> Result<String> {
 	let secp = Secp256k1::new();
 	let public_key = PublicKey::from_secret_key(&secp, private_key);

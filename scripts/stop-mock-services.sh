@@ -8,7 +8,7 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}Stopping mock services...${NC}\n"
 
-# Function to stop a service by PID file
+# stop_service stops a service identified by a PID file by sending a termination signal when the PID is active, removing the PID file, and printing status messages.
 stop_service() {
   local pid_file=$1
   local name=$2

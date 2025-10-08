@@ -4,22 +4,40 @@
 //! according to the Gateway specification.
 
 use anyhow::{Context, Result};
-use sqlx::{PgPool, types::chrono};
+use sqlx::{types::chrono, PgPool};
 use std::convert::TryFrom;
 use uuid::Uuid;
 
-use crate::types::{Commitment, PayloadParser, SignedCommitment};
+use crate::types::{Commitment, SignedCommitment, PayloadParser};
 
-/// Save a signed commitment to the database
+/// Insert a SignedCommitment into the commitments table and record its payload slot for later constraint submission queries.
 ///
-/// This function stores a complete SignedCommitment with all its fields
-/// in the commitments table for later retrieval.
-/// It also extracts and stores the slot number from the payload for constraint submission queries.
-pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment) -> Result<Uuid> {
+/// Extracts the slot number from the commitment payload when present and stores it in the row.
+///
+/// # Returns
+///
+/// `Uuid` of the newly inserted commitment row.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # use uuid::Uuid;
+/// # use crate::types::SignedCommitment;
+/// # async fn doc_example(pool: &PgPool, signed: &SignedCommitment) {
+/// let id: Uuid = crate::db::operations::save_commitment(pool, signed).await.unwrap();
+/// println!("inserted id = {}", id);
+/// # }
+/// ```
+pub async fn save_commitment(
+	pool: &PgPool,
+	signed_commitment: &SignedCommitment,
+) -> Result<Uuid> {
 	let id = Uuid::new_v4();
 	let commitment = &signed_commitment.commitment;
 
-	let commitment_type = i64::try_from(commitment.commitment_type).context("commitment_type exceeds i64::MAX")?;
+	let commitment_type = i64::try_from(commitment.commitment_type)
+		.context("commitment_type exceeds i64::MAX")?;
 
 	// Extract slot from payload for constraint submission queries
 	let slot_number = PayloadParser::extract_slot(commitment.commitment_type, &commitment.payload)
@@ -55,11 +73,30 @@ pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment
 	Ok(row.id)
 }
 
-/// Retrieve a signed commitment by request hash
+/// Look up a signed commitment by its request hash.
 ///
-/// This function looks up a commitment using its request_hash and returns
-/// the complete SignedCommitment if found.
-pub async fn get_commitment_by_hash(pool: &PgPool, request_hash: &str) -> Result<Option<SignedCommitment>> {
+/// Returns the complete `SignedCommitment` if a row with the given `request_hash` exists in the database,
+/// otherwise returns `None`.
+///
+/// # Examples
+///
+/// ```
+/// # async fn _example(pool: &sqlx::PgPool) -> anyhow::Result<()> {
+/// let maybe_signed = crate::db::operations::get_commitment_by_hash(pool, "request_hash_value").await?;
+/// if let Some(signed) = maybe_signed {
+///     // use `signed.commitment` and `signed.signature`
+/// }
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Returns
+///
+/// `Some(SignedCommitment)` if a matching commitment exists, `None` otherwise.
+pub async fn get_commitment_by_hash(
+	pool: &PgPool,
+	request_hash: &str,
+) -> Result<Option<SignedCommitment>> {
 	let row = sqlx::query!(
 		r#"
 		SELECT
@@ -80,7 +117,8 @@ pub async fn get_commitment_by_hash(pool: &PgPool, request_hash: &str) -> Result
 
 	match row {
 		Some(row) => {
-			let commitment_type = u64::try_from(row.commitment_type).context("stored commitment_type is negative")?;
+			let commitment_type = u64::try_from(row.commitment_type)
+				.context("stored commitment_type is negative")?;
 
 			let commitment = Commitment {
 				commitment_type,
@@ -89,7 +127,10 @@ pub async fn get_commitment_by_hash(pool: &PgPool, request_hash: &str) -> Result
 				slasher: row.slasher,
 			};
 
-			let signed_commitment = SignedCommitment { commitment, signature: row.signature };
+			let signed_commitment = SignedCommitment {
+				commitment,
+				signature: row.signature,
+			};
 
 			Ok(Some(signed_commitment))
 		}
@@ -97,14 +138,30 @@ pub async fn get_commitment_by_hash(pool: &PgPool, request_hash: &str) -> Result
 	}
 }
 
-/// Check if a commitment with the given request hash already exists
+/// Determines whether a commitment with the given request hash exists.
 ///
-/// This is useful for preventing duplicate commitments
+/// # Returns
+///
+/// `true` if a row with the provided `request_hash` exists in the `commitments` table, `false` otherwise.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # async fn example(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
+/// let exists = crate::db::operations::commitment_exists(&pool, "some-request-hash").await?;
+/// println!("exists = {}", exists);
+/// # Ok(())
+/// # }
+/// ```
 pub async fn commitment_exists(pool: &PgPool, request_hash: &str) -> Result<bool> {
-	let row = sqlx::query!("SELECT EXISTS(SELECT 1 FROM commitments WHERE request_hash = $1)", request_hash)
-		.fetch_one(pool)
-		.await
-		.context("Failed to check if commitment exists")?;
+	let row = sqlx::query!(
+		"SELECT EXISTS(SELECT 1 FROM commitments WHERE request_hash = $1)",
+		request_hash
+	)
+	.fetch_one(pool)
+	.await
+	.context("Failed to check if commitment exists")?;
 
 	Ok(row.exists.unwrap_or(false))
 }
@@ -119,6 +176,22 @@ pub struct CommitmentStats {
 	pub latest_created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// Retrieve aggregated statistics about stored commitments.
+///
+/// Returns a `CommitmentStats` struct containing:
+/// - `total_count`: total number of commitments in the table,
+/// - `commitment_type_1_count`: number of commitments whose `commitment_type` equals 1,
+/// - `latest_created_at`: timestamp of the most recently created commitment, or `None` if there are no rows.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example(pool: sqlx::PgPool) -> anyhow::Result<()> {
+/// let stats = crate::db::operations::get_commitment_stats(&pool).await?;
+/// println!("total: {}", stats.total_count);
+/// # Ok(())
+/// # }
+/// ```
 pub async fn get_commitment_stats(pool: &PgPool) -> Result<CommitmentStats> {
 	let row = sqlx::query!(
 		r#"
@@ -140,12 +213,27 @@ pub async fn get_commitment_stats(pool: &PgPool) -> Result<CommitmentStats> {
 	})
 }
 
-/// Get unprocessed commitments for a specific slot
+/// Fetches unprocessed commitments for the given slot in ascending creation order.
 ///
-/// This is used by the constraint submission service to find commitments
-/// that need to be converted to constraints and submitted to the relay.
-pub async fn get_unprocessed_commitments_for_slot(pool: &PgPool, slot: u64) -> Result<Vec<SignedCommitment>> {
-	let slot_i64 = i64::try_from(slot).context("slot exceeds i64::MAX")?;
+/// Returns a vector of `SignedCommitment` for rows whose `slot_number` matches `slot` and whose
+/// `constraint_processed` flag is `false`.
+///
+/// # Examples
+///
+/// ```
+/// # async fn example(pool: &sqlx::PgPool) -> anyhow::Result<()> {
+/// let slot = 42u64;
+/// let commitments = crate::db::operations::get_unprocessed_commitments_for_slot(pool, slot).await?;
+/// assert!(commitments.iter().all(|c| c.commitment.request_hash.len() > 0));
+/// # Ok(())
+/// # }
+/// ```
+pub async fn get_unprocessed_commitments_for_slot(
+	pool: &PgPool,
+	slot: u64,
+) -> Result<Vec<SignedCommitment>> {
+	let slot_i64 = i64::try_from(slot)
+		.context("slot exceeds i64::MAX")?;
 
 	let rows = sqlx::query!(
 		r#"
@@ -169,12 +257,20 @@ pub async fn get_unprocessed_commitments_for_slot(pool: &PgPool, slot: u64) -> R
 
 	let mut commitments = Vec::new();
 	for row in rows {
-		let commitment_type = u64::try_from(row.commitment_type).context("stored commitment_type is negative")?;
+		let commitment_type = u64::try_from(row.commitment_type)
+			.context("stored commitment_type is negative")?;
 
-		let commitment =
-			Commitment { commitment_type, payload: row.payload, request_hash: row.request_hash, slasher: row.slasher };
+		let commitment = Commitment {
+			commitment_type,
+			payload: row.payload,
+			request_hash: row.request_hash,
+			slasher: row.slasher,
+		};
 
-		let signed_commitment = SignedCommitment { commitment, signature: row.signature };
+		let signed_commitment = SignedCommitment {
+			commitment,
+			signature: row.signature,
+		};
 
 		commitments.push(signed_commitment);
 	}
@@ -182,10 +278,27 @@ pub async fn get_unprocessed_commitments_for_slot(pool: &PgPool, slot: u64) -> R
 	Ok(commitments)
 }
 
-/// Mark commitments as processed after they've been converted to constraints
+/// Mark commitments identified by the given request hashes as processed.
 ///
-/// This prevents duplicate constraint submissions for the same commitment.
-pub async fn mark_commitments_as_processed(pool: &PgPool, request_hashes: &[String]) -> Result<u64> {
+/// Sets `constraint_processed = TRUE` for all rows whose `request_hash` matches any value in
+/// `request_hashes` and returns the number of rows that were updated.
+///
+/// # Examples
+///
+/// ```no_run
+/// # use sqlx::PgPool;
+/// # use uuid::Uuid;
+/// # async fn example(pool: &PgPool) -> Result<(), anyhow::Error> {
+/// let hashes = vec!["req_hash_1".to_string(), "req_hash_2".to_string()];
+/// let updated = mark_commitments_as_processed(pool, &hashes).await?;
+/// println!("Marked {} commitments as processed", updated);
+/// # Ok(())
+/// # }
+/// ```
+pub async fn mark_commitments_as_processed(
+	pool: &PgPool,
+	request_hashes: &[String],
+) -> Result<u64> {
 	if request_hashes.is_empty() {
 		return Ok(0);
 	}
@@ -211,6 +324,19 @@ mod tests {
 	use crate::types::{Commitment, SignedCommitment};
 	use sqlx::PgPool;
 
+	/// Creates a PostgreSQL connection pool configured for use by tests.
+	///
+	/// This function is a placeholder intended to establish and return a `PgPool` connected to the
+	/// test database; replace its body with test-specific connection logic.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// # async fn run() {
+	/// let pool = setup_test_pool().await;
+	/// // use `pool` for test queries
+	/// # }
+	/// ```
 	async fn setup_test_pool() -> PgPool {
 		// This would connect to a test database
 		// For now, we'll skip actual DB tests until we have the database running
@@ -239,7 +365,10 @@ mod tests {
 		assert!(!id.is_nil());
 
 		// Retrieve commitment
-		let retrieved = get_commitment_by_hash(&pool, &commitment.request_hash).await.unwrap().unwrap();
+		let retrieved = get_commitment_by_hash(&pool, &commitment.request_hash)
+			.await
+			.unwrap()
+			.unwrap();
 
 		assert_eq!(retrieved.commitment.commitment_type, commitment.commitment_type);
 		assert_eq!(retrieved.commitment.payload, commitment.payload);

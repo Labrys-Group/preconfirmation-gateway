@@ -21,7 +21,19 @@ pub struct BeaconApiClient {
 }
 
 impl BeaconApiClient {
-	/// Create a new Beacon API client
+	/// Creates a new BeaconApiClient configured with the provided BeaconApiConfig.
+	///
+	/// The created client uses the config's `request_timeout_secs` to set the HTTP client timeout.
+	/// Returns an error if the underlying HTTP client cannot be constructed.
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// // Construct a BeaconApiConfig with the desired endpoints and timeout,
+	/// // then create the client.
+	/// // let config = BeaconApiConfig { /* fields */ };
+	/// // let client = BeaconApiClient::new(config)?;
+	/// ```
 	pub fn new(config: BeaconApiConfig) -> Result<Self> {
 		let client = Client::builder()
 			.timeout(Duration::from_secs(config.request_timeout_secs))
@@ -31,10 +43,27 @@ impl BeaconApiClient {
 		Ok(Self { client, config })
 	}
 
-	/// Retrieve proposer duties for a specific epoch
+	/// Fetches proposer duties for the given epoch from the configured beacon endpoints.
 	///
-	/// This is the primary method for getting scheduled proposers, which is essential
-	/// for delegation verification and constraint targeting.
+	/// Tries the primary endpoint first and falls back to configured fallback endpoints; returns
+	/// the first successful response or an error if all endpoints fail.
+	///
+	/// # Returns
+	///
+	/// `Ok(ProposerDutiesResponse)` containing scheduled proposer duties for the epoch, `Err` if all
+	/// configured endpoints fail or no endpoints are configured.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// #[tokio::test]
+	/// async fn example_get_proposer_duties() {
+	///     let config = crate::tests::create_test_config(); // test helper in this crate
+	///     let client = crate::api::beacon::BeaconApiClient::new(config).unwrap();
+	///     let duties = client.get_proposer_duties(0).await.unwrap();
+	///     assert!(duties.data.len() >= 0);
+	/// }
+	/// ```
 	pub async fn get_proposer_duties(&self, epoch: u64) -> Result<ProposerDutiesResponse> {
 		let endpoint = format!("eth/v1/validator/duties/proposer/{}", epoch);
 
@@ -82,7 +111,33 @@ impl BeaconApiClient {
 		Err(_last_error.unwrap_or_else(|| anyhow::anyhow!("No beacon endpoints configured")))
 	}
 
-	/// Get proposer for a specific slot
+	/// Fetches the validator duty corresponding to the proposer for a specific slot.
+	///
+	/// The function converts the given slot to its epoch, requests proposer duties for that epoch,
+	/// and returns the duty whose slot matches the provided slot.
+	///
+	/// # Returns
+	///
+	/// `Ok(Some(ValidatorDuty))` if a matching duty is found, `Ok(None)` if no duty for that slot exists,
+	/// or `Err(...)` if the underlying request or deserialization fails.
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// # use crate::api::beacon::BeaconApiClient;
+	/// # #[tokio::main]
+	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	/// let client = BeaconApiClient::new(/* config */)?;
+	/// let slot = 12345;
+	/// let proposer = client.get_proposer_for_slot(slot).await?;
+	/// if let Some(duty) = proposer {
+	///     println!("Found proposer with validator index: {}", duty.validator_index);
+	/// } else {
+	///     println!("No proposer found for slot {}", slot);
+	/// }
+	/// # Ok(())
+	/// # }
+	/// ```
 	pub async fn get_proposer_for_slot(&self, slot: u64) -> Result<Option<ValidatorDuty>> {
 		let epoch = BeaconTiming::slot_to_epoch(slot);
 		let duties = self.get_proposer_duties(epoch).await?;
@@ -91,7 +146,26 @@ impl BeaconApiClient {
 		Ok(duties.data.into_iter().find(|duty| duty.parse_slot().unwrap_or(0) == slot))
 	}
 
-	/// Internal method to make HTTP requests with error handling
+	/// Perform an HTTP GET to the given endpoint on `base_url`, validate the response, and deserialize the JSON body into `T`.
+	///
+	/// The method constructs the full URL by joining `base_url` and `endpoint`, sends a GET request with standard headers,
+	/// fails if the HTTP status is not successful (including the status and response body in the error), and parses the
+	/// response JSON into `T`.
+	///
+	/// # Returns
+	///
+	/// The deserialized JSON response as `T`.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the request fails to send, the response status is not successful, or the response body cannot be parsed as `T`.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// // Example usage (requires an async runtime and a BeaconApiClient instance):
+	/// // let res: MyResponseType = client.make_request("https://beacon.example", "eth/v1/..").await?;
+	/// ```
 	async fn make_request<T>(&self, base_url: &str, endpoint: &str) -> Result<T>
 	where
 		T: for<'de> Deserialize<'de>,
@@ -119,7 +193,19 @@ impl BeaconApiClient {
 		Ok(result)
 	}
 
-	/// Add necessary headers to the request
+	/// Attach required HTTP headers to a request builder.
+	///
+	/// Adds the following headers:
+	/// - `Content-Type: application/json`
+	/// - `User-Agent: preconfirmation-gateway/0.1.0`
+	///
+	/// # Parameters
+	///
+	/// - `request`: The `reqwest::RequestBuilder` to which headers will be applied.
+	///
+	/// # Returns
+	///
+	/// The modified `RequestBuilder` with the headers set.
 	fn add_headers(&self, request: RequestBuilder) -> RequestBuilder {
 		request.header("Content-Type", "application/json").header("User-Agent", "preconfirmation-gateway/0.1.0")
 	}
@@ -130,6 +216,20 @@ mod tests {
 	use super::*;
 	use crate::config::BeaconApiConfig;
 
+	/// Creates a test `BeaconApiConfig` prepopulated with mainnet endpoints and defaults.
+	///
+	/// Returns a `BeaconApiConfig` configured with an Alchemy primary endpoint, a single fallback
+	/// endpoint, a 30-second request timeout, and the Ethereum mainnet genesis time.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// let cfg = create_test_config();
+	/// assert!(cfg.primary_endpoint.contains("alchemy"));
+	/// assert_eq!(cfg.fallback_endpoints.len(), 1);
+	/// assert_eq!(cfg.request_timeout_secs, 30);
+	/// assert_eq!(cfg.genesis_time, 1606824023);
+	/// ```
 	fn create_test_config() -> BeaconApiConfig {
 		BeaconApiConfig {
 			primary_endpoint: "https://eth-mainnet.g.alchemy.com/v2/test".to_string(),
