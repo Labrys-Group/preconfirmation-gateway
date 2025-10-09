@@ -420,9 +420,6 @@ impl Config {
 		Self::validate_endpoint(&config.reth.endpoint, "RETH_ENDPOINT", "Reth")?;
 		Self::validate_endpoint(&config.constraints_api.relay_endpoint, "CONSTRAINTS_API_ENDPOINT", "Constraints API")?;
 
-		// Validate domain_application_gateway is explicitly configured (not default test value)
-		Self::validate_domain_separator(&config.delegation.domain_application_gateway)?;
-
 		Ok(config)
 	}
 
@@ -581,54 +578,6 @@ impl Config {
 		// Basic URL validation
 		if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
 			anyhow::bail!("{} endpoint must be a valid HTTP/HTTPS URL, got: {}", service_name, endpoint);
-		}
-
-		Ok(())
-	}
-
-	/// Validates the application gateway domain separator to ensure it's not using insecure default test values.
-	///
-	/// This prevents accidental use of the default test domain separator (0x00000002) in production.
-	/// The domain separator must be explicitly configured in config.toml to a production-safe value.
-	///
-	/// # Parameters
-	///
-	/// - `domain_hex`: The hex-encoded domain separator from configuration
-	///
-	/// # Returns
-	///
-	/// `Ok(())` if the domain separator is properly configured, `Err` if it's using a default test value
-	fn validate_domain_separator(domain_hex: &str) -> Result<()> {
-		// Normalize the hex string (remove 0x prefix if present, convert to lowercase)
-		let normalized = domain_hex.strip_prefix("0x").unwrap_or(domain_hex).to_lowercase();
-
-		// Check against known insecure default test values
-		const INSECURE_DEFAULTS: &[&str] = &[
-			"00000002", // Default test value from DelegationConfig::default()
-		];
-
-		for insecure_value in INSECURE_DEFAULTS {
-			if normalized == *insecure_value {
-				anyhow::bail!(
-					"domain_application_gateway is set to insecure default test value '0x{}'. \
-					This value MUST be explicitly configured in config.toml for production use. \
-					Please set delegation.domain_application_gateway to a production-appropriate value in config.toml.",
-					insecure_value
-				);
-			}
-		}
-
-		// Basic validation: should be valid hex and 4 bytes (8 hex chars)
-		if normalized.len() != 8 {
-			anyhow::bail!(
-				"domain_application_gateway must be exactly 4 bytes (8 hex characters), got {} characters",
-				normalized.len()
-			);
-		}
-
-		// Verify it's valid hex
-		if !normalized.chars().all(|c| c.is_ascii_hexdigit()) {
-			anyhow::bail!("domain_application_gateway must be valid hexadecimal, got: {}", domain_hex);
 		}
 
 		Ok(())
