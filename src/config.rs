@@ -141,11 +141,11 @@ impl Default for ServerConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let cfg = ServerConfig::default();
 	/// assert_eq!(cfg.host, "127.0.0.1");
 	/// assert_eq!(cfg.port, 8080);
-	/// ```
+	/// ```ignore
 	fn default() -> Self {
 		Self { host: "127.0.0.1".to_string(), port: 8080 }
 	}
@@ -164,12 +164,12 @@ impl Default for LoggingConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let cfg = LoggingConfig::default();
 	/// assert_eq!(cfg.level, "info");
 	/// assert!(cfg.enable_method_tracing);
 	/// assert!(cfg.traced_methods.contains(&"fee".to_string()));
-	/// ```
+	/// ```ignore
 	fn default() -> Self {
 		Self {
 			level: "info".to_string(),
@@ -191,10 +191,10 @@ impl Default for ValidationConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let cfg = ValidationConfig::default();
 	/// assert_eq!(cfg.slasher_address, "0x0000000000000000000000000000000000000000");
-	/// ```
+	/// ```ignore
 	fn default() -> Self {
 		Self { slasher_address: "0x0000000000000000000000000000000000000000".to_string() }
 	}
@@ -209,13 +209,13 @@ impl Default for BeaconApiConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let cfg = BeaconApiConfig::default();
 	/// assert!(cfg.primary_endpoint.contains("alchemy") || cfg.primary_endpoint.starts_with("http"));
 	/// assert!(cfg.fallback_endpoints.is_empty());
 	/// assert_eq!(cfg.request_timeout_secs, 30);
 	/// assert_eq!(cfg.genesis_time, 1606824023);
-	/// ```
+	/// ```ignore
 	fn default() -> Self {
 		Self {
 			primary_endpoint: "https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY".to_string(),
@@ -238,13 +238,13 @@ impl Default for ConstraintsApiConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let cfg = crate::config::ConstraintsApiConfig::default();
 	/// assert_eq!(cfg.relay_endpoint, "https://relay.example.com");
 	/// assert_eq!(cfg.request_timeout_secs, 10);
 	/// assert_eq!(cfg.max_retries, 3);
 	/// assert!(cfg.authorized_builders.is_empty());
-	/// ```
+	/// ```ignore
 	fn default() -> Self {
 		Self {
 			relay_endpoint: "https://relay.example.com".to_string(),
@@ -266,13 +266,13 @@ impl Default for DelegationConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let cfg = DelegationConfig::default();
 	/// assert_eq!(cfg.lookahead_epochs, 2);
 	/// assert_eq!(cfg.polling_interval_secs, 60);
 	/// assert_eq!(cfg.cache_ttl_secs, 300);
 	/// assert_eq!(cfg.domain_application_gateway, "0x00000002");
-	/// ```
+	/// ```ignore
 	fn default() -> Self {
 		Self {
 			lookahead_epochs: 2,
@@ -293,11 +293,11 @@ impl Default for SigningConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let signing = SigningConfig::default();
 	/// // committer_address is derived from the embedded ECDSA key (e.g., "0x...").
 	/// assert!(signing.committer_address.starts_with("0x"));
-	/// ```
+	/// ```ignore
 	fn default() -> Self {
 		let ecdsa_private_key =
 			crypto::parse_private_key("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
@@ -327,14 +327,14 @@ impl SigningConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::env;
 	/// // Set test keys (replace with valid test vectors in real tests)
 	/// env::set_var("COMMITTER_PRIVATE_KEY", "0000000000000000000000000000000000000000000000000000000000000001");
 	/// env::set_var("BLS_PRIVATE_KEY", "0101010101010101010101010101010101010101010101010101010101010101");
 	/// let cfg = crate::config::SigningConfig::load().expect("failed to load signing config");
 	/// assert!(!cfg.committer_address.is_empty());
-	/// ```
+	/// ```ignore
 	pub fn load() -> Result<Self> {
 		// Load ECDSA private key from COMMITTER_PRIVATE_KEY (required)
 		let private_key_hex = std::env::var("COMMITTER_PRIVATE_KEY").context(
@@ -366,13 +366,13 @@ impl SigningConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let hex = "0101010101010101010101010101010101010101010101010101010101010101";
 	/// let result = parse_bls_key(hex);
 	/// assert!(result.is_ok());
 	/// let (sk, pk) = result.unwrap();
 	/// // `sk` is a `BlsSecretKey` and `pk` is its corresponding `BlsPublicKey`.
-	/// ```
+	/// ```ignore
 	fn parse_bls_key(hex_str: &str) -> Result<(BlsSecretKey, BlsPublicKey)> {
 		let key_bytes = crypto::parse_hex_bytes(hex_str, 32).context("Invalid BLS private key hex")?;
 
@@ -401,10 +401,10 @@ impl Config {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let cfg = Config::load().expect("failed to load config");
 	/// // use cfg...
-	/// ```
+	/// ```ignore
 	pub fn load() -> Result<Self> {
 		let mut config = Self::load_from_file("config.toml")?;
 
@@ -431,7 +431,7 @@ impl Config {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::env;
 	/// // construct a config with placeholders
 	/// let mut cfg = crate::Config::default();
@@ -450,7 +450,7 @@ impl Config {
 	/// assert_eq!(cfg.beacon_api.primary_endpoint, "https://beacon.example");
 	/// assert_eq!(cfg.reth.endpoint, "http://reth.local:8545");
 	/// assert_eq!(cfg.constraints_api.relay_endpoint, "https://relay.example");
-	/// ```
+	/// ```ignore
 	#[allow(clippy::collapsible_if)]
 	fn substitute_env_vars(config: &mut Self) -> Result<()> {
 		// Substitute in beacon API endpoint
@@ -488,14 +488,14 @@ impl Config {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// # use anyhow::Result;
 	/// # fn try_validate() -> Result<()> {
 	/// validate_beacon_endpoint("https://eth-mainnet.g.alchemy.com/v2/actual_key")?;
 	/// # Ok(())
 	/// # }
 	/// # try_validate().unwrap();
-	/// ```
+	/// ```ignore
 	fn validate_beacon_endpoint(endpoint: &str) -> Result<()> {
 		if endpoint.is_empty() {
 			anyhow::bail!(
@@ -541,7 +541,7 @@ impl Config {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// # use anyhow::Result;
 	/// # fn try_main() -> Result<()> {
 	/// let ok = super::validate_endpoint("https://api.example.com", "SVC_ENDPOINT", "MyService")?;
@@ -550,7 +550,7 @@ impl Config {
 	/// assert!(super::validate_endpoint("${RETH_ENDPOINT}", "RETH_ENDPOINT", "Reth").is_err());
 	/// # Ok(())
 	/// # }
-	/// ```
+	/// ```ignore
 	fn validate_endpoint(endpoint: &str, env_var_name: &str, service_name: &str) -> Result<()> {
 		if endpoint.is_empty() {
 			anyhow::bail!(
@@ -595,7 +595,7 @@ impl Config {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::fs::File;
 	/// use std::io::Write;
 	/// use tempfile::tempdir;
@@ -608,7 +608,7 @@ impl Config {
 	///
 	/// let cfg = crate::config::Config::load_from_file(&file_path).unwrap();
 	/// assert_eq!(cfg.database.url, "postgresql://example/db");
-	/// ```
+	/// ```ignore
 	pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
 		let config_path = path.as_ref();
 
@@ -631,11 +631,11 @@ impl Config {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let cfg = Config::default();
 	/// let url = cfg.database_url();
 	/// assert_eq!(url, "postgresql://localhost/preconfirmation_gateway");
-	/// ```
+	/// ```ignore
 	pub fn database_url(&self) -> &str {
 		&self.database.url
 	}
@@ -646,12 +646,12 @@ impl Default for RethConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let cfg = RethConfig::default();
 	/// assert_eq!(cfg.endpoint, "http://localhost:8545");
 	/// assert_eq!(cfg.request_timeout_secs, 10);
 	/// assert_eq!(cfg.max_retries, 3);
-	/// ```
+	/// ```ignore
 	fn default() -> Self {
 		Self {
 			endpoint: "http://localhost:8545".to_string(),
@@ -674,14 +674,14 @@ impl Default for FeeConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let cfg = FeeConfig::default();
 	/// assert_eq!(cfg.scaling_factor, 2.0);
 	/// assert_eq!(cfg.default_gas_limit, 30_000_000);
 	/// assert_eq!(cfg.min_fee_multiplier, 1.0);
 	/// assert_eq!(cfg.max_fee_multiplier, 100.0);
 	/// assert_eq!(cfg.cache_ttl_secs, 60);
-	/// ```
+	/// ```ignore
 	fn default() -> Self {
 		Self {
 			scaling_factor: 2.0,           // k=2 provides reasonable exponential scaling

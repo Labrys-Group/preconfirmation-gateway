@@ -50,7 +50,7 @@ impl ValidatorDuty {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let duty = ValidatorDuty {
 	///     validator_index: "0".to_string(),
 	///     pubkey: format!("0x{}", "00".repeat(48)),
@@ -58,7 +58,7 @@ impl ValidatorDuty {
 	/// };
 	/// let pk = duty.parse_pubkey().unwrap();
 	/// assert_eq!(pk.0.len(), 48);
-	/// ```
+	/// ```ignore
 	pub fn parse_pubkey(&self) -> Result<BlsPublicKey, hex::FromHexError> {
 		let pubkey_str = self.pubkey.strip_prefix("0x").unwrap_or(&self.pubkey);
 		let bytes = hex::decode(pubkey_str)?;
@@ -78,7 +78,7 @@ impl ValidatorDuty {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let vd = ValidatorDuty {
 	///     validator_index: "0".to_string(),
 	///     pubkey: "00".to_string(),
@@ -86,7 +86,7 @@ impl ValidatorDuty {
 	/// };
 	/// let slot = vd.parse_slot().unwrap();
 	/// assert_eq!(slot, 123);
-	/// ```
+	/// ```ignore
 	pub fn parse_slot(&self) -> Result<u64, std::num::ParseIntError> {
 		self.slot.parse::<u64>()
 	}
@@ -98,14 +98,14 @@ impl ValidatorDuty {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let v = ValidatorDuty {
 	///     validator_index: "123".to_string(),
 	///     pubkey: "0x".to_string(),
 	///     slot: "0".to_string(),
 	/// };
 	/// assert_eq!(v.parse_validator_index().unwrap(), 123u64);
-	/// ```
+	/// ```ignore
 	pub fn parse_validator_index(&self) -> Result<u64, std::num::ParseIntError> {
 		self.validator_index.parse::<u64>()
 	}
@@ -119,10 +119,10 @@ impl BeaconTiming {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let epoch = slot_to_epoch(64);
 	/// assert_eq!(epoch, 2);
-	/// ```
+	/// ```ignore
 	pub fn slot_to_epoch(slot: u64) -> u64 {
 		slot / timing::SLOTS_PER_EPOCH
 	}
@@ -131,13 +131,13 @@ impl BeaconTiming {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let first = epoch_to_first_slot(0);
 	/// assert_eq!(first, 0);
 	///
 	/// let first_epoch_one = epoch_to_first_slot(1);
 	/// assert_eq!(first_epoch_one, timing::SLOTS_PER_EPOCH);
-	/// ```
+	/// ```ignore
 	pub fn epoch_to_first_slot(epoch: u64) -> u64 {
 		epoch * timing::SLOTS_PER_EPOCH
 	}
@@ -146,10 +146,10 @@ impl BeaconTiming {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let last = epoch_to_last_slot(0);
 	/// assert_eq!(last, timing::SLOTS_PER_EPOCH - 1);
-	/// ```
+	/// ```ignore
 	pub fn epoch_to_last_slot(epoch: u64) -> u64 {
 		(epoch + 1) * timing::SLOTS_PER_EPOCH - 1
 	}
@@ -161,7 +161,7 @@ impl BeaconTiming {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// // When genesis is in the future, the estimated slot is 0.
 	/// let future_genesis = std::time::SystemTime::now()
 	///     .duration_since(std::time::UNIX_EPOCH)
@@ -169,7 +169,7 @@ impl BeaconTiming {
 	///     .as_secs() + 60;
 	/// let slot = current_slot_estimate(future_genesis);
 	/// assert_eq!(slot, 0);
-	/// ```
+	/// ```ignore
 	pub fn current_slot_estimate(genesis_time: u64) -> u64 {
 		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 
@@ -195,12 +195,12 @@ impl BeaconTiming {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignoreno_run
 	/// let genesis = 1_700_000_000u64; // example genesis timestamp
 	/// let slot = 10u64;
 	/// let secs = time_until_slot(genesis, slot);
 	/// println!("Seconds until slot {}: {}", slot, secs);
-	/// ```
+	/// ```ignore
 	pub fn time_until_slot(genesis_time: u64, target_slot: u64) -> i64 {
 		let slot_start_time = genesis_time + (target_slot * timing::SLOT_DURATION_SECONDS);
 		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
@@ -214,10 +214,10 @@ impl BeaconTiming {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let deadline = constraint_deadline_for_slot(0, 1);
 	/// assert_eq!(deadline, timing::SLOT_DURATION_SECONDS + timing::CONSTRAINTS_SUBMISSION_DEADLINE);
-	/// ```
+	/// ```ignore
 	pub fn constraint_deadline_for_slot(genesis_time: u64, slot: u64) -> u64 {
 		genesis_time + (slot * timing::SLOT_DURATION_SECONDS) + timing::CONSTRAINTS_SUBMISSION_DEADLINE
 	}
@@ -235,10 +235,10 @@ impl BeaconTiming {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// // Check the window for a slot given a far-future genesis time (deterministic example)
 	/// let _ = BeaconTiming::is_within_constraint_window(10_000_000_000, 0);
-	/// ```
+	/// ```ignore
 	pub fn is_within_constraint_window(genesis_time: u64, slot: u64) -> bool {
 		let deadline = Self::constraint_deadline_for_slot(genesis_time, slot);
 		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();

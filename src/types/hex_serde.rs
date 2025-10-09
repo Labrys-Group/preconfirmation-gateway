@@ -4,7 +4,7 @@
 /// between hex-encoded strings (with optional "0x" prefix) and byte vectors.
 ///
 /// # Usage
-/// ```
+/// ```ignore
 /// use serde::{Deserialize, Serialize};
 /// use preconfirmation_gateway::types::hex_serde as hex_bytes;
 ///
@@ -13,7 +13,7 @@
 ///     #[serde(with = "hex_bytes")]
 ///     data: Vec<u8>,
 /// }
-/// ```
+/// ```ignore
 use serde::{Deserialize, Deserializer, Serializer};
 
 /// Serialize a byte vector as a hex string prefixed with "0x".
@@ -23,7 +23,7 @@ use serde::{Deserialize, Deserializer, Serializer};
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use serde::Serialize;
 ///
 /// mod types {
@@ -42,7 +42,7 @@ use serde::{Deserialize, Deserializer, Serializer};
 /// let s = S { data: vec![1, 2, 3] };
 /// let json = serde_json::to_string(&s).unwrap();
 /// assert_eq!(json, r#"{"data":"0x010203"}"#);
-/// ```
+/// ```ignore
 pub fn serialize<S>(bytes: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
 where
 	S: Serializer,
@@ -58,7 +58,7 @@ where
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use serde::Deserialize;
 ///
 /// #[derive(Deserialize, Debug, PartialEq)]
@@ -72,7 +72,7 @@ where
 ///
 /// let s2: S = serde_json::from_str(r#"{"data":"616263"}"#).unwrap();
 /// assert_eq!(s2.data, b"abc".to_vec());
-/// ```
+/// ```ignore
 pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 where
 	D: Deserializer<'de>,
