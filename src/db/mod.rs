@@ -26,13 +26,6 @@ use crate::config::Config;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// # tokio_test::block_on(async {
-/// let cfg = crate::config::Config::default(); // construct appropriate config
-/// let pool = crate::db::create_pool(&cfg).await.expect("create pool");
-/// // use `pool` for queries...
-/// # });
-/// ```ignore
 pub async fn create_pool(config: &Config) -> Result<PgPool> {
 	// Environment variable takes precedence over config file
 	let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| config.database_url().to_string());
@@ -68,14 +61,6 @@ pub async fn create_pool(config: &Config) -> Result<PgPool> {
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
-/// use sqlx::PgPool;
-///
-/// async fn example(pool: &PgPool) -> anyhow::Result<()> {
-///     run_migrations(pool).await?;
-///     Ok(())
-/// }
-/// ```ignore
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
 	info!("Running database migrations...");
 
@@ -96,13 +81,6 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
-/// # use sqlx::PgPool;
-/// # async fn example(pool: &PgPool) -> anyhow::Result<()> {
-/// test_connection(pool).await?;
-/// # Ok(())
-/// # }
-/// ```ignore
 pub async fn test_connection(pool: &PgPool) -> Result<()> {
 	info!("Testing database connection...");
 
@@ -130,9 +108,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let ctx = DatabaseContext::new(pool);
-	/// ```ignore
 	pub fn new(pool: PgPool) -> Self {
 		Self { pool }
 	}
@@ -143,10 +118,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let ctx = crate::db::DatabaseContext::new_for_testing();
-	/// // use `ctx` in tests without requiring a real database connection
-	/// ```ignore
 	#[cfg(test)]
 	pub fn new_for_testing() -> Self {
 		// Create a fake pool that won't actually connect
@@ -161,13 +132,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # use crate::db::DatabaseContext;
-	/// # use sqlx::PgPool;
-	/// # async fn example(ctx: &DatabaseContext) {
-	/// let pool: &PgPool = ctx.pool();
-	/// # }
-	/// ```ignore
 	pub fn pool(&self) -> &PgPool {
 		&self.pool
 	}
@@ -180,14 +144,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # use uuid::Uuid;
-	/// # async fn example(db: &crate::db::DatabaseContext, commitment: crate::types::SignedCommitment) -> Result<(), Box<dyn std::error::Error>> {
-	/// let id: Uuid = db.save_commitment(&commitment).await?;
-	/// println!("saved commitment id = {}", id);
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn save_commitment(&self, signed_commitment: &crate::types::SignedCommitment) -> Result<uuid::Uuid> {
 		operations::save_commitment(&self.pool, signed_commitment).await
 	}
@@ -200,16 +156,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # async fn example(db: &crate::db::DatabaseContext) -> Result<(), Box<dyn std::error::Error>> {
-	/// let maybe_commitment = db.get_commitment_by_hash("request_hash_hex").await?;
-	/// if let Some(commitment) = maybe_commitment {
-	///     // use `commitment`
-	///     println!("{}", commitment.request_hash);
-	/// }
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn get_commitment_by_hash(&self, request_hash: &str) -> Result<Option<crate::types::SignedCommitment>> {
 		operations::get_commitment_by_hash(&self.pool, request_hash).await
 	}
@@ -226,17 +172,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # async {
-	/// // `ctx` is a `DatabaseContext` with a connected `PgPool`.
-	/// let exists = ctx.commitment_exists("some-request-hash").await.unwrap();
-	/// if exists {
-	///     println!("Commitment found");
-	/// } else {
-	///     println!("Commitment not found");
-	/// }
-	/// # };
-	/// ```ignore
 	pub async fn commitment_exists(&self, request_hash: &str) -> Result<bool> {
 		operations::commitment_exists(&self.pool, request_hash).await
 	}
@@ -247,13 +182,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # use crate::db::DatabaseContext;
-	/// # async fn example(ctx: &DatabaseContext) -> anyhow::Result<()> {
-	/// let stats = ctx.get_stats().await?;
-	/// // inspect fields on `stats`, e.g. `stats.total_commitments`
-	/// # Ok(()) }
-	/// ```ignore
 	pub async fn get_stats(&self) -> Result<operations::CommitmentStats> {
 		operations::get_commitment_stats(&self.pool).await
 	}
@@ -268,13 +196,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// // Assume `ctx` is a `DatabaseContext` and `delegation` is a `SignedDelegation`.
-	/// let id = tokio::runtime::Runtime::new().unwrap().block_on(async {
-	///     ctx.save_delegation(&delegation).await.unwrap()
-	/// });
-	/// println!("saved id: {}", id);
-	/// ```ignore
 	pub async fn save_delegation(&self, signed_delegation: &crate::types::SignedDelegation) -> Result<uuid::Uuid> {
 		delegation_ops::save_delegation(&self.pool, signed_delegation).await
 	}
@@ -287,13 +208,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// // `pool` is a previously created `PgPool`.
-	/// let ctx = DatabaseContext::new(pool);
-	/// let delegations = tokio::runtime::Runtime::new().unwrap().block_on(async {
-	///     ctx.get_delegations_for_slot(42).await.unwrap()
-	/// });
-	/// ```ignore
 	pub async fn get_delegations_for_slot(&self, slot: u64) -> Result<Vec<crate::types::SignedDelegation>> {
 		delegation_ops::get_delegations_for_slot(&self.pool, slot).await
 	}
@@ -306,14 +220,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # use crate::db::DatabaseContext;
-	/// # async fn example(db: &DatabaseContext) -> anyhow::Result<()> {
-	/// let exists = db.delegation_exists_for_slot_and_committer(42, "0xdeadbeef").await?;
-	/// println!("exists = {}", exists);
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn delegation_exists_for_slot_and_committer(&self, slot: u64, committer_address: &str) -> Result<bool> {
 		delegation_ops::delegation_exists_for_slot_and_committer(&self.pool, slot, committer_address).await
 	}
@@ -322,13 +228,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # use std::sync::Arc;
-	/// # async fn example(db: Arc<crate::db::DatabaseContext>, proposer: crate::types::BlsPublicKey, slot: u64) {
-	/// let result = db.get_delegation_by_proposer_slot(&proposer, slot).await.unwrap();
-	/// // `result` is `Some(SignedDelegation)` if a delegation exists for the proposer at `slot`, otherwise `None`.
-	/// # }
-	/// ```ignore
 	///
 	/// # Returns
 	///
@@ -353,15 +252,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # use crate::db::DatabaseContext;
-	/// # use crate::types::BlsPublicKey;
-	/// # async fn example(ctx: &DatabaseContext, key: &BlsPublicKey) -> anyhow::Result<()> {
-	/// let delegations = ctx.get_delegations_by_delegate(key).await?;
-	/// assert!(delegations.iter().all(|d| &d.delegate_pubkey == key));
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn get_delegations_by_delegate(
 		&self,
 		delegate_pubkey: &crate::types::BlsPublicKey,
@@ -375,14 +265,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # async fn example(db: &crate::db::DatabaseContext) -> Result<(), Box<dyn std::error::Error>> {
-	/// let delegations: Vec<crate::types::SignedDelegation> = vec![]; // build delegations
-	/// let ids = db.save_delegations_batch(&delegations).await?;
-	/// assert_eq!(ids.len(), delegations.len());
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn save_delegations_batch(
 		&self,
 		delegations: &[crate::types::SignedDelegation],
@@ -396,17 +278,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # #[tokio::test]
-	/// # async fn doc_example_get_delegation_stats() {
-	/// use crate::db::DatabaseContext;
-	///
-	/// // Use the testing constructor to get a context wired to a test database.
-	/// let ctx = DatabaseContext::new_for_testing();
-	/// let stats = ctx.get_delegation_stats().await.unwrap();
-	/// let _ = stats; // use `stats` as needed
-	/// # }
-	/// ```ignore
 	pub async fn get_delegation_stats(&self) -> Result<delegation_ops::DelegationStats> {
 		delegation_ops::get_delegation_stats(&self.pool).await
 	}
@@ -417,13 +288,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # async fn example(db_ctx: &crate::db::DatabaseContext) -> anyhow::Result<()> {
-	/// let deactivated = db_ctx.deactivate_expired_delegations(1_234_567).await?;
-	/// println!("Deactivated {} delegations", deactivated);
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn deactivate_expired_delegations(&self, current_slot: u64) -> Result<u64> {
 		delegation_ops::deactivate_expired_delegations(&self.pool, current_slot).await
 	}
@@ -435,13 +299,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # async fn example(ctx: &crate::db::DatabaseContext) -> Result<(), Box<dyn std::error::Error>> {
-	/// let congestion = ctx.get_or_create_slot_congestion(42, 100, 1_000_000, 0).await?;
-	/// assert_eq!(congestion.slot, 42);
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn get_or_create_slot_congestion(
 		&self,
 		slot: u64,
@@ -476,14 +333,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # async fn example(ctx: &crate::db::DatabaseContext) -> anyhow::Result<()> {
-	/// let updated = ctx.update_slot_congestion_gas_usage(123, 10_000, 1.25).await?;
-	/// // inspect returned record
-	/// let _ = updated;
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn update_slot_congestion_gas_usage(
 		&self,
 		slot: u64,
@@ -499,17 +348,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # async fn run_example() -> anyhow::Result<()> {
-	/// let ctx = crate::db::DatabaseContext::new_for_testing();
-	/// let price = ctx.get_current_gas_price_for_slot(42).await?;
-	/// match price {
-	///     Some(p) => println!("Gas price for slot 42: {}", p),
-	///     None => println!("No gas price recorded for slot 42"),
-	/// }
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn get_current_gas_price_for_slot(&self, slot: u64) -> Result<Option<u64>> {
 		slot_congestion_ops::get_current_gas_price_for_slot(&self.pool, slot).await
 	}
@@ -518,14 +356,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # use crate::db::DatabaseContext;
-	/// # async fn _example(db: &DatabaseContext) -> Result<(), anyhow::Error> {
-	/// let stats = db.get_congestion_stats().await?;
-	/// let _ = stats; // inspect congestion statistics
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn get_congestion_stats(&self) -> Result<slot_congestion_ops::CongestionStats> {
 		slot_congestion_ops::get_congestion_stats(&self.pool).await
 	}
@@ -536,13 +366,6 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # use crate::db::DatabaseContext;
-	/// # async fn example(ctx: &DatabaseContext) -> Result<(), Box<dyn std::error::Error>> {
-	/// let removed = ctx.cleanup_old_slot_congestion(24).await?;
-	/// println!("Removed {} old records", removed);
-	/// # Ok(()) }
-	/// ```ignore
 	pub async fn cleanup_old_slot_congestion(&self, hours_to_keep: u32) -> Result<u64> {
 		slot_congestion_ops::cleanup_old_slot_congestion(&self.pool, hours_to_keep).await
 	}

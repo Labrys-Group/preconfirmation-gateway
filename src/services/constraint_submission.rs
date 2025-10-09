@@ -41,23 +41,6 @@ impl ConstraintSubmissionService {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # use std::sync::Arc;
-	/// # async fn example() -> anyhow::Result<()> {
-	/// let constraints_client = Arc::new(/* ConstraintsApiClient */);
-	/// let bls_manager = Arc::new(/* BlsManager */);
-	/// let db_pool = Arc::new(/* PgPool */);
-	/// let config = Arc::new(/* Config */);
-	///
-	/// let service = ConstraintSubmissionService::new(
-	///     constraints_client,
-	///     bls_manager,
-	///     db_pool,
-	///     config,
-	/// ).await?;
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn new(
 		constraints_client: Arc<ConstraintsApiClient>,
 		bls_manager: Arc<BlsManager>,
@@ -77,12 +60,6 @@ impl ConstraintSubmissionService {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # use std::sync::Arc;
-	/// # async fn example(service: Arc<crate::services::constraint_submission::ConstraintSubmissionService>) {
-	/// service.start().await.unwrap();
-	/// # }
-	/// ```ignore
 	pub async fn start(&self) -> Result<()> {
 		info!("Starting constraint submission service");
 
@@ -121,13 +98,6 @@ impl ConstraintSubmissionService {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-	/// let mut service = /* create or obtain ConstraintSubmissionService */ todo!();
-	/// service.stop().await?;
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn stop(&mut self) -> Result<()> {
 		info!("Stopping constraint submission service");
 		self.scheduler.shutdown().await.context("Failed to shutdown constraint submission scheduler")?;
@@ -141,16 +111,6 @@ impl ConstraintSubmissionService {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # async fn example(service: &crate::services::constraint_submission::ConstraintSubmissionService) -> anyhow::Result<()> {
-	/// let slot = 123;
-	/// let payload = vec![1, 2, 3];
-	/// let committer = "0xcommitter".to_string();
-	/// let result = service.submit_constraint_now(slot, payload, committer).await?;
-	/// println!("submission result: {}", result);
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn submit_constraint_now(
 		&self,
 		slot: u64,
@@ -179,11 +139,6 @@ impl ConstraintSubmissionService {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// // `svc` is a prepared `ConstraintSubmissionService`
-	/// let slot: u64 = 12345;
-	/// let within = svc.is_within_submission_window(slot);
-	/// ```ignore
 	pub fn is_within_submission_window(&self, slot: u64) -> bool {
 		let genesis_time = self.config.beacon_api.genesis_time;
 		BeaconTiming::is_within_constraint_window(genesis_time, slot)
@@ -196,12 +151,6 @@ impl ConstraintSubmissionService {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// // Assuming `service` is a properly constructed ConstraintSubmissionService:
-	/// // let deadline = service.get_submission_deadline(42);
-	/// // The deadline is an absolute SystemTime (offset from UNIX_EPOCH).
-	/// // assert!(deadline.duration_since(std::time::UNIX_EPOCH).is_ok());
-	/// ```ignore
 	pub fn get_submission_deadline(&self, slot: u64) -> SystemTime {
 		let genesis_time = self.config.beacon_api.genesis_time;
 		let deadline_timestamp = BeaconTiming::constraint_deadline_for_slot(genesis_time, slot);
@@ -217,17 +166,6 @@ impl ConstraintSubmissionService {
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
-/// # async fn example(
-/// #     constraints_client: std::sync::Arc<ConstraintsApiClient>,
-/// #     bls_manager: std::sync::Arc<BlsManager>,
-/// #     db_pool: std::sync::Arc<PgPool>,
-/// #     config: std::sync::Arc<Config>,
-/// # ) -> anyhow::Result<()> {
-/// process_pending_constraints(constraints_client, bls_manager, db_pool, config).await?;
-/// # Ok(())
-/// # }
-/// ```ignore
 async fn process_pending_constraints(
 	constraints_client: Arc<ConstraintsApiClient>,
 	bls_manager: Arc<BlsManager>,
@@ -272,23 +210,6 @@ async fn process_pending_constraints(
 ///
 /// # Examples
 ///
-/// ```ignore
-/// # async fn example(
-/// #     constraints_client: &crate::clients::ConstraintsApiClient,
-/// #     bls_manager: &crate::bls::BlsManager,
-/// #     db_pool: &sqlx::PgPool,
-/// #     config: &crate::config::Config,
-/// # ) -> anyhow::Result<()> {
-/// process_constraints_for_slot(
-///     constraints_client,
-///     bls_manager,
-///     db_pool,
-///     config,
-///     42,
-/// ).await?;
-/// # Ok(())
-/// # }
-/// ```ignore
 async fn process_constraints_for_slot(
 	constraints_client: &ConstraintsApiClient,
 	bls_manager: &BlsManager,
@@ -347,29 +268,6 @@ async fn process_constraints_for_slot(
 ///
 /// # Examples
 ///
-/// ```ignore
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// # // The following is a minimal usage sketch. Replace the placeholders with real instances.
-/// # use std::sync::Arc;
-/// # use tokio;
-/// # use crate::services::constraint_submission::process_delegation_constraints;
-/// # use crate::clients::constraints::ConstraintsApiClient;
-/// # use crate::crypto::bls::BlsManager;
-/// # use sqlx::PgPool;
-/// # use crate::types::delegation::SignedDelegation;
-/// # use crate::config::SigningConfig;
-/// let constraints_client = ConstraintsApiClient::new(/* ... */);
-/// let bls_manager = BlsManager::new(/* ... */);
-/// let db_pool = PgPool::connect("postgres://user:pass@localhost/db").await?;
-/// let delegation = SignedDelegation::default(); // replace with real delegation
-/// let signing_config = SigningConfig::default(); // replace with real signing config
-/// let slot = 12345;
-///
-/// // Call the async function (must be inside an async context)
-/// process_delegation_constraints(&constraints_client, &bls_manager, &db_pool, &delegation, &signing_config, slot).await?;
-/// # Ok(())
-/// # }
-/// ```ignore
 async fn process_delegation_constraints(
 	constraints_client: &ConstraintsApiClient,
 	bls_manager: &BlsManager,
@@ -447,39 +345,6 @@ async fn process_delegation_constraints(
 ///
 /// # Examples
 ///
-/// ```ignore
-/// # use std::sync::Arc;
-/// # use tokio::runtime::Runtime;
-/// # fn example() {
-/// # let rt = Runtime::new().unwrap();
-/// # rt.block_on(async {
-/// // Placeholder values shown for illustrative purposes only.
-/// // In real code supply actual client, manager, pool, and config instances.
-/// let constraints_client: ConstraintsApiClient = unimplemented!();
-/// let bls_manager: BlsManager = unimplemented!();
-/// let db_pool: PgPool = unimplemented!();
-/// let config: Config = unimplemented!();
-/// let slot = 42u64;
-/// let payload = vec![0u8; 32];
-/// let committer_address = config.signing.committer_address.clone();
-///
-/// let result = submit_constraint(
-///     &constraints_client,
-///     &bls_manager,
-///     &db_pool,
-///     &config,
-///     slot,
-///     payload,
-///     committer_address,
-/// ).await;
-///
-/// match result {
-///     Ok(resp) => println!("Submitted: {}", resp),
-///     Err(e) => eprintln!("Submission failed: {:?}", e),
-/// }
-/// # });
-/// # }
-/// ```ignore
 async fn submit_constraint(
 	constraints_client: &ConstraintsApiClient,
 	bls_manager: &BlsManager,
@@ -560,17 +425,6 @@ async fn submit_constraint(
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
-/// # use anyhow::Result;
-/// # use sqlx::PgPool;
-/// # use crate::services::constraint_submission::create_constraints_from_commitments;
-/// # async fn example(pool: &PgPool) -> Result<()> {
-/// let slot: u64 = 42;
-/// let (constraints, processed_hashes) = create_constraints_from_commitments(pool, slot).await?;
-/// println!("Created {} constraints, processed {} hashes", constraints.len(), processed_hashes.len());
-/// # Ok(())
-/// # }
-/// ```ignore
 async fn create_constraints_from_commitments(db_pool: &PgPool, slot: u64) -> Result<(Vec<Constraint>, Vec<String>)> {
 	debug!("Creating constraints from commitments for slot {}", slot);
 
