@@ -35,5 +35,6 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 
 [dev-dependencies]
+cargo-husky = { version = "1", default-features = false, features = ["precommit-hook", "prepush-hook", "run-cargo-test", "run-cargo-clippy", "run-cargo-fmt"] }
 tempfile = "3.8"
 tokio-test = "0.4"
