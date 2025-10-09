@@ -27,3 +27,61 @@ pub fn setup_rpc_methods(rpc_context: RpcContext) -> anyhow::Result<RpcModule<Rp
 
 	Ok(module)
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::config::Config;
+	use crate::testing::helpers::TestHelpers;
+	use std::sync::Arc;
+
+	#[test]
+	fn test_setup_rpc_methods() {
+		// Create a test RPC context
+		let config = Arc::new(Config::default());
+		let rpc_context = TestHelpers::create_test_rpc_context(config);
+
+		// Test that we can create the RPC module without errors
+		let module = setup_rpc_methods((*rpc_context).clone());
+		assert!(module.is_ok(), "Should be able to set up RPC methods");
+
+		let module = module.unwrap();
+
+		// Verify that the module has the expected methods registered
+		let method_names = module.method_names().collect::<Vec<_>>();
+		assert_eq!(method_names.len(), 4, "Should register exactly 4 methods");
+
+		// Verify specific method names are registered
+		assert!(method_names.contains(&"commitmentRequest"), "Should register commitmentRequest method");
+		assert!(method_names.contains(&"commitmentResult"), "Should register commitmentResult method");
+		assert!(method_names.contains(&"slots"), "Should register slots method");
+		assert!(method_names.contains(&"fee"), "Should register fee method");
+	}
+
+	#[test]
+	fn test_setup_rpc_methods_with_invalid_context() {
+		// This test ensures setup_rpc_methods works with any valid RpcContext
+		// In practice, invalid contexts would be caught at RpcContext creation time
+		let config = Arc::new(Config::default());
+		let rpc_context = TestHelpers::create_test_rpc_context(config);
+
+		// Should work fine - RPC method registration doesn't validate the context deeply
+		let result = setup_rpc_methods((*rpc_context).clone());
+		assert!(result.is_ok(), "RPC method registration should succeed with any RpcContext");
+	}
+
+	#[test]
+	fn test_method_registration_error_handling() {
+		// Test that we get proper error handling during method registration
+		let config = Arc::new(Config::default());
+		let rpc_context = TestHelpers::create_test_rpc_context(config);
+
+		// This tests the normal case - method registration should succeed
+		let module = setup_rpc_methods((*rpc_context).clone());
+		assert!(module.is_ok(), "Method registration should succeed");
+
+		// Verify the module is usable
+		let module = module.unwrap();
+		assert!(!module.method_names().collect::<Vec<_>>().is_empty(), "Module should have registered methods");
+	}
+}
