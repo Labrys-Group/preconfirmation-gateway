@@ -19,8 +19,8 @@
 /// );
 /// ```
 pub fn normalize_address(addr: &str) -> String {
-	// Strip 0x or 0X prefix case-insensitively, then convert to lowercase
-	let without_prefix = if addr.len() >= 2 && &addr[..2].to_ascii_lowercase() == "0x" { &addr[2..] } else { addr };
+	// Strip 0x or 0X prefix case-insensitively using strip_prefix (UTF-8 safe)
+	let without_prefix = addr.strip_prefix("0x").or_else(|| addr.strip_prefix("0X")).unwrap_or(addr);
 	without_prefix.to_ascii_lowercase()
 }
 

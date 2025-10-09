@@ -40,7 +40,11 @@ pub async fn create_pool(config: &Config) -> Result<PgPool> {
 	info!("Connecting to database");
 
 	// Create database if it doesn't exist
-	if !Postgres::database_exists(&database_url).await.unwrap_or(false) {
+	let db_exists = Postgres::database_exists(&database_url)
+		.await
+		.context("Failed to check if database exists. Verify database connection URL and permissions")?;
+
+	if !db_exists {
 		info!("Database does not exist, creating it...");
 		Postgres::create_database(&database_url).await.context("Failed to create database")?;
 	}

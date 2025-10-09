@@ -142,8 +142,15 @@ impl BeaconApiClient {
 		let epoch = BeaconTiming::slot_to_epoch(slot);
 		let duties = self.get_proposer_duties(epoch).await?;
 
-		// Find the duty for the specific slot
-		Ok(duties.data.into_iter().find(|duty| duty.parse_slot().unwrap_or(0) == slot))
+		// Find the duty for the specific slot, propagating parse errors
+		for duty in duties.data {
+			let duty_slot = duty.parse_slot().context("Failed to parse slot from validator duty")?;
+			if duty_slot == slot {
+				return Ok(Some(duty));
+			}
+		}
+
+		Ok(None)
 	}
 
 	/// Perform an HTTP GET to the given endpoint on `base_url`, validate the response, and deserialize the JSON body into `T`.

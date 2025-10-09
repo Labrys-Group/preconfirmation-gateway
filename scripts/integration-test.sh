@@ -102,10 +102,33 @@ echo -e "${GREEN}✓ Environment configured (keys loaded)${NC}\n"
 export COMMITTER_PRIVATE_KEY="${ECDSA_PRIVATE_KEY_1}"
 export BLS_PRIVATE_KEY="${BLS_PRIVATE_KEY_1}"
 
-# Step 4: Run database migrations
-echo -e "${BLUE}[4/8]${NC} Running database migrations..."
-sqlx migrate run > logs/migrations.log 2>&1
-echo -e "${GREEN}✓ Migrations complete${NC}\n"
+# Step 4: Create database if it doesn't exist
+echo -e "${BLUE}[4/8]${NC} Setting up database..."
+echo -n "  Creating database (if needed)... "
+if sqlx database create > logs/db-create.log 2>&1; then
+  echo -e "${GREEN}✓${NC}"
+else
+  # Check if the error is because database already exists (exit code 0 for idempotent behavior)
+  if grep -q "already exists\|database exists" logs/db-create.log 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} (already exists)"
+  else
+    echo -e "${RED}✗${NC}"
+    echo "Failed to create database. Check logs/db-create.log for details"
+    cat logs/db-create.log
+    exit 1
+  fi
+fi
+
+echo -n "  Running migrations... "
+if sqlx migrate run > logs/migrations.log 2>&1; then
+  echo -e "${GREEN}✓${NC}"
+else
+  echo -e "${RED}✗${NC}"
+  echo "Failed to run migrations. Check logs/migrations.log for details"
+  cat logs/migrations.log
+  exit 1
+fi
+echo ""
 
 # Step 5: Build the gateway
 echo -e "${BLUE}[5/8]${NC} Building gateway..."
