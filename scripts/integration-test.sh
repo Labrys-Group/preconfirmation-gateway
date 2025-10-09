@@ -50,17 +50,30 @@ export BEACON_API_ENDPOINT="http://localhost:5051"
 export RETH_ENDPOINT="http://localhost:8545"
 export CONSTRAINTS_API_ENDPOINT="http://localhost:3501"
 
-# Load test keys from environment or a keys file
+# Load test keys from environment or a keys file into local (non-exported) variables
 # Keys must be provided externally - no hardcoded keys in the script
+ECDSA_KEY=""
+BLS_KEY=""
+
 if [ -n "${KEYS_FILE:-}" ] && [ -f "$KEYS_FILE" ]; then
   echo "Loading test keys from $KEYS_FILE"
-  # Source the keys file which should export ECDSA_PRIVATE_KEY_1 and BLS_PRIVATE_KEY_1
-  # shellcheck disable=SC1090
-  source "$KEYS_FILE"
+  # Parse keys file without sourcing to avoid exporting secrets
+  # Extract ECDSA_PRIVATE_KEY_1 and BLS_PRIVATE_KEY_1 values
+  ECDSA_KEY=$(grep -E '^\s*ECDSA_PRIVATE_KEY_1=' "$KEYS_FILE" | sed 's/^[^=]*=\s*"\?\([^"]*\)"\?.*/\1/' | tr -d '\n\r')
+  BLS_KEY=$(grep -E '^\s*BLS_PRIVATE_KEY_1=' "$KEYS_FILE" | sed 's/^[^=]*=\s*"\?\([^"]*\)"\?.*/\1/' | tr -d '\n\r')
+fi
+
+# Fall back to environment variables if keys weren't loaded from file
+if [ -z "$ECDSA_KEY" ] && [ -n "${ECDSA_PRIVATE_KEY_1:-}" ]; then
+  ECDSA_KEY="${ECDSA_PRIVATE_KEY_1}"
+fi
+
+if [ -z "$BLS_KEY" ] && [ -n "${BLS_PRIVATE_KEY_1:-}" ]; then
+  BLS_KEY="${BLS_PRIVATE_KEY_1}"
 fi
 
 # Validate that required keys are present
-if [ -z "${ECDSA_PRIVATE_KEY_1:-}" ]; then
+if [ -z "$ECDSA_KEY" ]; then
   echo -e "${RED}✗ ECDSA_PRIVATE_KEY_1 is not set${NC}"
   echo ""
   echo "Integration tests require cryptographic keys to be provided via environment variables."
@@ -74,15 +87,16 @@ if [ -z "${ECDSA_PRIVATE_KEY_1:-}" ]; then
   echo ""
   echo "Example test-keys.sh file:"
   echo "  #!/bin/bash"
-  echo "  export ECDSA_PRIVATE_KEY_1=\"0x<64-hex>\""
-  echo "  export BLS_PRIVATE_KEY_1=\"0x<64-hex>\"  # 32 bytes"
+  echo "  ECDSA_PRIVATE_KEY_1=\"0x<64-hex>\""
+  echo "  BLS_PRIVATE_KEY_1=\"0x<64-hex>\"  # 32 bytes"
   echo ""
-  echo "Note: The ECDSA key must correspond to address 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+  echo "Note: Keys in the file should NOT be exported (no 'export' keyword)."
+  echo "      The ECDSA key must correspond to address 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
   echo "      to match the mock relay's configured committer address."
   exit 1
 fi
 
-if [ -z "${BLS_PRIVATE_KEY_1:-}" ]; then
+if [ -z "$BLS_KEY" ]; then
   echo -e "${RED}✗ BLS_PRIVATE_KEY_1 is not set${NC}"
   echo ""
   echo "Integration tests require cryptographic keys to be provided via environment variables."
@@ -97,10 +111,6 @@ if [ -z "${BLS_PRIVATE_KEY_1:-}" ]; then
 fi
 
 echo -e "${GREEN}✓ Environment configured (keys loaded)${NC}\n"
-
-# Map test key variables to expected config variable names
-export COMMITTER_PRIVATE_KEY="${ECDSA_PRIVATE_KEY_1}"
-export BLS_PRIVATE_KEY="${BLS_PRIVATE_KEY_1}"
 
 # Step 4: Create database if it doesn't exist
 echo -e "${BLUE}[4/8]${NC} Setting up database..."
@@ -137,9 +147,17 @@ echo -e "${GREEN}✓ Gateway built${NC}\n"
 
 # Step 6: Start the gateway
 echo -e "${BLUE}[6/8]${NC} Starting gateway..."
-./target/release/preconfirmation-gateway > logs/gateway.log 2>&1 &
+# Pass keys directly to the gateway process without exporting them globally
+COMMITTER_PRIVATE_KEY="$ECDSA_KEY" BLS_PRIVATE_KEY="$BLS_KEY" \
+  ./target/release/preconfirmation-gateway > logs/gateway.log 2>&1 &
 GATEWAY_PID=$!
 echo $GATEWAY_PID > logs/gateway.pid
+
+# Immediately clear the local key variables to avoid lingering secrets
+ECDSA_KEY=""
+BLS_KEY=""
+unset ECDSA_KEY
+unset BLS_KEY
 
 # Wait for gateway to be ready
 echo -n "Waiting for gateway"
