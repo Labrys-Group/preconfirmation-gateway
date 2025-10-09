@@ -174,6 +174,15 @@ pub async fn get_delegation_by_proposer_slot(
 			let mut delegate_bytes = [0u8; 48];
 			let mut signature_bytes = [0u8; 96];
 
+			if row.proposer_pubkey.len() != 48 {
+				anyhow::bail!("Invalid proposer pubkey length: {}", row.proposer_pubkey.len());
+			}
+			if row.delegate_pubkey.len() != 48 {
+				anyhow::bail!("Invalid delegate pubkey length: {}", row.delegate_pubkey.len());
+			}
+			if row.signature.len() != 96 {
+				anyhow::bail!("Invalid signature length: {}", row.signature.len());
+			}
 			proposer_bytes.copy_from_slice(&row.proposer_pubkey);
 			delegate_bytes.copy_from_slice(&row.delegate_pubkey);
 			signature_bytes.copy_from_slice(&row.signature);
@@ -240,6 +249,15 @@ pub async fn get_delegations_by_delegate(
 		let mut delegate_bytes = [0u8; 48];
 		let mut signature_bytes = [0u8; 96];
 
+		if row.proposer_pubkey.len() != 48 {
+			anyhow::bail!("Invalid proposer pubkey length: {}", row.proposer_pubkey.len());
+		}
+		if row.delegate_pubkey.len() != 48 {
+			anyhow::bail!("Invalid delegate pubkey length: {}", row.delegate_pubkey.len());
+		}
+		if row.signature.len() != 96 {
+			anyhow::bail!("Invalid signature length: {}", row.signature.len());
+		}
 		proposer_bytes.copy_from_slice(&row.proposer_pubkey);
 		delegate_bytes.copy_from_slice(&row.delegate_pubkey);
 		signature_bytes.copy_from_slice(&row.signature);
