@@ -35,8 +35,8 @@ mod tests {
 	use crate::testing::helpers::TestHelpers;
 	use std::sync::Arc;
 
-	#[test]
-	fn test_setup_rpc_methods() {
+	#[tokio::test]
+	async fn test_setup_rpc_methods() {
 		// Create a test RPC context
 		let config = Arc::new(Config::default());
 		let rpc_context = TestHelpers::create_test_rpc_context(config);
@@ -58,8 +58,8 @@ mod tests {
 		assert!(method_names.contains(&"fee"), "Should register fee method");
 	}
 
-	#[test]
-	fn test_setup_rpc_methods_with_invalid_context() {
+	#[tokio::test]
+	async fn test_setup_rpc_methods_with_invalid_context() {
 		// This test ensures setup_rpc_methods works with any valid RpcContext
 		// In practice, invalid contexts would be caught at RpcContext creation time
 		let config = Arc::new(Config::default());
@@ -70,8 +70,8 @@ mod tests {
 		assert!(result.is_ok(), "RPC method registration should succeed with any RpcContext");
 	}
 
-	#[test]
-	fn test_method_registration_error_handling() {
+	#[tokio::test]
+	async fn test_method_registration_error_handling() {
 		// Test that we get proper error handling during method registration
 		let config = Arc::new(Config::default());
 		let rpc_context = TestHelpers::create_test_rpc_context(config);

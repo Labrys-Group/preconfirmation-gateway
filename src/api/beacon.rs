@@ -222,7 +222,7 @@ impl BeaconApiClient {
 mod tests {
 	use super::*;
 	use crate::config::BeaconApiConfig;
-	use crate::types::beacon::{ProposerDutiesResponse, ValidatorDuty, BeaconTiming};
+	use crate::types::beacon::BeaconTiming;
 	use std::time::Duration;
 	use tokio::time::timeout;
 
@@ -374,7 +374,7 @@ mod tests {
 	#[test]
 	fn test_make_request_url_building() {
 		let config = create_test_config();
-		let client = BeaconApiClient::new(config).unwrap();
+		let _client = BeaconApiClient::new(config).unwrap();
 
 		// Test URL building logic
 		let base_with_slash = "https://example.com/";

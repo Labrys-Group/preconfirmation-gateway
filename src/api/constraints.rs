@@ -290,8 +290,7 @@ mod tests {
 	use super::*;
 	use crate::config::ConstraintsApiConfig;
 	use crate::types::delegation::{BlsSignature, ConstraintsMessage, SignedConstraints, Constraint};
-	use crate::testing::fixtures::TestFixtures;
-	use crate::testing::mocks::{create_test_bls_keypair, create_test_ecdsa_keypair};
+	use crate::testing::mocks::create_test_bls_keypair;
 	use std::time::Duration;
 	use tokio::time::timeout;
 

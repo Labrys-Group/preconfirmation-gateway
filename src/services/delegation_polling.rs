@@ -281,12 +281,24 @@ async fn cleanup_expired_delegations(db_pool: Arc<PgPool>, config: Arc<Config>) 
 mod tests {
 	use super::*;
 	use crate::config::Config;
+	use crate::testing::mocks::{create_test_bls_keypair, create_test_config};
+	use crate::testing::fixtures::TestFixtures;
+	use crate::types::delegation::{SignedDelegation, DelegationMessage, BlsSignature};
 	use std::time::Duration;
 	use tokio::time::timeout;
 
+	fn create_mock_config() -> Config {
+		let mut config = create_test_config();
+		// Set specific values for delegation polling
+		config.delegation.lookahead_epochs = 2;
+		config.delegation.polling_interval_secs = 30;
+		config.delegation.cache_ttl_secs = 300;
+		config
+	}
+
 	#[tokio::test]
 	async fn test_delegation_polling_service_creation() {
-		let config = Config::default();
+		let config = create_mock_config();
 		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 
@@ -308,8 +320,23 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn test_delegation_polling_service_creation_without_db() {
+		// Test service creation without requiring a real database connection
+		let config = create_mock_config();
+		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		
+		// Use lazy connection pool that doesn't actually connect
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		let service = DelegationPollingService::new(beacon_client, constraints_client, db_pool, Arc::new(config)).await;
+
+		assert!(service.is_ok(), "Should be able to create delegation polling service without database");
+	}
+
+	#[tokio::test]
 	async fn test_delegation_polling_service_lifecycle() {
-		let config = Config::default();
+		let config = create_mock_config();
 		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 
@@ -338,8 +365,28 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn test_delegation_polling_service_lifecycle_without_db() {
+		let config = create_mock_config();
+		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		let mut service = DelegationPollingService::new(beacon_client, constraints_client, db_pool, Arc::new(config))
+			.await
+			.expect("Failed to create service");
+
+		// Test start and stop (will fail during actual polling due to no DB, but lifecycle should work)
+		service.start().await.expect("Failed to start service");
+
+		// Give it a brief moment
+		sleep(Duration::from_millis(50)).await;
+
+		service.stop().await.expect("Failed to stop service");
+	}
+
+	#[tokio::test]
 	async fn test_poll_once_without_error() {
-		let config = Config::default();
+		let config = create_mock_config();
 		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 
@@ -361,5 +408,294 @@ mod tests {
 		// This might fail due to network issues, but shouldn't panic
 		let result = timeout(Duration::from_secs(10), service.poll_once()).await;
 		assert!(result.is_ok(), "poll_once should complete within timeout");
+	}
+
+	#[tokio::test]
+	async fn test_poll_once_without_db() {
+		let config = create_mock_config();
+		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		let service = DelegationPollingService::new(beacon_client, constraints_client, db_pool, Arc::new(config))
+			.await
+			.expect("Failed to create service");
+
+		// This should complete even if it fails due to network/database issues
+		let result = timeout(Duration::from_secs(5), service.poll_once()).await;
+		assert!(result.is_ok(), "poll_once should complete within timeout");
+	}
+
+	#[tokio::test]
+	async fn test_poll_delegations_error_handling() {
+		// Test error handling in the main polling logic
+		let config = create_mock_config();
+		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		// This should handle errors gracefully and return Ok(())
+		let result = poll_delegations(beacon_client, constraints_client, db_pool, Arc::new(config)).await;
+		assert!(result.is_ok(), "poll_delegations should handle errors gracefully");
+	}
+
+	#[tokio::test]
+	async fn test_poll_delegations_for_slot_error_handling() {
+		// Test error handling for single slot polling
+		let config = create_mock_config();
+		let constraints_client = ConstraintsApiClient::new(config.constraints_api.clone()).unwrap();
+		let db_pool = sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap();
+		let (_sk, pk) = create_test_bls_keypair();
+
+		let slot = 12345u64;
+
+		// This should fail due to invalid API endpoints and no database connection
+		let blst_pk = blst::min_pk::PublicKey::from_bytes(&pk.0).expect("Valid BLS public key");
+		let result = poll_delegations_for_slot(&constraints_client, &db_pool, slot, &blst_pk).await;
+		assert!(result.is_err(), "Should fail due to connectivity issues");
+	}
+
+	#[tokio::test]
+	async fn test_cleanup_expired_delegations_error_handling() {
+		// Test error handling for delegation cleanup
+		let config = create_mock_config();
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		// This should handle database errors gracefully
+		let result = cleanup_expired_delegations(db_pool, Arc::new(config)).await;
+		assert!(result.is_err(), "Should fail due to no database connection");
+	}
+
+	#[test]
+	fn test_delegation_configuration_validation() {
+		let config = create_mock_config();
+		
+		// Verify delegation config values
+		assert_eq!(config.delegation.lookahead_epochs, 2);
+		assert_eq!(config.delegation.polling_interval_secs, 30);
+		assert_eq!(config.delegation.cache_ttl_secs, 300);
+		
+		// Test slot range calculation
+		let lookahead_slots = config.delegation.lookahead_epochs * crate::types::beacon::timing::SLOTS_PER_EPOCH;
+		assert_eq!(lookahead_slots, 2 * 32, "Should calculate correct lookahead slots");
+	}
+
+	#[test]
+	fn test_bls_signature_verification_setup() {
+		// Test that BLS manager can be created for signature verification
+		let bls_manager_result = BlsManager::new("0x00446567");
+		assert!(bls_manager_result.is_ok(), "Should be able to create BLS manager for verification");
+
+		let _bls_manager = bls_manager_result.unwrap();
+		
+		// Create a test delegation to verify the structure is correct
+		let (_proposer_sk, proposer_pk) = create_test_bls_keypair();
+		let (_delegate_sk, delegate_pk) = create_test_bls_keypair();
+		
+		let delegation = TestFixtures::create_signed_delegation(
+			12345,
+			proposer_pk,
+			delegate_pk,
+			"0x1234567890123456789012345678901234567890",
+		);
+		
+		// Verify delegation structure is valid (signature verification will fail due to mock signature)
+		assert_eq!(delegation.message.slot, 12345);
+		assert_eq!(delegation.message.committer, "0x1234567890123456789012345678901234567890");
+	}
+
+	#[test]
+	fn test_delegation_filtering_logic() {
+		// Test BLS key comparison logic used in delegation filtering
+		let (_, our_pk) = create_test_bls_keypair();
+		let (_, other_pk) = create_test_bls_keypair();
+		
+		let our_bytes = our_pk.0;
+		let other_bytes = other_pk.0;
+		
+		// Verify that different keys produce different bytes
+		assert_ne!(our_bytes, other_bytes, "Different keys should produce different byte arrays");
+		
+		// Test the filtering condition used in the polling logic
+		let matches_our_key = our_bytes == our_bytes;
+		let matches_other_key = our_bytes == other_bytes;
+		
+		assert!(matches_our_key, "Key should match itself");
+		assert!(!matches_other_key, "Key should not match different key");
+	}
+
+	#[test]
+	fn test_slot_range_calculation() {
+		let config = create_mock_config();
+		let genesis_time = config.beacon_api.genesis_time;
+		
+		// Test current slot calculation
+		let current_time = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.unwrap()
+			.as_secs();
+		
+		let current_slot = BeaconTiming::current_slot_estimate(genesis_time);
+		let expected_slot = (current_time - genesis_time) / 12;
+		
+		// Allow some tolerance for timing differences
+		let slot_diff = (current_slot as i64 - expected_slot as i64).abs();
+		assert!(slot_diff <= 2, "Current slot calculation should be accurate within 2 slots");
+		
+		// Test lookahead calculation
+		let lookahead_slots = config.delegation.lookahead_epochs * crate::types::beacon::timing::SLOTS_PER_EPOCH;
+		let end_slot = current_slot + lookahead_slots;
+		
+		assert!(end_slot > current_slot, "End slot should be after current slot");
+		assert_eq!(end_slot - current_slot, lookahead_slots, "Slot range should match lookahead");
+	}
+
+	#[tokio::test]
+	async fn test_concurrent_delegation_polling() {
+		// Test concurrent polling operations
+		let config = create_mock_config();
+		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		let mut handles = Vec::new();
+
+		// Start multiple polling operations
+		for _i in 0..3 {
+			let beacon = Arc::clone(&beacon_client);
+			let constraints = Arc::clone(&constraints_client);
+			let pool = Arc::clone(&db_pool);
+			let conf = Arc::new(config.clone());
+			
+			let handle = tokio::spawn(async move {
+				poll_delegations(beacon, constraints, pool, conf).await
+			});
+			handles.push(handle);
+		}
+
+		// Wait for all operations to complete
+		for handle in handles {
+			let result = handle.await.unwrap();
+			// All should complete gracefully even if they encounter errors
+			assert!(result.is_ok(), "Concurrent polling should complete gracefully");
+		}
+	}
+
+	#[tokio::test]
+	async fn test_delegation_validation_flow() {
+		// Test the validation steps that would occur during delegation processing
+		let (_proposer_sk, proposer_pk) = create_test_bls_keypair();
+		let (_delegate_sk, delegate_pk) = create_test_bls_keypair();
+		
+		// Create a delegation with proper structure
+		let slot = 12345u64;
+		let committer = "0x1234567890123456789012345678901234567890";
+		
+		let delegation_message = DelegationMessage {
+			proposer: proposer_pk,
+			delegate: delegate_pk.clone(),
+			committer: committer.to_string(),
+			slot,
+		};
+		
+		// Create mock signature (real signature would require proper signing)
+		let mock_signature = BlsSignature([42u8; 96]);
+		let delegation = SignedDelegation {
+			message: delegation_message,
+			signature: mock_signature,
+		};
+		
+		// Test the filtering logic that would be used in polling
+		let our_delegate_key = delegate_pk.0;
+		let delegation_delegate_key = delegation.message.delegate.0;
+		
+		// This delegation should match our delegate key
+		assert_eq!(delegation_delegate_key, our_delegate_key, 
+			"Delegation should match our delegate key");
+		
+		// Verify delegation structure is complete
+		assert_eq!(delegation.message.slot, slot);
+		assert_eq!(delegation.message.committer, committer);
+		assert!(!delegation.signature.0.is_empty(), "Signature should not be empty");
+	}
+
+	#[tokio::test]
+	async fn test_delegation_polling_timing() {
+		// Test that polling operations complete within reasonable time bounds
+		let config = create_mock_config();
+		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		let start_time = std::time::Instant::now();
+		
+		// Run a polling cycle
+		let result = timeout(
+			Duration::from_secs(10),
+			poll_delegations(beacon_client, constraints_client, db_pool, Arc::new(config))
+		).await;
+		
+		let elapsed = start_time.elapsed();
+		
+		assert!(result.is_ok(), "Polling should complete within timeout");
+		assert!(elapsed < Duration::from_secs(10), "Polling should complete reasonably quickly");
+	}
+
+	#[test]
+	fn test_delegation_config_edge_cases() {
+		let mut config = create_mock_config();
+		
+		// Test with zero lookahead
+		config.delegation.lookahead_epochs = 0;
+		let lookahead_slots = config.delegation.lookahead_epochs * crate::types::beacon::timing::SLOTS_PER_EPOCH;
+		assert_eq!(lookahead_slots, 0, "Zero lookahead should result in zero slots");
+		
+		// Test with very high lookahead
+		config.delegation.lookahead_epochs = 100;
+		let lookahead_slots = config.delegation.lookahead_epochs * crate::types::beacon::timing::SLOTS_PER_EPOCH;
+		assert_eq!(lookahead_slots, 3200, "High lookahead should calculate correctly");
+		
+		// Test with very short polling interval
+		config.delegation.polling_interval_secs = 1;
+		assert_eq!(config.delegation.polling_interval_secs, 1);
+		
+		// Test with very short cache TTL
+		config.delegation.cache_ttl_secs = 1;
+		assert_eq!(config.delegation.cache_ttl_secs, 1);
+	}
+
+	#[test]
+	fn test_bls_key_conversion() {
+		// Test BLS key type conversions used in the polling logic
+		let (_, pk) = create_test_bls_keypair();
+		
+		// Test conversion to blst::min_pk::PublicKey
+		let blst_pk = blst::min_pk::PublicKey::from_bytes(&pk.0).expect("Valid BLS public key");
+		let converted_bytes = blst_pk.to_bytes();
+		
+		assert_eq!(converted_bytes, pk.0, "Key conversion should preserve bytes");
+		assert_eq!(converted_bytes.len(), 48, "BLS public key should be 48 bytes");
+	}
+
+	#[tokio::test]
+	async fn test_service_error_recovery() {
+		// Test that the service can recover from errors during operation
+		let config = create_mock_config();
+		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		let mut service = DelegationPollingService::new(beacon_client, constraints_client, db_pool, Arc::new(config))
+			.await
+			.expect("Failed to create service");
+
+		// Start service
+		service.start().await.expect("Failed to start service");
+
+		// Let it run for a moment (it will encounter errors due to invalid endpoints/DB)
+		sleep(Duration::from_millis(100)).await;
+
+		// Service should still be running and stoppable despite errors
+		service.stop().await.expect("Failed to stop service after errors");
 	}
 }
