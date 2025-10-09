@@ -440,14 +440,15 @@ impl Config {
 	/// assert_eq!(cfg.reth.endpoint, "http://reth.local:8545");
 	/// assert_eq!(cfg.constraints_api.relay_endpoint, "https://relay.example");
 	/// ```
+	#[allow(clippy::collapsible_if)]
 	fn substitute_env_vars(config: &mut Self) -> Result<()> {
 		// Substitute in beacon API endpoint
 		if config.beacon_api.primary_endpoint.contains("${BEACON_API_ENDPOINT}") {
 			if let Ok(endpoint) = std::env::var("BEACON_API_ENDPOINT") {
 				config.beacon_api.primary_endpoint = endpoint;
 			}
-			// If env var not set, leave the placeholder for validation to catch
 		}
+		// If env var not set, leave the placeholder for validation to catch
 
 		// Substitute in reth endpoint
 		if config.reth.endpoint.contains("${RETH_ENDPOINT}") {

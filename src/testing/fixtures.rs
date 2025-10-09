@@ -408,7 +408,7 @@ impl TimingTestHelpers {
 		let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 
 		let current_slot = current_time / 12;
-		let slot_diff = if slot > current_slot { slot - current_slot } else { current_slot - slot };
+		let slot_diff = slot.abs_diff(current_slot);
 
 		// Allow slots within 10 slots of current (reasonable constraint submission window)
 		slot_diff <= 10
