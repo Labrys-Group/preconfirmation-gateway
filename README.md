@@ -13,6 +13,7 @@ A Rust-based preconfirmation gateway that enables Ethereum validators to issue c
 ### Building
 
 ```bash
+task install
 task build
 ```
 

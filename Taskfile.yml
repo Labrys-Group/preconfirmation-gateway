@@ -28,3 +28,7 @@ tasks:
   lint:
     cmds:
       - cargo clippy
+
+  install:
+    cmds:
+      - cargo fetch
