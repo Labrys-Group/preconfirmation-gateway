@@ -25,6 +25,12 @@ tasks:
     cmds:
       - cargo test
 
+  coverage:
+    env:
+      RUSTFLAGS: "-C instrument-coverage"
+    cmds:
+      - cargo test
+
   lint:
     cmds:
       - cargo clippy
@@ -32,3 +38,8 @@ tasks:
   install:
     cmds:
       - cargo fetch
+
+  db:migrate:
+    desc: "Run sql migration files against database"
+    cmds:
+      - sqlx migrate run

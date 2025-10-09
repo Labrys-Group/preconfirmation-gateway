@@ -9,6 +9,26 @@ A Rust-based preconfirmation gateway that enables Ethereum validators to issue c
 - Rust (latest stable version)
 - Cargo
 - Taskfile
+- PostgreSQL
+- [sqlx-cli](https://github.com/launchbadge/sqlx) (for database migrations)
+
+### Database Setup
+
+Install sqlx-cli:
+```bash
+cargo install sqlx-cli --no-default-features --features postgres
+```
+
+Set up your database URL in `.env`:
+```bash
+DATABASE_URL=postgresql://user:password@localhost/preconf_gateway
+```
+
+Run migrations:
+```bash
+sqlx database create
+sqlx migrate run
+```
 
 ### Building
 
