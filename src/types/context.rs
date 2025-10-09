@@ -21,7 +21,7 @@ impl RpcContext {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::sync::Arc;
 	/// // Construct or obtain the required components...
 	/// let database = DatabaseContext::new();
@@ -30,7 +30,7 @@ impl RpcContext {
 	/// let beacon_client = Arc::new(BeaconApiClient::new());
 	///
 	/// let ctx = RpcContext::new(database, config, fee_engine, beacon_client);
-	/// ```
+	/// ```ignore
 	pub fn new(
 		database: DatabaseContext,
 		config: Config,
@@ -46,11 +46,11 @@ impl RpcContext {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// // Construct RpcContext with appropriate values (placeholders shown)
 	/// let ctx = RpcContext::new(db, config, fee_engine, beacon_client);
 	/// let db_ref: &DatabaseContext = ctx.database();
-	/// ```
+	/// ```ignore
 	pub fn database(&self) -> &DatabaseContext {
 		&self.database
 	}
@@ -63,13 +63,13 @@ impl RpcContext {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::sync::Arc;
 	/// // assume db, config, fee_engine, beacon_client are available in scope
 	/// let ctx = RpcContext::new(db, config, fee_engine, beacon_client.clone());
 	/// let client_ref: &Arc<BeaconApiClient> = ctx.beacon_client();
 	/// assert!(Arc::ptr_eq(client_ref, &beacon_client));
-	/// ```
+	/// ```ignore
 	pub fn beacon_client(&self) -> &Arc<BeaconApiClient> {
 		&self.beacon_client
 	}

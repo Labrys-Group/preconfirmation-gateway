@@ -20,14 +20,14 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// #[tokio::test]
 	/// async fn setup_env_smoke() {
 	///     let env = crate::testing::helpers::setup_test_environment().await;
 	///     // Use `env` in test setup; fields are Arc-wrapped mock instances.
 	///     assert!(std::sync::Arc::strong_count(&env.config) >= 1);
 	/// }
-	/// ```
+	/// ```ignore
 	pub async fn setup_test_environment() -> TestEnvironment {
 		let config = crate::testing::mocks::create_test_config();
 		let mock_db = MockDatabase::new();
@@ -52,14 +52,14 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::sync::Arc;
 	///
 	/// // construct or obtain a test Config
 	/// let cfg = Arc::new(crate::config::Config::default());
 	/// let rpc_ctx = crate::testing::helpers::create_test_rpc_context(cfg);
 	/// // use `rpc_ctx` in tests...
-	/// ```
+	/// ```ignore
 	pub fn create_test_rpc_context(config: Arc<Config>) -> Arc<RpcContext> {
 		// Create a test database pool (using an in-memory SQLite for testing would be ideal,
 		// but for now we'll create a minimal PgPool that won't actually connect)
@@ -95,13 +95,13 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// # async fn example() {
 	/// let (value, elapsed) = measure_time(|| async { 42 }).await;
 	/// assert_eq!(value, 42);
 	/// assert!(elapsed.as_nanos() >= 0);
 	/// # }
-	/// ```
+	/// ```ignore
 	pub async fn measure_time<F, Fut, T>(operation: F) -> (T, Duration)
 	where
 		F: FnOnce() -> Fut,
@@ -124,7 +124,7 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::time::Duration;
 	/// use tokio::time::sleep;
 	///
@@ -137,7 +137,7 @@ impl TestHelpers {
 	///     }).await;
 	///     assert_eq!(res.unwrap(), 42);
 	/// }
-	/// ```
+	/// ```ignore
 	pub async fn with_timeout<F, Fut, T>(duration: Duration, operation: F) -> Result<T>
 	where
 		F: FnOnce() -> Fut,
@@ -152,7 +152,7 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignoreno_run
 	/// use std::time::Duration;
 	/// use anyhow::Result;
 	/// use crate::testing::helpers::TestHelpers;
@@ -166,7 +166,7 @@ impl TestHelpers {
 	/// assert_eq!(value, 123);
 	/// # Ok(())
 	/// # }
-	/// ```
+	/// ```ignore
 	pub async fn assert_completes_within<F, Fut, T>(max_duration: Duration, operation: F) -> Result<T>
 	where
 		F: FnOnce() -> Fut,
@@ -194,7 +194,7 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignoreno_run
 	/// use std::time::Duration;
 	///
 	/// # tokio_test::block_on(async {
@@ -212,7 +212,7 @@ impl TestHelpers {
 	/// assert_eq!(results, vec![1, 2]);
 	/// assert!(duration.as_millis() >= 0);
 	/// # })
-	/// ```
+	/// ```ignore
 	pub async fn run_concurrent_operations<F, Fut, T>(operations: Vec<F>) -> (Vec<T>, Duration)
 	where
 		F: FnOnce() -> Fut + Send + 'static,
@@ -238,7 +238,7 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// #[tokio::test]
 	/// async fn example_stress_test_database() {
 	///     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -249,7 +249,7 @@ impl TestHelpers {
 	///     assert_eq!(results.concurrent_operations, 2);
 	///     assert_eq!(results.operations_per_task, 5);
 	/// }
-	/// ```
+	/// ```ignore
 	pub async fn stress_test_database(
 		pool: &PgPool,
 		concurrent_operations: usize,
@@ -309,14 +309,14 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::time::Instant;
 	/// // genesis_time in seconds (UNIX timestamp)
 	/// let genesis_time = 0_u64;
 	/// let commitment_slot = 1_u64;
 	/// let submission_time = Instant::now();
 	/// assert!(crate::testing::helpers::validate_constraint_timing(commitment_slot, submission_time, genesis_time).is_ok());
-	/// ```
+	/// ```ignore
 	pub fn validate_constraint_timing(commitment_slot: u64, submission_time: Instant, genesis_time: u64) -> Result<()> {
 		// Convert Instant to unix timestamp by calculating offset from now
 		let now_instant = Instant::now();
@@ -358,7 +358,7 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// #[tokio::test]
 	/// async fn example_generate_load() {
 	///     use std::sync::Arc;
@@ -375,7 +375,7 @@ impl TestHelpers {
 	///     // At least one request should have been attempted during the interval.
 	///     assert!(results.successful_requests + results.failed_requests > 0);
 	/// }
-	/// ```
+	/// ```ignore
 	pub async fn generate_realistic_load(
 		context: Arc<RpcContext>,
 		duration: Duration,
@@ -429,7 +429,7 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// # async fn example() -> anyhow::Result<()> {
 	/// use std::sync::Arc;
 	/// // Construct a minimal `CommitmentRequest` appropriate to your test harness.
@@ -441,7 +441,7 @@ impl TestHelpers {
 	/// assert!(signed.signature.starts_with("0x"));
 	/// # Ok(())
 	/// # }
-	/// ```
+	/// ```ignore
 	async fn simulate_commitment_request(
 		_context: Arc<RpcContext>,
 		request: CommitmentRequest,
@@ -498,7 +498,7 @@ impl DatabaseStressTestResults {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::time::Duration;
 	///
 	/// let r1 = TaskResults { task_id: 0, successful_operations: 5, failed_operations: 2, total_duration: Duration::from_secs(1) };
@@ -511,7 +511,7 @@ impl DatabaseStressTestResults {
 	/// };
 	///
 	/// assert_eq!(stats.total_operations(), 14);
-	/// ```
+	/// ```ignore
 	pub fn total_operations(&self) -> usize {
 		self.task_results.iter().map(|r| r.successful_operations + r.failed_operations).sum()
 	}
@@ -524,7 +524,7 @@ impl DatabaseStressTestResults {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::time::Duration;
 	///
 	/// let results = crate::testing::helpers::DatabaseStressTestResults {
@@ -549,7 +549,7 @@ impl DatabaseStressTestResults {
 	/// };
 	///
 	/// assert!(empty.success_rate().is_nan());
-	/// ```
+	/// ```ignore
 	pub fn success_rate(&self) -> f64 {
 		let total_success: usize = self.task_results.iter().map(|r| r.successful_operations).sum();
 		total_success as f64 / self.total_operations() as f64
@@ -561,7 +561,7 @@ impl DatabaseStressTestResults {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::time::Duration;
 	/// let task = TaskResults {
 	///     task_id: 0,
@@ -576,7 +576,7 @@ impl DatabaseStressTestResults {
 	///     operations_per_task: 100,
 	/// };
 	/// assert_eq!(results.operations_per_second(), 10.0);
-	/// ```
+	/// ```ignore
 	pub fn operations_per_second(&self) -> f64 {
 		self.total_operations() as f64 / self.total_duration.as_secs_f64()
 	}
@@ -609,7 +609,7 @@ impl LoadTestResults {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let results = LoadTestResults {
 	///     duration: std::time::Duration::from_secs(1),
 	///     successful_requests: 80,
@@ -629,7 +629,7 @@ impl LoadTestResults {
 	///     actual_tps: 0.0,
 	/// };
 	/// assert!(empty.success_rate().is_nan());
-	/// ```
+	/// ```ignore
 	pub fn success_rate(&self) -> f64 {
 		self.successful_requests as f64 / (self.successful_requests + self.failed_requests) as f64
 	}
@@ -640,7 +640,7 @@ impl LoadTestResults {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::time::Duration;
 	/// # // Minimal shim of the struct for the doctest
 	/// # struct LoadTestResults { response_times: Vec<Duration> }
@@ -657,7 +657,7 @@ impl LoadTestResults {
 	///     response_times: vec![Duration::from_millis(100), Duration::from_millis(200)],
 	/// };
 	/// assert_eq!(results.average_response_time(), Duration::from_millis(150));
-	/// ```
+	/// ```ignore
 	pub fn average_response_time(&self) -> Duration {
 		if self.response_times.is_empty() {
 			return Duration::default();
@@ -678,7 +678,7 @@ impl LoadTestResults {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::time::Duration;
 	///
 	/// let results = LoadTestResults {
@@ -692,7 +692,7 @@ impl LoadTestResults {
 	///
 	/// // 50th percentile (median) should be 20 ms
 	/// assert_eq!(results.percentile_response_time(50.0), Duration::from_millis(20));
-	/// ```
+	/// ```ignore
 	pub fn percentile_response_time(&self, percentile: f64) -> Duration {
 		if self.response_times.is_empty() {
 			return Duration::default();

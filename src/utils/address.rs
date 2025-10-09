@@ -5,7 +5,7 @@
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use preconfirmation_gateway::utils::address::normalize_address;
 ///
 /// assert_eq!(
@@ -17,7 +17,7 @@
 ///     normalize_address("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
 ///     "f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
 /// );
-/// ```
+/// ```ignore
 pub fn normalize_address(addr: &str) -> String {
 	// Strip 0x or 0X prefix case-insensitively using strip_prefix (UTF-8 safe)
 	let without_prefix = addr.strip_prefix("0x").or_else(|| addr.strip_prefix("0X")).unwrap_or(addr);

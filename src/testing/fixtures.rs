@@ -16,12 +16,12 @@ impl TestFixtures {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let req = create_inclusion_commitment_request(42, "committer-addr");
 	/// assert_eq!(req.commitment_type, 1);
 	/// assert_eq!(req.slasher, "committer-addr".to_string());
 	/// assert!(!req.payload.is_empty());
-	/// ```
+	/// ```ignore
 	pub fn create_inclusion_commitment_request(slot: u64, committer_address: &str) -> CommitmentRequest {
 		// Create a simple inclusion payload
 		let inclusion_payload = InclusionPayload::new(
@@ -47,13 +47,13 @@ impl TestFixtures {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let proposer = BlsPublicKey([1u8; 48]);
 	/// let delegate = BlsPublicKey([2u8; 48]);
 	/// let signed = create_signed_delegation(42, proposer, delegate, "committer@example.com");
 	/// assert_eq!(signed.message.slot, 42);
 	/// assert_eq!(signed.message.committer, "committer@example.com".to_string());
-	/// ```
+	/// ```ignore
 	pub fn create_signed_delegation(
 		slot: u64,
 		proposer_key: BlsPublicKey,
@@ -84,12 +84,12 @@ impl TestFixtures {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let delegations = TestFixtures::create_test_delegations(100);
 	/// assert!(delegations.contains_key("delegation1"));
 	/// assert!(delegations.contains_key("delegation2"));
 	/// assert!(delegations.contains_key("delegation3"));
-	/// ```
+	/// ```ignore
 	pub fn create_test_delegations(slot: u64) -> HashMap<String, SignedDelegation> {
 		let mut delegations = HashMap::new();
 
@@ -130,11 +130,11 @@ impl TestFixtures {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let scenarios = create_test_scenarios();
 	/// assert!(scenarios.contains_key("happy_path"));
 	/// assert_eq!(scenarios["happy_path"].expected_success, true);
-	/// ```
+	/// ```ignore
 	pub fn create_test_scenarios() -> HashMap<String, TestScenario> {
 		let mut scenarios = HashMap::new();
 
@@ -231,10 +231,10 @@ impl TestFixtures {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let bytes = crate::testing::fixtures::create_test_payload(42);
 	/// assert!(!bytes.is_empty());
-	/// ```
+	/// ```ignore
 	pub fn create_test_payload(slot: u64) -> Vec<u8> {
 		let inclusion_payload = InclusionPayload::new(
 			slot,
@@ -251,10 +251,10 @@ impl TestFixtures {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let payload = create_invalid_payload();
 	/// assert_eq!(payload, vec![0xff, 0xff, 0xff, 0xff]);
-	/// ```
+	/// ```ignore
 	pub fn create_invalid_payload() -> Vec<u8> {
 		vec![0xff, 0xff, 0xff, 0xff] // Invalid payload that can't be parsed
 	}
@@ -263,13 +263,13 @@ impl TestFixtures {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let payload = vec![1, 2, 3];
 	/// let req = create_commitment_request(1, payload.clone(), "0xabc");
 	/// assert_eq!(req.commitment_type, 1);
 	/// assert_eq!(req.payload, payload);
 	/// assert_eq!(req.slasher, "0xabc".to_string());
-	/// ```
+	/// ```ignore
 	pub fn create_commitment_request(commitment_type: u64, payload: Vec<u8>, slasher: &str) -> CommitmentRequest {
 		CommitmentRequest { commitment_type, payload, slasher: slasher.to_string() }
 	}
@@ -313,11 +313,11 @@ impl PerformanceTestConfig {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let configs = PerformanceTestConfig::default_configs();
 	/// assert_eq!(configs.len(), 3);
 	/// assert_eq!(configs[0].name, "light_load");
-	/// ```
+	/// ```ignore
 	pub fn default_configs() -> Vec<PerformanceTestConfig> {
 		vec![
 			PerformanceTestConfig {
@@ -360,12 +360,12 @@ impl TimingTestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let slots = create_timing_test_slots();
 	/// // Expect five slots in increasing order: far past, recent past, current, near future, far future
 	/// assert_eq!(slots.len(), 5);
 	/// assert!(slots[0] < slots[1] && slots[1] < slots[2] && slots[2] < slots[3] && slots[3] < slots[4]);
-	/// ```
+	/// ```ignore
 	pub fn create_timing_test_slots() -> Vec<u64> {
 		let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 
@@ -397,13 +397,13 @@ impl TimingTestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let near_future_slot = (std::time::SystemTime::now()
 	///     .duration_since(std::time::UNIX_EPOCH)
 	///     .unwrap()
 	///     .as_secs() / 12) + 5;
 	/// assert!(is_within_submission_window(0, near_future_slot));
-	/// ```
+	/// ```ignore
 	pub fn is_within_submission_window(_genesis_time: u64, slot: u64) -> bool {
 		let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 

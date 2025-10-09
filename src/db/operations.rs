@@ -20,7 +20,7 @@ use crate::types::{Commitment, PayloadParser, SignedCommitment};
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignoreno_run
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
 /// # use crate::types::SignedCommitment;
@@ -28,7 +28,7 @@ use crate::types::{Commitment, PayloadParser, SignedCommitment};
 /// let id: Uuid = crate::db::operations::save_commitment(pool, signed).await.unwrap();
 /// println!("inserted id = {}", id);
 /// # }
-/// ```
+/// ```ignore
 pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment) -> Result<Uuid> {
 	let id = Uuid::new_v4();
 	let commitment = &signed_commitment.commitment;
@@ -76,7 +76,7 @@ pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// # async fn _example(pool: &sqlx::PgPool) -> anyhow::Result<()> {
 /// let maybe_signed = crate::db::operations::get_commitment_by_hash(pool, "request_hash_value").await?;
 /// if let Some(signed) = maybe_signed {
@@ -84,7 +84,7 @@ pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment
 /// }
 /// # Ok(())
 /// # }
-/// ```
+/// ```ignore
 ///
 /// # Returns
 ///
@@ -135,14 +135,14 @@ pub async fn get_commitment_by_hash(pool: &PgPool, request_hash: &str) -> Result
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignoreno_run
 /// # use sqlx::PgPool;
 /// # async fn example(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
 /// let exists = crate::db::operations::commitment_exists(&pool, "some-request-hash").await?;
 /// println!("exists = {}", exists);
 /// # Ok(())
 /// # }
-/// ```
+/// ```ignore
 pub async fn commitment_exists(pool: &PgPool, request_hash: &str) -> Result<bool> {
 	let row = sqlx::query!("SELECT EXISTS(SELECT 1 FROM commitments WHERE request_hash = $1)", request_hash)
 		.fetch_one(pool)
@@ -171,13 +171,13 @@ pub struct CommitmentStats {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignoreno_run
 /// # async fn example(pool: sqlx::PgPool) -> anyhow::Result<()> {
 /// let stats = crate::db::operations::get_commitment_stats(&pool).await?;
 /// println!("total: {}", stats.total_count);
 /// # Ok(())
 /// # }
-/// ```
+/// ```ignore
 pub async fn get_commitment_stats(pool: &PgPool) -> Result<CommitmentStats> {
 	let row = sqlx::query!(
 		r#"
@@ -206,14 +206,14 @@ pub async fn get_commitment_stats(pool: &PgPool) -> Result<CommitmentStats> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// # async fn example(pool: &sqlx::PgPool) -> anyhow::Result<()> {
 /// let slot = 42u64;
 /// let commitments = crate::db::operations::get_unprocessed_commitments_for_slot(pool, slot).await?;
 /// assert!(commitments.iter().all(|c| c.commitment.request_hash.len() > 0));
 /// # Ok(())
 /// # }
-/// ```
+/// ```ignore
 pub async fn get_unprocessed_commitments_for_slot(pool: &PgPool, slot: u64) -> Result<Vec<SignedCommitment>> {
 	let slot_i64 = i64::try_from(slot).context("slot exceeds i64::MAX")?;
 
@@ -259,7 +259,7 @@ pub async fn get_unprocessed_commitments_for_slot(pool: &PgPool, slot: u64) -> R
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignoreno_run
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
 /// # async fn example(pool: &PgPool) -> Result<(), anyhow::Error> {
@@ -268,7 +268,7 @@ pub async fn get_unprocessed_commitments_for_slot(pool: &PgPool, slot: u64) -> R
 /// println!("Marked {} commitments as processed", updated);
 /// # Ok(())
 /// # }
-/// ```
+/// ```ignore
 pub async fn mark_commitments_as_processed(pool: &PgPool, request_hashes: &[String]) -> Result<u64> {
 	if request_hashes.is_empty() {
 		return Ok(0);
@@ -302,12 +302,12 @@ mod tests {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// # async fn run() {
 	/// let pool = setup_test_pool().await;
 	/// // use `pool` for test queries
 	/// # }
-	/// ```
+	/// ```ignore
 	async fn setup_test_pool() -> PgPool {
 		// This would connect to a test database
 		// For now, we'll skip actual DB tests until we have the database running

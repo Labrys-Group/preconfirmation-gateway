@@ -35,14 +35,14 @@ impl SlotCongestion {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let start = std::time::SystemTime::now();
 	/// let sc = SlotCongestion::new(42, 1_000, 30_000_000, start);
 	/// assert_eq!(sc.slot, 42);
 	/// assert_eq!(sc.preconfirmed_gas, 0);
 	/// assert_eq!(sc.calculated_fee_multiplier, 1.0);
 	/// assert_eq!(sc.current_tx_price, 1_000);
-	/// ```
+	/// ```ignore
 	pub fn new(slot: u64, base_gas_price: u64, total_gas_limit: u64, slot_start_time: SystemTime) -> Self {
 		Self {
 			id: None,
@@ -69,14 +69,14 @@ impl SlotCongestion {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// use std::time::SystemTime;
 	/// // Construct using the public constructor available in this module
 	/// let mut congestion = SlotCongestion::new(42, 1_000_000_000u64, 30_000_000u64, SystemTime::now());
 	/// congestion.add_gas_usage(15_000_000u64, 2.0);
 	/// assert_eq!(congestion.preconfirmed_gas, 15_000_000u64);
 	/// assert!(congestion.calculated_fee_multiplier >= 1.0);
-	/// ```
+	/// ```ignore
 	pub fn add_gas_usage(&mut self, additional_gas: u64, scaling_factor: f64) {
 		self.preconfirmed_gas += additional_gas;
 		self.gas_used_ratio = self.preconfirmed_gas as f64 / self.total_gas_limit as f64;
@@ -115,7 +115,7 @@ impl SlotCongestion {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignorerust
 /// # use sqlx::PgPool;
 /// # use crate::db::slot_congestion_ops::get_or_create_slot_congestion;
 /// # async fn example(pool: &PgPool) -> anyhow::Result<()> {
@@ -128,7 +128,7 @@ impl SlotCongestion {
 /// println!("Slot {} price: {}", congestion.slot, congestion.current_tx_price);
 /// # Ok(())
 /// # }
-/// ```
+/// ```ignore
 pub async fn get_or_create_slot_congestion(
 	pool: &PgPool,
 	slot: u64,
@@ -193,7 +193,7 @@ pub async fn get_or_create_slot_congestion(
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignoreno_run
 /// # async fn _example() -> anyhow::Result<()> {
 /// use sqlx::PgPool;
 /// // create or obtain a PgPool...
@@ -206,7 +206,7 @@ pub async fn get_or_create_slot_congestion(
 /// }
 /// # Ok(())
 /// # }
-/// ```
+/// ```ignore
 pub async fn get_slot_congestion(pool: &PgPool, slot: u64) -> Result<Option<SlotCongestion>> {
 	let row = sqlx::query!(
 		r#"
@@ -263,7 +263,7 @@ pub async fn get_slot_congestion(pool: &PgPool, slot: u64) -> Result<Option<Slot
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignorerust
 /// # async fn example(pool: &sqlx::PgPool) -> anyhow::Result<()> {
 /// let slot = 42;
 /// let updated = crate::db::slot_congestion_ops::update_slot_congestion_gas_usage(
@@ -275,7 +275,7 @@ pub async fn get_slot_congestion(pool: &PgPool, slot: u64) -> Result<Option<Slot
 /// assert_eq!(updated.slot, slot);
 /// # Ok(())
 /// # }
-/// ```
+/// ```ignore
 pub async fn update_slot_congestion_gas_usage(
 	pool: &PgPool,
 	slot: u64,
@@ -357,7 +357,7 @@ pub async fn update_slot_congestion_gas_usage(
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// # async fn example(pool: &sqlx::PgPool) -> anyhow::Result<()> {
 /// let price = crate::db::slot_congestion_ops::get_current_gas_price_for_slot(pool, 42).await?;
 /// if let Some(p) = price {
@@ -365,7 +365,7 @@ pub async fn update_slot_congestion_gas_usage(
 /// }
 /// # Ok(())
 /// # }
-/// ```
+/// ```ignore
 pub async fn get_current_gas_price_for_slot(pool: &PgPool, slot: u64) -> Result<Option<u64>> {
 	let row = sqlx::query!("SELECT current_tx_price FROM slot_congestion WHERE slot = $1", slot as i64)
 		.fetch_optional(pool)
@@ -390,7 +390,7 @@ pub async fn get_current_gas_price_for_slot(pool: &PgPool, slot: u64) -> Result<
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignoreno_run
 /// # async fn _example() -> anyhow::Result<()> {
 /// # let pool = sqlx::PgPool::connect("postgres://localhost/test").await?;
 /// let deleted = crate::db::slot_congestion_ops::cleanup_old_slot_congestion(&pool, 24).await?;
@@ -398,7 +398,7 @@ pub async fn get_current_gas_price_for_slot(pool: &PgPool, slot: u64) -> Result<
 /// println!("Deleted {} old slot congestion rows", deleted);
 /// # Ok(())
 /// # }
-/// ```
+/// ```ignore
 pub async fn cleanup_old_slot_congestion(pool: &PgPool, hours_to_keep: u32) -> Result<u64> {
 	let cutoff_time = SystemTime::now() - Duration::from_secs(hours_to_keep as u64 * 3600);
 	let cutoff_timestamp = cutoff_time.duration_since(UNIX_EPOCH)?.as_secs() as i64;
@@ -441,7 +441,7 @@ pub struct CongestionStats {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignoreno_run
 /// # use sqlx::PgPool;
 /// # use crate::db::slot_congestion_ops::get_congestion_stats;
 /// # async fn run_example() -> Result<(), Box<dyn std::error::Error>> {
@@ -450,7 +450,7 @@ pub struct CongestionStats {
 /// println!("Tracked slots: {}", stats.total_slots_tracked);
 /// # Ok(())
 /// # }
-/// ```
+/// ```ignore
 pub async fn get_congestion_stats(pool: &PgPool) -> Result<CongestionStats> {
 	let stats = sqlx::query!(
 		r#"

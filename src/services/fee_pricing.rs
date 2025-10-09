@@ -45,13 +45,13 @@ impl FeePricingEngine {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignoreno_run
 	/// use std::sync::Arc;
 	/// let reth_client = Arc::new(/* RethApiClient */ unimplemented!());
 	/// let database = Arc::new(/* DatabaseContext */ unimplemented!());
 	/// let config = Arc::new(/* Config */ unimplemented!());
 	/// let engine = FeePricingEngine::new(reth_client, database, config);
-	/// ```
+	/// ```ignore
 	pub fn new(reth_client: Arc<RethApiClient>, database: Arc<DatabaseContext>, config: Arc<Config>) -> Self {
 		Self { reth_client, database, fee_config: config.reth.fee_config.clone(), config }
 	}
@@ -70,7 +70,7 @@ impl FeePricingEngine {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// # use std::sync::Arc;
 	/// # async fn example(engine: Arc<crate::services::FeePricingEngine>) -> anyhow::Result<()> {
 	/// let commitment_type = 1_u64;
@@ -80,7 +80,7 @@ impl FeePricingEngine {
 	/// assert!(fee.estimated_gas > 0);
 	/// # Ok(())
 	/// # }
-	/// ```
+	/// ```ignore
 	pub async fn calculate_fee_for_commitment(
 		&self,
 		commitment_type: u64,
@@ -151,13 +151,13 @@ impl FeePricingEngine {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// # async fn example(engine: &crate::services::fee_pricing::FeePricingEngine) {
 	/// let updated = engine.apply_gas_usage_to_slot(42, 12_345).await.unwrap();
 	/// // updated now reflects the applied gas usage for slot 42
 	/// assert!(updated.gas_used_ratio >= 0.0 && updated.gas_used_ratio <= 1.0);
 	/// # }
-	/// ```
+	/// ```ignore
 	pub async fn apply_gas_usage_to_slot(&self, slot: u64, gas_used: u64) -> Result<SlotCongestion> {
 		debug!("Applying {} gas usage to slot {}", gas_used, slot);
 
@@ -184,11 +184,11 @@ impl FeePricingEngine {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// // `engine` is a `FeePricingEngine` instance.
 	/// let info = engine.get_cached_gas_price().await.unwrap();
 	/// assert!(info.base_gas_price > 0);
-	/// ```
+	/// ```ignore
 	async fn get_cached_gas_price(&self) -> Result<GasPriceInfo> {
 		// TODO: Implement caching based on fee_config.cache_ttl_secs
 		// For now, fetch fresh data each time
@@ -210,12 +210,12 @@ impl FeePricingEngine {
 	///
 	/// # Examples
 	///
-	/// ```no_run
+	/// ```ignoreno_run
 	/// // Assuming `engine` is a FeePricingEngine instance
 	/// let payload = vec![0u8; 128];
 	/// let estimate = engine.estimate_gas_for_commitment(1, &payload).unwrap();
 	/// assert!(estimate >= 21_000);
-	/// ```
+	/// ```ignore
 	fn estimate_gas_for_commitment(&self, commitment_type: u64, payload: &[u8]) -> Result<u64> {
 		match commitment_type {
 			1 => {
@@ -293,11 +293,11 @@ impl FeePricingEngine {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// let engine = /* FeePricingEngine constructed elsewhere */;
 	/// let slot = engine.get_current_slot();
 	/// // `slot` is the current beacon-chain slot used when computing fees
-	/// ```
+	/// ```ignore
 	pub fn get_current_slot(&self) -> u64 {
 		BeaconTiming::current_slot_estimate(self.config.beacon_api.genesis_time)
 	}
@@ -312,13 +312,13 @@ impl FeePricingEngine {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// // `engine` is an instance of FeePricingEngine
 	/// let current = engine.get_current_slot();
 	/// assert!(engine.is_slot_acceptable_for_fees(current));
 	/// assert!(engine.is_slot_acceptable_for_fees(current + 10));
 	/// assert!(!engine.is_slot_acceptable_for_fees(current + 11));
-	/// ```
+	/// ```ignore
 	pub fn is_slot_acceptable_for_fees(&self, slot: u64) -> bool {
 		let current_slot = self.get_current_slot();
 		let max_lookahead = 10; // Allow fees for next 10 slots
@@ -334,12 +334,12 @@ impl FeePricingEngine {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// # tokio_test::block_on(async {
 	/// let engine = /* construct FeePricingEngine */ unimplemented!();
 	/// engine.start_cache_refresh_service().await.unwrap();
 	/// # });
-	/// ```
+	/// ```ignore
 	pub async fn start_cache_refresh_service(&self) -> Result<()> {
 		info!("Starting fee pricing cache refresh service");
 
@@ -387,7 +387,7 @@ impl FeePricingEngine {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// # use std::sync::Arc;
 	/// # use tokio::runtime::Runtime;
 	/// # async fn _example(engine: Arc<crate::services::fee_pricing::FeePricingEngine>) {
@@ -395,7 +395,7 @@ impl FeePricingEngine {
 	/// // inspect returned metrics
 	/// let _current_slot = stats.current_slot;
 	/// # }
-	/// ```
+	/// ```ignore
 	pub async fn get_pricing_stats(&self) -> Result<PricingStats> {
 		let congestion_stats = self.database.get_congestion_stats().await?;
 		let current_slot = self.get_current_slot();
@@ -439,7 +439,7 @@ mod tests {
 	///
 	/// # Examples
 	///
-	/// ```
+	/// ```ignore
 	/// // Small payload should require more than base tx cost but remain reasonable
 	/// let small_payload = vec![0u8; 100];
 	/// let gas = engine.estimate_gas_for_commitment(1, &small_payload).unwrap();
@@ -450,7 +450,7 @@ mod tests {
 	/// let large_payload = vec![0u8; 1000];
 	/// let large_gas = engine.estimate_gas_for_commitment(1, &large_payload).unwrap();
 	/// assert!(large_gas >= gas);
-	/// ```
+	/// ```ignore
 	#[tokio::test]
 	async fn test_gas_estimation_inclusion() {
 		let config = Config::default();

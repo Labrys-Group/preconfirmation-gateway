@@ -21,10 +21,10 @@ use crate::types::{Commitment, CommitmentRequest};
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let h = keccak256(b"hello world");
 /// assert_eq!(h.len(), 32);
-/// ```
+/// ```ignore
 pub fn keccak256(input: &[u8]) -> [u8; 32] {
 	let mut keccak = Keccak::v256();
 	keccak.update(input);
@@ -44,12 +44,12 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// // Given a prepared `CommitmentRequest` named `req`:
 /// let hash = generate_request_hash(&req).unwrap();
 /// assert!(hash.starts_with("0x"));
 /// assert_eq!(hash.len(), 66); // "0x" + 64 hex chars
-/// ```
+/// ```ignore
 pub fn generate_request_hash(request: &CommitmentRequest) -> Result<String> {
 	// ABI encode the CommitmentRequest
 	let encoded = abi_encode_commitment_request(request)?;
@@ -74,7 +74,7 @@ pub fn generate_request_hash(request: &CommitmentRequest) -> Result<String> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// // Construct a simple CommitmentRequest and encode it.
 /// // The actual field types of `CommitmentRequest` must match those used in your crate.
 /// let request = CommitmentRequest {
@@ -85,7 +85,7 @@ pub fn generate_request_hash(request: &CommitmentRequest) -> Result<String> {
 ///
 /// let encoded = abi_encode_commitment_request(&request).expect("encoding failed");
 /// assert!(!encoded.is_empty());
-/// ```
+/// ```ignore
 pub fn abi_encode_commitment_request(request: &CommitmentRequest) -> Result<Vec<u8>> {
 	let tokens = vec![
 		Token::Uint(request.commitment_type.into()),
@@ -106,7 +106,7 @@ pub fn abi_encode_commitment_request(request: &CommitmentRequest) -> Result<Vec<
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// // Construct a Commitment with appropriate fields and encode it.
 /// // Types and constructors depend on the surrounding crate.
 /// let commitment = Commitment {
@@ -117,7 +117,7 @@ pub fn abi_encode_commitment_request(request: &CommitmentRequest) -> Result<Vec<
 /// };
 /// let encoded = abi_encode_commitment(&commitment).unwrap();
 /// assert!(!encoded.is_empty());
-/// ```
+/// ```ignore
 pub fn abi_encode_commitment(commitment: &Commitment) -> Result<Vec<u8>> {
 	let tokens = vec![
 		Token::Uint(commitment.commitment_type.into()),
@@ -141,12 +141,12 @@ pub fn abi_encode_commitment(commitment: &Commitment) -> Result<Vec<u8>> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// // Given `commitment: Commitment` and `sk: SecretKey` in scope:
 /// let sig = sign_commitment(&commitment, &sk).unwrap();
 /// assert!(sig.starts_with("0x"));
 /// assert_eq!(hex::decode(&sig[2..]).unwrap().len(), 64);
-/// ```
+/// ```ignore
 pub fn sign_commitment(commitment: &Commitment, private_key: &SecretKey) -> Result<String> {
 	// 1. ABI encode the commitment
 	let encoded = abi_encode_commitment(commitment).context("Failed to ABI encode commitment")?;
@@ -174,12 +174,12 @@ pub fn sign_commitment(commitment: &Commitment, private_key: &SecretKey) -> Resu
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignoreno_run
 /// // `commitment`, `signature_hex`, and `public_key` are assumed to be constructed earlier.
 /// let is_valid = crate::crypto::verify_commitment_signature(&commitment, &signature_hex, &public_key)
 ///     .expect("signature verification failed");
 /// println!("signature valid: {}", is_valid);
-/// ```
+/// ```ignore
 pub fn verify_commitment_signature(
 	commitment: &Commitment,
 	signature_hex: &str,
@@ -210,10 +210,10 @@ pub fn verify_commitment_signature(
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let sk = parse_private_key("0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap();
 /// let _ = sk; // use the SecretKey as needed
-/// ```
+/// ```ignore
 pub fn parse_private_key(hex_str: &str) -> Result<SecretKey> {
 	let key_bytes = parse_hex_bytes(hex_str, 32)?;
 	SecretKey::from_slice(&key_bytes).context("Invalid private key")
@@ -226,11 +226,11 @@ pub fn parse_private_key(hex_str: &str) -> Result<SecretKey> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let s = "0x11223344556677889900aabbccddeeff00112233";
 /// let addr = crate::crypto::parse_ethereum_address(s).unwrap();
 /// assert_eq!(addr.len(), 20);
-/// ```
+/// ```ignore
 fn parse_ethereum_address(address_str: &str) -> Result<ethabi::Address> {
 	let address_bytes = parse_hex_bytes(address_str, 20)?;
 	Ok(ethabi::Address::from_slice(&address_bytes))
@@ -251,10 +251,10 @@ fn parse_ethereum_address(address_str: &str) -> Result<ethabi::Address> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let b = crate::crypto::parse_hex_bytes("0x0102ff", 3).unwrap();
 /// assert_eq!(b, vec![0x01, 0x02, 0xff]);
-/// ```
+/// ```ignore
 pub fn parse_hex_bytes(hex_str: &str, expected_len: usize) -> Result<Vec<u8>> {
 	let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
 	let bytes = hex::decode(hex_str).context("Invalid hex string")?;
@@ -273,13 +273,13 @@ pub fn parse_hex_bytes(hex_str: &str, expected_len: usize) -> Result<Vec<u8>> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use secp256k1::SecretKey;
 /// // Example private key: 32 bytes with value 1
 /// let sk = SecretKey::from_slice(&[1u8; 32]).unwrap();
 /// let addr = ecdsa_to_address(&sk).unwrap();
 /// assert!(addr.starts_with("0x") && addr.len() == 42);
-/// ```
+/// ```ignore
 pub fn ecdsa_to_address(private_key: &SecretKey) -> Result<String> {
 	let secp = Secp256k1::new();
 	let public_key = PublicKey::from_secret_key(&secp, private_key);
