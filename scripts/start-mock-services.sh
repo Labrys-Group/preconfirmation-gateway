@@ -29,7 +29,7 @@ wait_for_service() {
 
   echo -n "Waiting for $name to be ready"
   while [ $attempt -lt $max_attempts ]; do
-    if curl -s "$url" > /dev/null 2>&1; then
+    if curl -sf "$url" > /dev/null 2>&1; then
       echo -e " ${GREEN}✓${NC}"
       return 0
     fi
