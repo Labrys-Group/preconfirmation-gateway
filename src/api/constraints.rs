@@ -55,15 +55,6 @@ impl ConstraintsApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let cfg = ConstraintsApiConfig {
-	///     request_timeout_secs: 5,
-	///     relay_endpoint: "https://relay.example.com".to_string(),
-	///     max_retries: 3,
-	///     authorized_builders: vec![],
-	/// };
-	/// let client = ConstraintsApiClient::new(cfg).expect("client creation failed");
-	/// ```ignore
 	pub fn new(config: ConstraintsApiConfig) -> Result<Self> {
 		let client = Client::builder()
 			.timeout(Duration::from_secs(config.request_timeout_secs))
@@ -81,12 +72,6 @@ impl ConstraintsApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # async fn example_usage(client: &crate::api::constraints::ConstraintsApiClient) -> anyhow::Result<()> {
-	/// let delegations = client.get_delegations_for_slot(12345).await?;
-	/// println!("Got {} delegations", delegations.len());
-	/// # Ok(()) }
-	/// ```ignore
 	pub async fn get_delegations_for_slot(&self, slot: u64) -> Result<Vec<SignedDelegation>> {
 		let endpoint = format!("constraints/v1/delegations/{}", slot);
 		let url = self.build_url(&endpoint);
@@ -131,16 +116,6 @@ impl ConstraintsApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # use crate::api::constraints::{ConstraintsApiClient, ConstraintsApiConfig, SignedConstraints};
-	/// # async fn _example() {
-	/// // Construct a client and a SignedConstraints value appropriate for your environment,
-	/// // then submit:
-	/// // let client = ConstraintsApiClient::new(config).unwrap();
-	/// // let constraints = SignedConstraints { /* ... */ };
-	/// // let response = client.submit_constraints(&constraints).await.unwrap();
-	/// # }
-	/// ```ignore
 	pub async fn submit_constraints(&self, constraints: &SignedConstraints) -> Result<ConstraintSubmissionResponse> {
 		let endpoint = "constraints/v0/builder/constraints";
 		let url = self.build_url(endpoint);
@@ -270,15 +245,6 @@ impl ConstraintsApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// // When base has no trailing slash
-	/// let url = client.build_url("test/endpoint");
-	/// assert_eq!(url, "https://relay.example.com/test/endpoint");
-	///
-	/// // When base ends with a trailing slash
-	/// let url2 = client.build_url("test/endpoint");
-	/// assert_eq!(url2, "https://relay.example.com/test/endpoint");
-	/// ```ignore
 	fn build_url(&self, endpoint: &str) -> String {
 		let base = &self.config.relay_endpoint;
 		if base.ends_with('/') { format!("{}{}", base, endpoint) } else { format!("{}/{}", base, endpoint) }
@@ -297,13 +263,6 @@ mod tests {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let cfg = create_test_config();
-	/// assert_eq!(cfg.relay_endpoint, "https://relay.example.com");
-	/// assert_eq!(cfg.request_timeout_secs, 10);
-	/// assert_eq!(cfg.max_retries, 3);
-	/// assert!(cfg.authorized_builders.contains(&"0x1234".to_string()));
-	/// ```ignore
 	fn create_test_config() -> ConstraintsApiConfig {
 		ConstraintsApiConfig {
 			relay_endpoint: "https://relay.example.com".to_string(),

@@ -28,12 +28,6 @@ impl BeaconApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// // Construct a BeaconApiConfig with the desired endpoints and timeout,
-	/// // then create the client.
-	/// // let config = BeaconApiConfig { /* fields */ };
-	/// // let client = BeaconApiClient::new(config)?;
-	/// ```ignore
 	pub fn new(config: BeaconApiConfig) -> Result<Self> {
 		let client = Client::builder()
 			.timeout(Duration::from_secs(config.request_timeout_secs))
@@ -55,15 +49,6 @@ impl BeaconApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// #[tokio::test]
-	/// async fn example_get_proposer_duties() {
-	///     let config = crate::tests::create_test_config(); // test helper in this crate
-	///     let client = crate::api::beacon::BeaconApiClient::new(config).unwrap();
-	///     let duties = client.get_proposer_duties(0).await.unwrap();
-	///     assert!(duties.data.len() >= 0);
-	/// }
-	/// ```ignore
 	pub async fn get_proposer_duties(&self, epoch: u64) -> Result<ProposerDutiesResponse> {
 		let endpoint = format!("eth/v1/validator/duties/proposer/{}", epoch);
 
@@ -123,21 +108,6 @@ impl BeaconApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # use crate::api::beacon::BeaconApiClient;
-	/// # #[tokio::main]
-	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-	/// let client = BeaconApiClient::new(/* config */)?;
-	/// let slot = 12345;
-	/// let proposer = client.get_proposer_for_slot(slot).await?;
-	/// if let Some(duty) = proposer {
-	///     println!("Found proposer with validator index: {}", duty.validator_index);
-	/// } else {
-	///     println!("No proposer found for slot {}", slot);
-	/// }
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn get_proposer_for_slot(&self, slot: u64) -> Result<Option<ValidatorDuty>> {
 		let epoch = BeaconTiming::slot_to_epoch(slot);
 		let duties = self.get_proposer_duties(epoch).await?;
@@ -169,10 +139,6 @@ impl BeaconApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreignore
-	/// // Example usage (requires an async runtime and a BeaconApiClient instance):
-	/// // let res: MyResponseType = client.make_request("https://beacon.example", "eth/v1/..").await?;
-	/// ```ignore
 	async fn make_request<T>(&self, base_url: &str, endpoint: &str) -> Result<T>
 	where
 		T: for<'de> Deserialize<'de>,
@@ -230,13 +196,6 @@ mod tests {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let cfg = create_test_config();
-	/// assert!(cfg.primary_endpoint.contains("alchemy"));
-	/// assert_eq!(cfg.fallback_endpoints.len(), 1);
-	/// assert_eq!(cfg.request_timeout_secs, 30);
-	/// assert_eq!(cfg.genesis_time, 1606824023);
-	/// ```ignore
 	fn create_test_config() -> BeaconApiConfig {
 		BeaconApiConfig {
 			primary_endpoint: "https://eth-mainnet.g.alchemy.com/v2/test".to_string(),

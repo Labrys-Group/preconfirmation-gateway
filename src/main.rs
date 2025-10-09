@@ -13,14 +13,6 @@ use preconfirmation_gateway::{api, config, crypto, db, server, services, types};
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
-/// // Start the application (runs until shutdown)
-/// # use anyhow::Result;
-/// # async fn run() -> Result<()> {
-/// crate::main().await?;
-/// # Ok(())
-/// # }
-/// ```ignore
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
 	// Load configuration
@@ -154,16 +146,6 @@ async fn main() -> anyhow::Result<()> {
 			///
 			/// # Examples
 			///
-			/// ```ignore
-			/// use hyper::{Body, Request, StatusCode};
-			/// use preconfirmation_gateway::metrics::MetricsRegistry;
-			/// # tokio_test::block_on(async {
-			/// let registry = std::sync::Arc::new(MetricsRegistry::new());
-			/// let req = Request::new(Body::empty());
-			/// let resp = super::metrics_handler(registry, req).await.unwrap();
-			/// assert_eq!(resp.status(), StatusCode::OK);
-			/// # });
-			/// ```ignore
 			async fn metrics_handler(
 				metrics: std::sync::Arc<preconfirmation_gateway::metrics::MetricsRegistry>,
 				_req: Request<Body>,

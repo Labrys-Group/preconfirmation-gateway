@@ -15,14 +15,6 @@ use crate::types::delegation::{BlsPublicKey, BlsSignature, DelegationMessage, Si
 ///
 /// # Examples
 ///
-/// ```ignore
-/// # async fn example(pool: &sqlx::PgPool, delegation: super::SignedDelegation) -> Result<(), Box<dyn std::error::Error>> {
-/// let id = crate::db::delegation_ops::save_delegation(pool, &delegation).await?;
-/// // `id` is the database identifier for the inserted delegation
-/// assert!(!id.to_string().is_empty());
-/// # Ok(())
-/// # }
-/// ```ignore
 pub async fn save_delegation(pool: &PgPool, signed_delegation: &SignedDelegation) -> Result<Uuid> {
 	let id = Uuid::new_v4();
 	let message = &signed_delegation.message;
@@ -64,16 +56,6 @@ pub async fn save_delegation(pool: &PgPool, signed_delegation: &SignedDelegation
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
-/// # use sqlx::PgPool;
-/// # use anyhow::Result;
-/// # async fn example(pool: &PgPool) -> Result<()> {
-/// let slot = 42;
-/// let delegations = crate::db::delegation_ops::get_delegations_for_slot(pool, slot).await?;
-/// println!("Found {} delegations for slot {}", delegations.len(), slot);
-/// # Ok(())
-/// # }
-/// ```ignore
 pub async fn get_delegations_for_slot(pool: &PgPool, slot: u64) -> Result<Vec<SignedDelegation>> {
 	let rows = sqlx::query!(
 		r#"
@@ -135,16 +117,6 @@ pub async fn get_delegations_for_slot(pool: &PgPool, slot: u64) -> Result<Vec<Si
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
-/// # use sqlx::PgPool;
-/// # async fn example(pool: &PgPool, proposer: BlsPublicKey) -> anyhow::Result<()> {
-/// let maybe = get_delegation_by_proposer_slot(pool, &proposer, 42).await?;
-/// if let Some(delegation) = maybe {
-///     // inspect delegation.message and delegation.signature
-/// }
-/// # Ok(())
-/// # }
-/// ```ignore
 pub async fn get_delegation_by_proposer_slot(
 	pool: &PgPool,
 	proposer_pubkey: &BlsPublicKey,
@@ -210,16 +182,6 @@ pub async fn get_delegation_by_proposer_slot(
 ///
 /// # Examples
 ///
-/// ```ignore
-/// // Construct or obtain a `PgPool` as `pool` and a `BlsPublicKey` as `delegate_pk`.
-/// // This example shows the call pattern; adapt pool creation to your runtime/test setup.
-/// # use gateway_domain::{BlsPublicKey, SignedDelegation};
-/// # use sqlx::PgPool;
-/// # async fn example(pool: &PgPool, delegate_pk: &BlsPublicKey) {
-/// let delegations: Vec<SignedDelegation> = get_delegations_by_delegate(pool, delegate_pk).await.unwrap();
-/// // `delegations` now contains all active delegations for `delegate_pk` ordered by slot.
-/// # }
-/// ```ignore
 pub async fn get_delegations_by_delegate(
 	pool: &PgPool,
 	delegate_pubkey: &BlsPublicKey,
@@ -284,14 +246,6 @@ pub async fn get_delegations_by_delegate(
 ///
 /// # Examples
 ///
-/// ```ignore
-/// # use sqlx::PgPool;
-/// # async fn example(pool: &PgPool) -> anyhow::Result<()> {
-/// let exists = delegation_exists_for_slot_and_committer(pool, 42, "0xAbC123...").await?;
-/// println!("delegation exists: {}", exists);
-/// # Ok(())
-/// # }
-/// ```ignore
 ///
 /// # Returns
 ///
@@ -332,13 +286,6 @@ pub async fn delegation_exists_for_slot_and_committer(
 ///
 /// # Examples
 ///
-/// ```ignore
-/// # async fn run_example() -> Result<(), Box<dyn std::error::Error>> {
-/// // Assume `pool` is a configured `PgPool`.
-/// let affected = crate::db::delegation_ops::deactivate_expired_delegations(&pool, 42).await?;
-/// assert!(affected >= 0);
-/// # Ok(()) }
-/// ```ignore
 pub async fn deactivate_expired_delegations(pool: &PgPool, current_slot: u64) -> Result<u64> {
 	let result = sqlx::query!(
 		r#"
@@ -374,15 +321,6 @@ pub struct DelegationStats {
 ///
 /// # Examples
 ///
-/// ```ignorerust,no_run
-/// use sqlx::PgPool;
-/// // `pool` should be an established PgPool connected to your database.
-/// # async fn doc_example(pool: &PgPool) -> Result<(), sqlx::Error> {
-/// let stats = crate::db::delegation_ops::get_delegation_stats(pool).await?;
-/// println!("Total delegations: {}", stats.total_count);
-/// # Ok(())
-/// # }
-/// ```ignore
 pub async fn get_delegation_stats(pool: &PgPool) -> Result<DelegationStats> {
 	let row = sqlx::query!(
 		r#"
@@ -422,19 +360,6 @@ pub async fn get_delegation_stats(pool: &PgPool) -> Result<DelegationStats> {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// # use uuid::Uuid;
-/// # use sqlx::PgPool;
-/// # use crate::types::{SignedDelegation, DelegationMessage, BlsPublicKey, BlsSignature};
-/// # async fn example(pool: &PgPool) -> Result<(), sqlx::Error> {
-/// let delegations: Vec<SignedDelegation> = vec![]; // build a few SignedDelegation values
-/// let inserted_ids = crate::db::delegation_ops::save_delegations_batch(pool, &delegations).await?;
-/// for id in inserted_ids {
-///     let _ : Uuid = id;
-/// }
-/// # Ok(())
-/// # }
-/// ```ignore
 pub async fn save_delegations_batch(pool: &PgPool, delegations: &[SignedDelegation]) -> Result<Vec<Uuid>> {
 	let mut ids = Vec::new();
 
@@ -498,14 +423,6 @@ mod tests {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let d = create_test_delegation();
-	/// assert_eq!(d.message.proposer.0, [1u8; 48]);
-	/// assert_eq!(d.message.delegate.0, [2u8; 48]);
-	/// assert_eq!(d.message.committer, "0x1234567890123456789012345678901234567890");
-	/// assert_eq!(d.message.slot, 12345);
-	/// assert_eq!(d.signature.0, [3u8; 96]);
-	/// ```ignore
 	fn create_test_delegation() -> SignedDelegation {
 		SignedDelegation {
 			message: DelegationMessage {

@@ -11,12 +11,6 @@ use super::handlers;
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
-/// // Construct an appropriate RpcContext for your environment.
-/// let ctx = /* RpcContext::new(...) */ unimplemented!();
-/// let module = setup_rpc_methods(ctx).expect("failed to register RPC methods");
-/// // `module` is ready to be served by a jsonrpsee server.
-/// ```ignore
 pub fn setup_rpc_methods(rpc_context: RpcContext) -> anyhow::Result<RpcModule<RpcContext>> {
 	let mut module = RpcModule::new(rpc_context);
 

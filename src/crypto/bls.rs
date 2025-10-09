@@ -28,13 +28,6 @@ pub mod domains {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let d = parse_application_gateway_domain("0x01020304").unwrap();
-	/// assert_eq!(d, [1, 2, 3, 4]);
-	///
-	/// let d2 = parse_application_gateway_domain("aabbccdd").unwrap();
-	/// assert_eq!(d2, [0xaa, 0xbb, 0xcc, 0xdd]);
-	/// ```ignore
 	pub fn parse_application_gateway_domain(hex_str: &str) -> Result<[u8; 4], anyhow::Error> {
 		let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
 		let bytes = hex::decode(hex_str).map_err(|e| anyhow::anyhow!("Invalid domain hex: {}", e))?;
@@ -66,10 +59,6 @@ impl BlsManager {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let mgr = BlsManager::new("0x01020304").expect("valid domain");
-	/// assert_eq!(mgr.application_gateway_domain, [0x01, 0x02, 0x03, 0x04]);
-	/// ```ignore
 	pub fn new(domain_hex: &str) -> Result<Self> {
 		let application_gateway_domain =
 			domains::parse_application_gateway_domain(domain_hex).context("Invalid application gateway domain")?;
@@ -84,12 +73,6 @@ impl BlsManager {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
-	/// # use crate::crypto::bls::{BlsManager, SignedDelegation};
-	/// let manager = BlsManager::new("0x11223344").unwrap();
-	/// let delegation: SignedDelegation = unimplemented!();
-	/// let valid = manager.verify_delegation_signature(&delegation).unwrap();
-	/// ```ignore
 	pub fn verify_delegation_signature(&self, delegation: &SignedDelegation) -> Result<bool> {
 		// 1. ABI encode the delegation message
 		let encoded = self.abi_encode_delegation_message(&delegation.message)?;
@@ -121,21 +104,6 @@ impl BlsManager {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// // Construct a manager, keypair and a constraints message (types are from this module).
-	/// let manager = BlsManager::new("0x11223344").unwrap();
-	/// let (sk, _pk) = keys::generate_keypair();
-	/// let message = ConstraintsMessage {
-	///     proposer_pubkey: vec![],
-	///     delegate_pubkey: vec![],
-	///     slot: 0u64,
-	///     constraints: vec![],
-	///     receivers: vec![],
-	/// };
-	///
-	/// let sig = manager.sign_constraints_message(&message, &sk).unwrap();
-	/// assert_eq!(sig.len(), 96);
-	/// ```ignore
 	pub fn sign_constraints_message(
 		&self,
 		message: &ConstraintsMessage,
@@ -181,12 +149,6 @@ impl BlsManager {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// // `manager` and `message` are assumed to be available in scope.
-	/// // This shows the common usage pattern and asserts that encoding succeeds.
-	/// let encoded = manager.abi_encode_constraints_message(&message).unwrap();
-	/// assert!(!encoded.is_empty());
-	/// ```ignore
 	fn abi_encode_constraints_message(&self, message: &ConstraintsMessage) -> Result<Vec<u8>> {
 		// Encode individual constraints
 		let constraint_tokens: Result<Vec<Token>, anyhow::Error> = message
@@ -217,13 +179,6 @@ impl BlsManager {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let manager = BlsManager::new("00000000").unwrap();
-	/// let domain = [0u8; 4];
-	/// let msg = b"hello world";
-	/// let root = manager.calculate_signing_root(msg, &domain);
-	/// assert_eq!(std::mem::size_of_val(&root), 32);
-	/// ```ignore
 	fn calculate_signing_root(&self, message: &[u8], domain: &[u8; 4]) -> [u8; 32] {
 		// Spec: signing_root = keccak256(abi.encodePacked(domain, message))
 		let mut combined = Vec::new();
@@ -243,13 +198,6 @@ impl BlsManager {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// // assuming `manager` is a `BlsManager` instance
-	/// let addr = manager
-	///     .parse_ethereum_address("0x0123456789abcdef0123456789abcdef01234567")
-	///     .unwrap();
-	/// assert_eq!(addr.as_bytes().len(), 20);
-	/// ```ignore
 	fn parse_ethereum_address(&self, address_str: &str) -> Result<ethabi::Address> {
 		let hex_str = address_str.strip_prefix("0x").unwrap_or(address_str);
 		let bytes = hex::decode(hex_str).context("Invalid hex string")?;
@@ -270,12 +218,6 @@ pub mod keys {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let (sk, pk) = crate::crypto::bls::keys::generate_keypair();
-	/// // ensure keypair was produced
-	/// let _ = sk;
-	/// let _ = pk;
-	/// ```ignore
 	pub fn generate_keypair() -> (BlsSecretKey, BlsPublicKey) {
 		// Use proper key generation with random seed
 		use rand::Rng;
@@ -294,16 +236,6 @@ pub mod keys {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # use anyhow::Result;
-	/// # fn try_example() -> Result<()> {
-	/// let hex = "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-	/// let sk = crate::crypto::bls::keys::parse_private_key(hex)?;
-	/// // `sk` can now be used for signing operations
-	/// # Ok(())
-	/// # }
-	/// # try_example().unwrap();
-	/// ```ignore
 	pub fn parse_private_key(hex_str: &str) -> Result<BlsSecretKey> {
 		let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
 		let bytes = hex::decode(hex_str).context("Invalid hex string")?;
@@ -324,11 +256,6 @@ pub mod keys {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let hex = "0x".to_string() + &hex::encode([0u8; 48]);
-	/// let pk = src::crypto::bls::keys::parse_public_key(&hex).expect("valid pubkey");
-	/// assert_eq!(src::crypto::bls::keys::pubkey_to_bytes(&pk), [0u8; 48]);
-	/// ```ignore
 	pub fn parse_public_key(hex_str: &str) -> Result<BlsPublicKey> {
 		let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
 		let bytes = hex::decode(hex_str).context("Invalid hex string")?;
@@ -348,11 +275,6 @@ pub mod keys {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let (sk, pk) = crate::crypto::bls::keys::generate_keypair();
-	/// let bytes = crate::crypto::bls::pubkey_to_bytes(&pk);
-	/// assert_eq!(bytes.len(), 48);
-	/// ```ignore
 	pub fn pubkey_to_bytes(pubkey: &BlsPublicKey) -> [u8; 48] {
 		let bytes = pubkey.to_bytes();
 		let mut result = [0u8; 48];

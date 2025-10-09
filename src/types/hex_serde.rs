@@ -4,16 +4,6 @@
 /// between hex-encoded strings (with optional "0x" prefix) and byte vectors.
 ///
 /// # Usage
-/// ```ignore
-/// use serde::{Deserialize, Serialize};
-/// use preconfirmation_gateway::types::hex_serde as hex_bytes;
-///
-/// #[derive(Serialize, Deserialize)]
-/// struct Example {
-///     #[serde(with = "hex_bytes")]
-///     data: Vec<u8>,
-/// }
-/// ```ignore
 use serde::{Deserialize, Deserializer, Serializer};
 
 /// Serialize a byte vector as a hex string prefixed with "0x".
@@ -23,26 +13,6 @@ use serde::{Deserialize, Deserializer, Serializer};
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use serde::Serialize;
-///
-/// mod types {
-///     pub mod hex_serde {
-///         // Re-export the functions from the actual module path in your crate.
-///         pub use crate::types::hex_serde::{serialize, deserialize};
-///     }
-/// }
-///
-/// #[derive(Serialize)]
-/// struct S {
-///     #[serde(with = "crate::types::hex_serde")]
-///     data: Vec<u8>,
-/// }
-///
-/// let s = S { data: vec![1, 2, 3] };
-/// let json = serde_json::to_string(&s).unwrap();
-/// assert_eq!(json, r#"{"data":"0x010203"}"#);
-/// ```ignore
 pub fn serialize<S>(bytes: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
 where
 	S: Serializer,
@@ -58,21 +28,6 @@ where
 ///
 /// # Examples
 ///
-/// ```ignore
-/// use serde::Deserialize;
-///
-/// #[derive(Deserialize, Debug, PartialEq)]
-/// struct S {
-///     #[serde(with = "crate::types::hex_serde")]
-///     data: Vec<u8>,
-/// }
-///
-/// let s1: S = serde_json::from_str(r#"{"data":"0x616263"}"#).unwrap();
-/// assert_eq!(s1.data, b"abc".to_vec());
-///
-/// let s2: S = serde_json::from_str(r#"{"data":"616263"}"#).unwrap();
-/// assert_eq!(s2.data, b"abc".to_vec());
-/// ```ignore
 pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
 where
 	D: Deserializer<'de>,
