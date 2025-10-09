@@ -293,84 +293,243 @@ pub async fn mark_commitments_as_processed(pool: &PgPool, request_hashes: &[Stri
 mod tests {
 	use super::*;
 	use crate::types::{Commitment, SignedCommitment};
-	use sqlx::PgPool;
+	use sqlx::{PgPool, postgres::PgPoolOptions};
 
 	/// Creates a PostgreSQL connection pool configured for use by tests.
 	///
-	/// This function is a placeholder intended to establish and return a `PgPool` connected to the
-	/// test database; replace its body with test-specific connection logic.
-	///
-	/// # Examples
-	///
-	/// ```ignore
-	/// # async fn run() {
-	/// let pool = setup_test_pool().await;
-	/// // use `pool` for test queries
-	/// # }
-	/// ```ignore
-	async fn setup_test_pool() -> PgPool {
-		// This would connect to a test database
-		// For now, we'll skip actual DB tests until we have the database running
-		todo!("Setup test database connection")
+	/// Connects to the database specified by DATABASE_URL environment variable.
+	/// Tests will be skipped if DATABASE_URL is not set.
+	async fn setup_test_pool() -> Result<PgPool> {
+		let database_url = std::env::var("DATABASE_URL")
+			.context("DATABASE_URL environment variable not set. Set it to run database tests.")?;
+
+		let pool = PgPoolOptions::new()
+			.max_connections(5)
+			.connect(&database_url)
+			.await
+			.context("Failed to connect to test database")?;
+
+		Ok(pool)
 	}
 
-	#[tokio::test]
-	#[ignore] // Ignore until we have test database setup
-	async fn test_save_and_retrieve_commitment() {
-		let pool = setup_test_pool().await;
+	/// Helper to create a test commitment with a unique request hash and slot
+	fn create_test_commitment_with_slot(suffix: &str, slot: u64) -> SignedCommitment {
+		use crate::types::payload::{InclusionPayload, PayloadParser};
+		use std::time::{SystemTime, UNIX_EPOCH};
+
+		// Create a unique 32-byte hash using suffix + timestamp for uniqueness
+		let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+		let unique_str = format!("{}{}", suffix, timestamp);
+		let suffix_hex = hex::encode(unique_str.as_bytes());
+		// Ensure exactly 64 hex chars by truncating or padding
+		let hash_body = if suffix_hex.len() >= 64 { &suffix_hex[..64] } else { &format!("{:0<64}", suffix_hex) };
+		let hash_hex = format!("0x{}", hash_body);
+
+		// Create a valid inclusion payload with the given slot
+		let inclusion_payload = InclusionPayload::new(slot, vec![0x01, 0x02, 0x03]);
+		let payload_bytes = PayloadParser::encode_inclusion_payload(&inclusion_payload).unwrap();
 
 		let commitment = Commitment {
 			commitment_type: 1,
-			payload: vec![1, 2, 3, 4],
-			request_hash: "0x1234567890123456789012345678901234567890123456789012345678901234".to_string(),
+			payload: payload_bytes,
+			request_hash: hash_hex,
 			slasher: "0x1234567890123456789012345678901234567890".to_string(),
 		};
 
-		let signed_commitment = SignedCommitment {
-			commitment: commitment.clone(),
-			signature: "0x1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890".to_string(),
+		SignedCommitment {
+			commitment,
+			// ECDSA signature is 0x + 128 hex chars (64 bytes) per migration 002
+			signature: format!("0x{:0<128}", "1234567890abcdef"),
+		}
+	}
+
+	/// Helper to create a test commitment with a unique request hash (random slot)
+	fn create_test_commitment(suffix: &str) -> SignedCommitment {
+		create_test_commitment_with_slot(suffix, 12345)
+	}
+
+	#[tokio::test]
+	async fn test_save_and_retrieve_commitment() -> Result<()> {
+		let pool = match setup_test_pool().await {
+			Ok(p) => p,
+			Err(_) => {
+				eprintln!("Skipping test: DATABASE_URL not set");
+				return Ok(());
+			}
 		};
 
+		let signed_commitment = create_test_commitment("test_save_retrieve");
+
 		// Save commitment
-		let id = save_commitment(&pool, &signed_commitment).await.unwrap();
+		let id = save_commitment(&pool, &signed_commitment).await?;
 		assert!(!id.is_nil());
 
 		// Retrieve commitment
-		let retrieved = get_commitment_by_hash(&pool, &commitment.request_hash).await.unwrap().unwrap();
+		let retrieved = get_commitment_by_hash(&pool, &signed_commitment.commitment.request_hash).await?.unwrap();
 
-		assert_eq!(retrieved.commitment.commitment_type, commitment.commitment_type);
-		assert_eq!(retrieved.commitment.payload, commitment.payload);
-		assert_eq!(retrieved.commitment.request_hash, commitment.request_hash);
-		assert_eq!(retrieved.commitment.slasher, commitment.slasher);
+		assert_eq!(retrieved.commitment.commitment_type, signed_commitment.commitment.commitment_type);
+		assert_eq!(retrieved.commitment.payload, signed_commitment.commitment.payload);
+		assert_eq!(retrieved.commitment.request_hash, signed_commitment.commitment.request_hash);
+		assert_eq!(retrieved.commitment.slasher, signed_commitment.commitment.slasher);
 		assert_eq!(retrieved.signature, signed_commitment.signature);
+
+		Ok(())
 	}
 
 	#[tokio::test]
-	#[ignore] // Ignore until we have test database setup
-	async fn test_commitment_exists() {
-		let pool = setup_test_pool().await;
+	async fn test_commitment_exists() -> Result<()> {
+		let pool = match setup_test_pool().await {
+			Ok(p) => p,
+			Err(_) => {
+				eprintln!("Skipping test: DATABASE_URL not set");
+				return Ok(());
+			}
+		};
 
-		let request_hash = "0x1234567890123456789012345678901234567890123456789012345678901234";
+		let signed_commitment = create_test_commitment("test_exists");
 
 		// Should not exist initially
-		assert!(!commitment_exists(&pool, request_hash).await.unwrap());
+		assert!(!commitment_exists(&pool, &signed_commitment.commitment.request_hash).await?);
 
-		// Create and save a commitment
-		let commitment = Commitment {
-			commitment_type: 1,
-			payload: vec![1, 2, 3, 4],
-			request_hash: request_hash.to_string(),
-			slasher: "0x1234567890123456789012345678901234567890".to_string(),
-		};
-
-		let signed_commitment = SignedCommitment {
-			commitment,
-			signature: "0x1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890".to_string(),
-		};
-
-		save_commitment(&pool, &signed_commitment).await.unwrap();
+		// Save commitment
+		save_commitment(&pool, &signed_commitment).await?;
 
 		// Should now exist
-		assert!(commitment_exists(&pool, request_hash).await.unwrap());
+		assert!(commitment_exists(&pool, &signed_commitment.commitment.request_hash).await?);
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_get_commitment_stats() -> Result<()> {
+		let pool = match setup_test_pool().await {
+			Ok(p) => p,
+			Err(_) => {
+				eprintln!("Skipping test: DATABASE_URL not set");
+				return Ok(());
+			}
+		};
+
+		// Get initial stats
+		let stats_before = get_commitment_stats(&pool).await?;
+
+		// Add a type 1 commitment
+		let signed_commitment = create_test_commitment("test_stats");
+		save_commitment(&pool, &signed_commitment).await?;
+
+		// Get updated stats
+		let stats_after = get_commitment_stats(&pool).await?;
+
+		// Verify counts increased (may be more than 1 if tests run in parallel)
+		assert!(stats_after.total_count > stats_before.total_count, "Total count should increase by at least 1");
+		assert!(
+			stats_after.commitment_type_1_count > stats_before.commitment_type_1_count,
+			"Type 1 count should increase by at least 1"
+		);
+		assert!(stats_after.latest_created_at.is_some());
+
+		// Latest timestamp should be newer
+		if let Some(before_time) = stats_before.latest_created_at {
+			assert!(stats_after.latest_created_at.unwrap() >= before_time);
+		}
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_get_unprocessed_commitments_for_slot() -> Result<()> {
+		let pool = match setup_test_pool().await {
+			Ok(p) => p,
+			Err(_) => {
+				eprintln!("Skipping test: DATABASE_URL not set");
+				return Ok(());
+			}
+		};
+
+		let test_slot: u64 = 999999; // Use a unique slot number for testing
+
+		// Should be empty initially (or at least get baseline count)
+		let commitments = get_unprocessed_commitments_for_slot(&pool, test_slot).await?;
+		let initial_count = commitments.len();
+
+		// Add a commitment for this slot with proper payload
+		let signed_commitment = create_test_commitment_with_slot("test_unprocessed_slot", test_slot);
+		save_commitment(&pool, &signed_commitment).await?;
+
+		// Should now have one more unprocessed commitment
+		let commitments = get_unprocessed_commitments_for_slot(&pool, test_slot).await?;
+		assert_eq!(commitments.len(), initial_count + 1);
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_mark_commitments_as_processed() -> Result<()> {
+		let pool = match setup_test_pool().await {
+			Ok(p) => p,
+			Err(_) => {
+				eprintln!("Skipping test: DATABASE_URL not set");
+				return Ok(());
+			}
+		};
+
+		let test_slot: u64 = 888888;
+
+		// Create and save a commitment with proper payload
+		let signed_commitment = create_test_commitment_with_slot("test_mark_processed", test_slot);
+		save_commitment(&pool, &signed_commitment).await?;
+
+		// Should be in unprocessed list
+		let unprocessed = get_unprocessed_commitments_for_slot(&pool, test_slot).await?;
+		let before_count = unprocessed.len();
+		assert!(before_count > 0, "Expected at least one unprocessed commitment for slot {}", test_slot);
+
+		// Mark as processed
+		let hashes = vec![signed_commitment.commitment.request_hash.clone()];
+		let marked = mark_commitments_as_processed(&pool, &hashes).await?;
+		assert!(marked > 0);
+
+		// Should no longer be in unprocessed list
+		let unprocessed = get_unprocessed_commitments_for_slot(&pool, test_slot).await?;
+		assert_eq!(unprocessed.len(), before_count - 1);
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_mark_empty_array() -> Result<()> {
+		let pool = match setup_test_pool().await {
+			Ok(p) => p,
+			Err(_) => {
+				eprintln!("Skipping test: DATABASE_URL not set");
+				return Ok(());
+			}
+		};
+
+		// Should return 0 for empty array
+		let marked = mark_commitments_as_processed(&pool, &[]).await?;
+		assert_eq!(marked, 0);
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_get_nonexistent_commitment() -> Result<()> {
+		let pool = match setup_test_pool().await {
+			Ok(p) => p,
+			Err(_) => {
+				eprintln!("Skipping test: DATABASE_URL not set");
+				return Ok(());
+			}
+		};
+
+		// Query for a commitment that definitely doesn't exist
+		let fake_hash = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+		let result = get_commitment_by_hash(&pool, fake_hash).await?;
+
+		// Should return None
+		assert!(result.is_none(), "Expected None for non-existent commitment");
+
+		Ok(())
 	}
 }
