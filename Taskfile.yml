@@ -26,10 +26,8 @@ tasks:
       - cargo test
 
   coverage:
-    env:
-      RUSTFLAGS: "-C instrument-coverage"
     cmds:
-      - cargo test
+      - cargo tarpaulin
 
   lint:
     cmds:
