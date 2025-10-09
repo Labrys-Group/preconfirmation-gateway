@@ -20,7 +20,7 @@ use crate::types::{Commitment, PayloadParser, SignedCommitment};
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
 /// # use crate::types::SignedCommitment;
@@ -135,7 +135,7 @@ pub async fn get_commitment_by_hash(pool: &PgPool, request_hash: &str) -> Result
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # use sqlx::PgPool;
 /// # async fn example(pool: PgPool) -> Result<(), Box<dyn std::error::Error>> {
 /// let exists = crate::db::operations::commitment_exists(&pool, "some-request-hash").await?;
@@ -171,7 +171,7 @@ pub struct CommitmentStats {
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # async fn example(pool: sqlx::PgPool) -> anyhow::Result<()> {
 /// let stats = crate::db::operations::get_commitment_stats(&pool).await?;
 /// println!("total: {}", stats.total_count);
@@ -259,7 +259,7 @@ pub async fn get_unprocessed_commitments_for_slot(pool: &PgPool, slot: u64) -> R
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
 /// # async fn example(pool: &PgPool) -> Result<(), anyhow::Error> {

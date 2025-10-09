@@ -193,7 +193,7 @@ pub async fn get_or_create_slot_congestion(
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # async fn _example() -> anyhow::Result<()> {
 /// use sqlx::PgPool;
 /// // create or obtain a PgPool...
@@ -390,7 +390,7 @@ pub async fn get_current_gas_price_for_slot(pool: &PgPool, slot: u64) -> Result<
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # async fn _example() -> anyhow::Result<()> {
 /// # let pool = sqlx::PgPool::connect("postgres://localhost/test").await?;
 /// let deleted = crate::db::slot_congestion_ops::cleanup_old_slot_congestion(&pool, 24).await?;
@@ -441,7 +441,7 @@ pub struct CongestionStats {
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # use sqlx::PgPool;
 /// # use crate::db::slot_congestion_ops::get_congestion_stats;
 /// # async fn run_example() -> Result<(), Box<dyn std::error::Error>> {

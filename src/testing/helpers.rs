@@ -152,7 +152,7 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// use std::time::Duration;
 	/// use anyhow::Result;
 	/// use crate::testing::helpers::TestHelpers;
@@ -194,7 +194,7 @@ impl TestHelpers {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// use std::time::Duration;
 	///
 	/// # tokio_test::block_on(async {

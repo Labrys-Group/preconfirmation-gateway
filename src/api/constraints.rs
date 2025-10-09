@@ -81,7 +81,7 @@ impl ConstraintsApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # async fn example_usage(client: &crate::api::constraints::ConstraintsApiClient) -> anyhow::Result<()> {
 	/// let delegations = client.get_delegations_for_slot(12345).await?;
 	/// println!("Got {} delegations", delegations.len());
@@ -131,7 +131,7 @@ impl ConstraintsApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # use crate::api::constraints::{ConstraintsApiClient, ConstraintsApiConfig, SignedConstraints};
 	/// # async fn _example() {
 	/// // Construct a client and a SignedConstraints value appropriate for your environment,
@@ -270,7 +270,7 @@ impl ConstraintsApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// // When base has no trailing slash
 	/// let url = client.build_url("test/endpoint");
 	/// assert_eq!(url, "https://relay.example.com/test/endpoint");

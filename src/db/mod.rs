@@ -68,7 +68,7 @@ pub async fn create_pool(config: &Config) -> Result<PgPool> {
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// use sqlx::PgPool;
 ///
 /// async fn example(pool: &PgPool) -> anyhow::Result<()> {
@@ -96,7 +96,7 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # use sqlx::PgPool;
 /// # async fn example(pool: &PgPool) -> anyhow::Result<()> {
 /// test_connection(pool).await?;
@@ -161,7 +161,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # use crate::db::DatabaseContext;
 	/// # use sqlx::PgPool;
 	/// # async fn example(ctx: &DatabaseContext) {
@@ -180,7 +180,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # use uuid::Uuid;
 	/// # async fn example(db: &crate::db::DatabaseContext, commitment: crate::types::SignedCommitment) -> Result<(), Box<dyn std::error::Error>> {
 	/// let id: Uuid = db.save_commitment(&commitment).await?;
@@ -247,7 +247,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # use crate::db::DatabaseContext;
 	/// # async fn example(ctx: &DatabaseContext) -> anyhow::Result<()> {
 	/// let stats = ctx.get_stats().await?;
@@ -268,7 +268,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// // Assume `ctx` is a `DatabaseContext` and `delegation` is a `SignedDelegation`.
 	/// let id = tokio::runtime::Runtime::new().unwrap().block_on(async {
 	///     ctx.save_delegation(&delegation).await.unwrap()
@@ -287,7 +287,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// // `pool` is a previously created `PgPool`.
 	/// let ctx = DatabaseContext::new(pool);
 	/// let delegations = tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -306,7 +306,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # use crate::db::DatabaseContext;
 	/// # async fn example(db: &DatabaseContext) -> anyhow::Result<()> {
 	/// let exists = db.delegation_exists_for_slot_and_committer(42, "0xdeadbeef").await?;
@@ -353,7 +353,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # use crate::db::DatabaseContext;
 	/// # use crate::types::BlsPublicKey;
 	/// # async fn example(ctx: &DatabaseContext, key: &BlsPublicKey) -> anyhow::Result<()> {
@@ -417,7 +417,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # async fn example(db_ctx: &crate::db::DatabaseContext) -> anyhow::Result<()> {
 	/// let deactivated = db_ctx.deactivate_expired_delegations(1_234_567).await?;
 	/// println!("Deactivated {} delegations", deactivated);
@@ -435,7 +435,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # async fn example(ctx: &crate::db::DatabaseContext) -> Result<(), Box<dyn std::error::Error>> {
 	/// let congestion = ctx.get_or_create_slot_congestion(42, 100, 1_000_000, 0).await?;
 	/// assert_eq!(congestion.slot, 42);
@@ -476,7 +476,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # async fn example(ctx: &crate::db::DatabaseContext) -> anyhow::Result<()> {
 	/// let updated = ctx.update_slot_congestion_gas_usage(123, 10_000, 1.25).await?;
 	/// // inspect returned record
@@ -518,7 +518,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # use crate::db::DatabaseContext;
 	/// # async fn _example(db: &DatabaseContext) -> Result<(), anyhow::Error> {
 	/// let stats = db.get_congestion_stats().await?;
@@ -536,7 +536,7 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # use crate::db::DatabaseContext;
 	/// # async fn example(ctx: &DatabaseContext) -> Result<(), Box<dyn std::error::Error>> {
 	/// let removed = ctx.cleanup_old_slot_congestion(24).await?;

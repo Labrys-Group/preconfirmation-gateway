@@ -11,7 +11,7 @@ use super::handlers;
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// // Construct an appropriate RpcContext for your environment.
 /// let ctx = /* RpcContext::new(...) */ unimplemented!();
 /// let module = setup_rpc_methods(ctx).expect("failed to register RPC methods");

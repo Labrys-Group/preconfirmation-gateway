@@ -174,7 +174,7 @@ pub fn sign_commitment(commitment: &Commitment, private_key: &SecretKey) -> Resu
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// // `commitment`, `signature_hex`, and `public_key` are assumed to be constructed earlier.
 /// let is_valid = crate::crypto::verify_commitment_signature(&commitment, &signature_hex, &public_key)
 ///     .expect("signature verification failed");

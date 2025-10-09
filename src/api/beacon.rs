@@ -28,7 +28,7 @@ impl BeaconApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// // Construct a BeaconApiConfig with the desired endpoints and timeout,
 	/// // then create the client.
 	/// // let config = BeaconApiConfig { /* fields */ };
@@ -123,7 +123,7 @@ impl BeaconApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # use crate::api::beacon::BeaconApiClient;
 	/// # #[tokio::main]
 	/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {

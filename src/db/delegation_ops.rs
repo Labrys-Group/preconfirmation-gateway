@@ -64,7 +64,7 @@ pub async fn save_delegation(pool: &PgPool, signed_delegation: &SignedDelegation
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # use sqlx::PgPool;
 /// # use anyhow::Result;
 /// # async fn example(pool: &PgPool) -> Result<()> {
@@ -135,7 +135,7 @@ pub async fn get_delegations_for_slot(pool: &PgPool, slot: u64) -> Result<Vec<Si
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # use sqlx::PgPool;
 /// # async fn example(pool: &PgPool, proposer: BlsPublicKey) -> anyhow::Result<()> {
 /// let maybe = get_delegation_by_proposer_slot(pool, &proposer, 42).await?;

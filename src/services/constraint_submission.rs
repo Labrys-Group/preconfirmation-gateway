@@ -77,7 +77,7 @@ impl ConstraintSubmissionService {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # use std::sync::Arc;
 	/// # async fn example(service: Arc<crate::services::constraint_submission::ConstraintSubmissionService>) {
 	/// service.start().await.unwrap();
@@ -141,7 +141,7 @@ impl ConstraintSubmissionService {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # async fn example(service: &crate::services::constraint_submission::ConstraintSubmissionService) -> anyhow::Result<()> {
 	/// let slot = 123;
 	/// let payload = vec![1, 2, 3];
@@ -179,7 +179,7 @@ impl ConstraintSubmissionService {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// // `svc` is a prepared `ConstraintSubmissionService`
 	/// let slot: u64 = 12345;
 	/// let within = svc.is_within_submission_window(slot);
@@ -217,7 +217,7 @@ impl ConstraintSubmissionService {
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # async fn example(
 /// #     constraints_client: std::sync::Arc<ConstraintsApiClient>,
 /// #     bls_manager: std::sync::Arc<BlsManager>,
@@ -560,7 +560,7 @@ async fn submit_constraint(
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// # use anyhow::Result;
 /// # use sqlx::PgPool;
 /// # use crate::services::constraint_submission::create_constraints_from_commitments;

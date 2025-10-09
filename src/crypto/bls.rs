@@ -84,7 +84,7 @@ impl BlsManager {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # use crate::crypto::bls::{BlsManager, SignedDelegation};
 	/// let manager = BlsManager::new("0x11223344").unwrap();
 	/// let delegation: SignedDelegation = unimplemented!();

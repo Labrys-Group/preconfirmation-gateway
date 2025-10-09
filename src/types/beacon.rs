@@ -195,7 +195,7 @@ impl BeaconTiming {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// let genesis = 1_700_000_000u64; // example genesis timestamp
 	/// let slot = 10u64;
 	/// let secs = time_until_slot(genesis, slot);

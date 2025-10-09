@@ -253,7 +253,7 @@ impl RethApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # async fn example(client: &crate::RethApiClient) -> anyhow::Result<()> {
 	/// let block = client.get_block_number().await?;
 	/// println!("block: {}", block);
@@ -296,7 +296,7 @@ impl RethApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// use serde_json::json;
 	///
 	/// // `client` is an existing `RethApiClient` instance.

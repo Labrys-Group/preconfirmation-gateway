@@ -263,7 +263,7 @@ impl MockConstraintsApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # async fn example() {
 	/// let client = MockConstraintsApiClient::new();
 	/// let response = ConstraintSubmissionResponse { /* fields */ };

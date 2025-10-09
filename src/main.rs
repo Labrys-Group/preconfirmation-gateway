@@ -13,7 +13,7 @@ use preconfirmation_gateway::{api, config, crypto, db, server, services, types};
 ///
 /// # Examples
 ///
-/// ```ignoreno_run
+/// ```ignore
 /// // Start the application (runs until shutdown)
 /// # use anyhow::Result;
 /// # async fn run() -> Result<()> {

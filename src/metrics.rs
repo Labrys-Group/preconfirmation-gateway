@@ -264,7 +264,7 @@ impl MetricsRegistry {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// # // Assuming `metrics` is an initialized `MetricsRegistry`
 	/// metrics.update_congestion_stats(0.32, 0.75, 1.12);
 	/// ```ignore

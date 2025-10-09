@@ -45,7 +45,7 @@ impl FeePricingEngine {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// use std::sync::Arc;
 	/// let reth_client = Arc::new(/* RethApiClient */ unimplemented!());
 	/// let database = Arc::new(/* DatabaseContext */ unimplemented!());
@@ -210,7 +210,7 @@ impl FeePricingEngine {
 	///
 	/// # Examples
 	///
-	/// ```ignoreno_run
+	/// ```ignore
 	/// // Assuming `engine` is a FeePricingEngine instance
 	/// let payload = vec![0u8; 128];
 	/// let estimate = engine.estimate_gas_for_commitment(1, &payload).unwrap();
