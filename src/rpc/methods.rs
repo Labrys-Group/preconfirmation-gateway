@@ -58,30 +58,4 @@ mod tests {
 		assert!(method_names.contains(&"fee"), "Should register fee method");
 	}
 
-	#[tokio::test]
-	async fn test_setup_rpc_methods_with_invalid_context() {
-		// This test ensures setup_rpc_methods works with any valid RpcContext
-		// In practice, invalid contexts would be caught at RpcContext creation time
-		let config = Arc::new(Config::default());
-		let rpc_context = TestHelpers::create_test_rpc_context(config);
-
-		// Should work fine - RPC method registration doesn't validate the context deeply
-		let result = setup_rpc_methods((*rpc_context).clone());
-		assert!(result.is_ok(), "RPC method registration should succeed with any RpcContext");
-	}
-
-	#[tokio::test]
-	async fn test_method_registration_error_handling() {
-		// Test that we get proper error handling during method registration
-		let config = Arc::new(Config::default());
-		let rpc_context = TestHelpers::create_test_rpc_context(config);
-
-		// This tests the normal case - method registration should succeed
-		let module = setup_rpc_methods((*rpc_context).clone());
-		assert!(module.is_ok(), "Method registration should succeed");
-
-		// Verify the module is usable
-		let module = module.unwrap();
-		assert!(!module.method_names().collect::<Vec<_>>().is_empty(), "Module should have registered methods");
-	}
 }
