@@ -617,14 +617,8 @@ async fn create_constraints_from_commitments(db_pool: &PgPool, slot: u64) -> Res
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::config::Config;
 	use crate::types::delegation::Constraint;
 	use std::time::Duration;
-
-	fn create_test_config() -> Config {
-		crate::testing::mocks::create_test_config()
-	}
-
 
 	fn create_mock_bls_manager() -> BlsManager {
 		BlsManager::new("0x00000002")
@@ -633,7 +627,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_constraint_submission_service_creation() {
-		let config = create_test_config();
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let bls_manager = Arc::new(create_mock_bls_manager());
 
@@ -657,7 +651,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_constraint_submission_service_creation_without_db() {
 		// This test doesn't require a real database
-		let config = create_test_config();
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let bls_manager = Arc::new(create_mock_bls_manager());
 		
@@ -672,7 +666,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_submission_window_check() {
-		let config = create_test_config();
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let bls_manager = Arc::new(create_mock_bls_manager());
 
@@ -704,7 +698,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_submission_window_check_without_db() {
 		// Test submission window logic without requiring a database
-		let config = create_test_config();
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let bls_manager = Arc::new(create_mock_bls_manager());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
@@ -738,7 +732,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_service_lifecycle() {
-		let config = create_test_config();
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let bls_manager = Arc::new(create_mock_bls_manager());
 
@@ -768,7 +762,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_service_lifecycle_without_db() {
-		let config = create_test_config();
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let bls_manager = Arc::new(create_mock_bls_manager());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
@@ -789,7 +783,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_process_pending_constraints_no_delegations() {
 		// Test the processing loop when no delegations are found
-		let config = create_test_config();
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let bls_manager = Arc::new(create_mock_bls_manager());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
@@ -809,7 +803,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_submit_constraint_validation() {
 		// Test constraint submission with validation errors
-		let mut config = create_test_config();
+		let mut config = crate::testing::mocks::create_test_config();
 		config.signing.committer_address = "0x1234567890123456789012345678901234567890".to_string();
 		
 		let constraints_client = ConstraintsApiClient::new(config.constraints_api.clone()).unwrap();
@@ -870,7 +864,7 @@ mod tests {
 
 	#[test]
 	fn test_constraint_timing_calculations() {
-		let config = create_test_config();
+		let config = crate::testing::mocks::create_test_config();
 		let genesis_time = config.beacon_api.genesis_time;
 
 		// Test BeaconTiming functions used by the service
@@ -907,7 +901,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_process_constraints_for_slot_error_handling() {
 		// Test error handling when processing constraints for a slot
-		let config = create_test_config();
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = ConstraintsApiClient::new(config.constraints_api.clone()).unwrap();
 		let bls_manager = create_mock_bls_manager();
 		let db_pool = sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap();
@@ -946,7 +940,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_concurrent_constraint_processing() {
 		// Test that multiple constraint processing operations can run concurrently
-		let config = create_test_config();
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let bls_manager = Arc::new(create_mock_bls_manager());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());

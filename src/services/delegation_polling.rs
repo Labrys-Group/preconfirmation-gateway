@@ -281,14 +281,14 @@ async fn cleanup_expired_delegations(db_pool: Arc<PgPool>, config: Arc<Config>) 
 mod tests {
 	use super::*;
 	use crate::config::Config;
-	use crate::testing::mocks::{create_test_bls_keypair, create_test_config};
+	use crate::testing::mocks::create_test_bls_keypair;
 	use crate::testing::fixtures::TestFixtures;
 	use crate::types::delegation::{SignedDelegation, DelegationMessage, BlsSignature};
 	use std::time::Duration;
 	use tokio::time::timeout;
 
 	fn create_mock_config() -> Config {
-		let mut config = create_test_config();
+		let mut config = crate::testing::mocks::create_test_config();
 		// Set specific values for delegation polling
 		config.delegation.lookahead_epochs = 2;
 		config.delegation.polling_interval_secs = 30;
