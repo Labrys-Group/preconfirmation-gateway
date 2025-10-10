@@ -422,7 +422,7 @@ mod tests {
 			.expect("Failed to create service");
 
 		// This should complete even if it fails due to network/database issues
-		let result = timeout(Duration::from_secs(5), service.poll_once()).await;
+		let result = timeout(Duration::from_secs(10), service.poll_once()).await;
 		assert!(result.is_ok(), "poll_once should complete within timeout");
 	}
 
@@ -586,12 +586,8 @@ mod tests {
 		let slot = 12345u64;
 		let committer = "0x1234567890123456789012345678901234567890";
 
-		let delegation_message = DelegationMessage {
-			proposer: proposer_pk,
-			delegate: delegate_pk,
-			committer: committer.to_string(),
-			slot,
-		};
+		let delegation_message =
+			DelegationMessage { proposer: proposer_pk, delegate: delegate_pk, committer: committer.to_string(), slot };
 
 		// Create mock signature (real signature would require proper signing)
 		let mock_signature = BlsSignature([42u8; 96]);
