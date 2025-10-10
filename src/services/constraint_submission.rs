@@ -475,8 +475,7 @@ mod tests {
 	use std::time::Duration;
 
 	fn create_mock_bls_manager() -> BlsManager {
-		BlsManager::new("0x00000002")
-			.expect("Failed to create BLS manager")
+		BlsManager::new("0x00000002").expect("Failed to create BLS manager")
 	}
 
 	#[tokio::test]
@@ -508,7 +507,7 @@ mod tests {
 		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let bls_manager = Arc::new(create_mock_bls_manager());
-		
+
 		// Create a lazy connection pool that won't actually connect
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 
@@ -643,12 +642,7 @@ mod tests {
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 
 		// This should not panic even though the database operations will fail
-		let result = process_pending_constraints(
-			constraints_client,
-			bls_manager,
-			db_pool,
-			Arc::new(config)
-		).await;
+		let result = process_pending_constraints(constraints_client, bls_manager, db_pool, Arc::new(config)).await;
 
 		// The function should handle database errors gracefully and return Ok(())
 		assert!(result.is_ok(), "Processing should handle database errors gracefully");
@@ -659,7 +653,7 @@ mod tests {
 		// Test constraint submission with validation errors
 		let mut config = crate::testing::mocks::create_test_config();
 		config.signing.committer_address = "0x1234567890123456789012345678901234567890".to_string();
-		
+
 		let constraints_client = ConstraintsApiClient::new(config.constraints_api.clone()).unwrap();
 		let bls_manager = create_mock_bls_manager();
 		let db_pool = sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap();
@@ -677,12 +671,12 @@ mod tests {
 			slot,
 			payload.clone(),
 			wrong_committer,
-		).await;
+		)
+		.await;
 
 		assert!(result.is_err(), "Should fail with wrong committer address");
 		let error_msg = format!("{}", result.unwrap_err());
-		assert!(error_msg.contains("does not match our configured address"), 
-			"Error should mention address mismatch");
+		assert!(error_msg.contains("does not match our configured address"), "Error should mention address mismatch");
 	}
 
 	#[tokio::test]
@@ -727,8 +721,10 @@ mod tests {
 
 		// Verify slot calculation makes sense
 		let expected_slot = (current_time - genesis_time) / 12;
-		assert!((current_slot as i64 - expected_slot as i64).abs() <= 1, 
-			"Current slot calculation should be accurate within 1 slot");
+		assert!(
+			(current_slot as i64 - expected_slot as i64).abs() <= 1,
+			"Current slot calculation should be accurate within 1 slot"
+		);
 
 		// Test window check (use a recent past slot which should be within window)
 		let recent_slot = current_slot.saturating_sub(1);
@@ -763,13 +759,7 @@ mod tests {
 		let slot = 12345u64;
 
 		// This should handle database errors gracefully
-		let result = process_constraints_for_slot(
-			&constraints_client,
-			&bls_manager,
-			&db_pool,
-			&config,
-			slot
-		).await;
+		let result = process_constraints_for_slot(&constraints_client, &bls_manager, &db_pool, &config, slot).await;
 
 		assert!(result.is_err(), "Should fail due to database connection error");
 	}
@@ -782,8 +772,7 @@ mod tests {
 		let deadline_timestamp = BeaconTiming::constraint_deadline_for_slot(genesis_time, slot);
 		let expected_deadline = genesis_time + (slot * 12) + 8; // 8 second deadline
 
-		assert_eq!(deadline_timestamp, expected_deadline, 
-			"Constraint deadline should be slot start + 8 seconds");
+		assert_eq!(deadline_timestamp, expected_deadline, "Constraint deadline should be slot start + 8 seconds");
 
 		// Verify the deadline makes sense
 		let slot_start = genesis_time + (slot * 12);
@@ -807,10 +796,8 @@ mod tests {
 			let manager = Arc::clone(&bls_manager);
 			let pool = Arc::clone(&db_pool);
 			let conf = Arc::new(config.clone());
-			
-			let handle = tokio::spawn(async move {
-				process_pending_constraints(client, manager, pool, conf).await
-			});
+
+			let handle = tokio::spawn(async move { process_pending_constraints(client, manager, pool, conf).await });
 			handles.push(handle);
 		}
 

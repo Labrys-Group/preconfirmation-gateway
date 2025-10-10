@@ -41,7 +41,7 @@ impl BeaconApiClient {
 		if config.primary_endpoint.trim().is_empty() {
 			anyhow::bail!("Primary endpoint cannot be empty");
 		}
-		
+
 		if config.request_timeout_secs == 0 {
 			anyhow::bail!("Request timeout must be greater than zero");
 		}
@@ -282,7 +282,7 @@ mod tests {
 		// Test beacon timing utilities that the client uses
 		let slot = 12345u64;
 		let epoch = BeaconTiming::slot_to_epoch(slot);
-		
+
 		// Each epoch has 32 slots, so slot 12345 should be in epoch 385
 		assert_eq!(epoch, slot / 32);
 		assert_eq!(epoch, 385);
@@ -292,13 +292,13 @@ mod tests {
 	fn test_add_headers() {
 		let config = create_test_config();
 		let client = BeaconApiClient::new(config).unwrap();
-		
+
 		// Create a mock request builder to test header addition
 		let http_client = reqwest::Client::new();
 		let request = http_client.get("https://example.com");
-		
+
 		let request_with_headers = client.add_headers(request);
-		
+
 		// We can't easily inspect the headers without sending the request,
 		// but we can verify the method doesn't panic and returns a valid RequestBuilder
 		// This test ensures the add_headers method works without errors
@@ -312,10 +312,10 @@ mod tests {
 
 		// This should timeout quickly since we're using invalid endpoints
 		let result = timeout(Duration::from_secs(5), client.get_proposer_duties(0)).await;
-		
+
 		// Should complete within timeout (even if it fails due to invalid endpoint)
 		assert!(result.is_ok(), "Request should complete within timeout");
-		
+
 		// The inner result should be an error due to invalid endpoints
 		let proposer_result = result.unwrap();
 		assert!(proposer_result.is_err(), "Should fail with invalid endpoints");
@@ -328,7 +328,7 @@ mod tests {
 
 		// Should fail since primary endpoint is invalid and no fallbacks
 		let result = timeout(Duration::from_secs(5), client.get_proposer_duties(0)).await;
-		
+
 		assert!(result.is_ok(), "Request should complete within timeout");
 		let proposer_result = result.unwrap();
 		assert!(proposer_result.is_err(), "Should fail with no valid endpoints");
@@ -341,7 +341,7 @@ mod tests {
 
 		// Test with a slot that would fail to fetch duties
 		let result = timeout(Duration::from_secs(5), client.get_proposer_for_slot(12345)).await;
-		
+
 		assert!(result.is_ok(), "Request should complete within timeout");
 		let proposer_result = result.unwrap();
 		assert!(proposer_result.is_err(), "Should fail due to invalid endpoint");
@@ -365,7 +365,7 @@ mod tests {
 		assert_eq!(url2, "https://example.com/eth/v1/test");
 	}
 
-	#[tokio::test] 
+	#[tokio::test]
 	async fn test_proposer_duties_error_handling() {
 		let config = create_test_config_with_short_timeout();
 		let client = BeaconApiClient::new(config).unwrap();
@@ -397,14 +397,13 @@ mod tests {
 	fn test_config_validation() {
 		// Test that invalid configurations are properly rejected
 		let mut config = create_test_config();
-		
+
 		// Test with empty primary endpoint
 		config.primary_endpoint = "".to_string();
 		let client = BeaconApiClient::new(config.clone());
 		assert!(client.is_err(), "Should reject empty primary endpoint");
 		let error_msg = format!("{}", client.unwrap_err());
-		assert!(error_msg.contains("Primary endpoint cannot be empty"), 
-			"Error should mention empty endpoint");
+		assert!(error_msg.contains("Primary endpoint cannot be empty"), "Error should mention empty endpoint");
 
 		// Test with whitespace-only primary endpoint
 		config.primary_endpoint = "   ".to_string();
@@ -417,8 +416,7 @@ mod tests {
 		let client = BeaconApiClient::new(config);
 		assert!(client.is_err(), "Should reject zero timeout");
 		let error_msg = format!("{}", client.unwrap_err());
-		assert!(error_msg.contains("Request timeout must be greater than zero"), 
-			"Error should mention zero timeout");
+		assert!(error_msg.contains("Request timeout must be greater than zero"), "Error should mention zero timeout");
 	}
 
 	#[test]
@@ -427,13 +425,13 @@ mod tests {
 		let config = BeaconApiConfig {
 			primary_endpoint: "https://minimal.example.com".to_string(),
 			fallback_endpoints: vec![], // Empty fallbacks should be fine
-			request_timeout_secs: 1, // Minimal valid timeout
-			genesis_time: 0, // Any genesis time should be fine
+			request_timeout_secs: 1,    // Minimal valid timeout
+			genesis_time: 0,            // Any genesis time should be fine
 		};
 
 		let client = BeaconApiClient::new(config);
 		assert!(client.is_ok(), "Should accept minimal valid configuration");
-		
+
 		let client = client.unwrap();
 		assert_eq!(client.config.request_timeout_secs, 1);
 		assert!(client.config.fallback_endpoints.is_empty());
@@ -453,7 +451,7 @@ mod tests {
 		};
 
 		let client = BeaconApiClient::new(config).unwrap();
-		
+
 		// Verify fallback endpoints are preserved in order
 		assert_eq!(client.config.fallback_endpoints.len(), 3);
 		assert_eq!(client.config.fallback_endpoints[0], "https://fallback1.test");
@@ -468,12 +466,10 @@ mod tests {
 
 		// Test multiple concurrent requests
 		let mut handles = Vec::new();
-		
+
 		for i in 0..5 {
 			let client_clone = client.clone();
-			let handle = tokio::spawn(async move {
-				client_clone.get_proposer_duties(i).await
-			});
+			let handle = tokio::spawn(async move { client_clone.get_proposer_duties(i).await });
 			handles.push(handle);
 		}
 
@@ -489,10 +485,10 @@ mod tests {
 	fn test_client_clone() {
 		let config = create_test_config();
 		let client = BeaconApiClient::new(config).unwrap();
-		
+
 		// Test that client can be cloned
 		let cloned_client = client.clone();
-		
+
 		// Verify the clone has the same configuration
 		assert_eq!(client.config.primary_endpoint, cloned_client.config.primary_endpoint);
 		assert_eq!(client.config.fallback_endpoints, cloned_client.config.fallback_endpoints);
@@ -514,12 +510,9 @@ mod tests {
 		};
 
 		let client = BeaconApiClient::new(config).unwrap();
-		
+
 		// Test with a recent epoch
-		let current_time = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap()
-			.as_secs();
+		let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
 		let current_slot = (current_time - 1606824023) / 12;
 		let current_epoch = BeaconTiming::slot_to_epoch(current_slot);
 

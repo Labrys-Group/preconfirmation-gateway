@@ -51,5 +51,4 @@ mod tests {
 		assert!(method_names.contains(&"slots"), "Should register slots method");
 		assert!(method_names.contains(&"fee"), "Should register fee method");
 	}
-
 }

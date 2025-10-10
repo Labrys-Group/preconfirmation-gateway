@@ -281,9 +281,9 @@ async fn cleanup_expired_delegations(db_pool: Arc<PgPool>, config: Arc<Config>) 
 mod tests {
 	use super::*;
 	use crate::config::Config;
-	use crate::testing::mocks::create_test_bls_keypair;
 	use crate::testing::fixtures::TestFixtures;
-	use crate::types::delegation::{SignedDelegation, DelegationMessage, BlsSignature};
+	use crate::testing::mocks::create_test_bls_keypair;
+	use crate::types::delegation::{BlsSignature, DelegationMessage, SignedDelegation};
 	use std::time::Duration;
 	use tokio::time::timeout;
 
@@ -325,7 +325,7 @@ mod tests {
 		let config = create_mock_config();
 		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
-		
+
 		// Use lazy connection pool that doesn't actually connect
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 
@@ -469,12 +469,12 @@ mod tests {
 	#[test]
 	fn test_delegation_configuration_validation() {
 		let config = create_mock_config();
-		
+
 		// Verify delegation config values
 		assert_eq!(config.delegation.lookahead_epochs, 2);
 		assert_eq!(config.delegation.polling_interval_secs, 30);
 		assert_eq!(config.delegation.cache_ttl_secs, 300);
-		
+
 		// Test slot range calculation
 		let lookahead_slots = config.delegation.lookahead_epochs * crate::types::beacon::timing::SLOTS_PER_EPOCH;
 		assert_eq!(lookahead_slots, 2 * 32, "Should calculate correct lookahead slots");
@@ -487,18 +487,18 @@ mod tests {
 		assert!(bls_manager_result.is_ok(), "Should be able to create BLS manager for verification");
 
 		let _bls_manager = bls_manager_result.unwrap();
-		
+
 		// Create a test delegation to verify the structure is correct
 		let (_proposer_sk, proposer_pk) = create_test_bls_keypair();
 		let (_delegate_sk, delegate_pk) = create_test_bls_keypair();
-		
+
 		let delegation = TestFixtures::create_signed_delegation(
 			12345,
 			proposer_pk,
 			delegate_pk,
 			"0x1234567890123456789012345678901234567890",
 		);
-		
+
 		// Verify delegation structure is valid (signature verification will fail due to mock signature)
 		assert_eq!(delegation.message.slot, 12345);
 		assert_eq!(delegation.message.committer, "0x1234567890123456789012345678901234567890");
@@ -509,17 +509,17 @@ mod tests {
 		// Test BLS key comparison logic used in delegation filtering
 		let (_, our_pk) = create_test_bls_keypair();
 		let (_, other_pk) = create_test_bls_keypair();
-		
+
 		let our_bytes = our_pk.0;
 		let other_bytes = other_pk.0;
-		
+
 		// Verify that different keys produce different bytes
 		assert_ne!(our_bytes, other_bytes, "Different keys should produce different byte arrays");
-		
+
 		// Test the filtering condition used in the polling logic
 		let matches_our_key = our_bytes == our_bytes;
 		let matches_other_key = our_bytes == other_bytes;
-		
+
 		assert!(matches_our_key, "Key should match itself");
 		assert!(!matches_other_key, "Key should not match different key");
 	}
@@ -528,24 +528,21 @@ mod tests {
 	fn test_slot_range_calculation() {
 		let config = create_mock_config();
 		let genesis_time = config.beacon_api.genesis_time;
-		
+
 		// Test current slot calculation
-		let current_time = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap()
-			.as_secs();
-		
+		let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+
 		let current_slot = BeaconTiming::current_slot_estimate(genesis_time);
 		let expected_slot = (current_time - genesis_time) / 12;
-		
+
 		// Allow some tolerance for timing differences
 		let slot_diff = (current_slot as i64 - expected_slot as i64).abs();
 		assert!(slot_diff <= 2, "Current slot calculation should be accurate within 2 slots");
-		
+
 		// Test lookahead calculation
 		let lookahead_slots = config.delegation.lookahead_epochs * crate::types::beacon::timing::SLOTS_PER_EPOCH;
 		let end_slot = current_slot + lookahead_slots;
-		
+
 		assert!(end_slot > current_slot, "End slot should be after current slot");
 		assert_eq!(end_slot - current_slot, lookahead_slots, "Slot range should match lookahead");
 	}
@@ -566,10 +563,8 @@ mod tests {
 			let constraints = Arc::clone(&constraints_client);
 			let pool = Arc::clone(&db_pool);
 			let conf = Arc::new(config.clone());
-			
-			let handle = tokio::spawn(async move {
-				poll_delegations(beacon, constraints, pool, conf).await
-			});
+
+			let handle = tokio::spawn(async move { poll_delegations(beacon, constraints, pool, conf).await });
 			handles.push(handle);
 		}
 
@@ -586,33 +581,29 @@ mod tests {
 		// Test the validation steps that would occur during delegation processing
 		let (_proposer_sk, proposer_pk) = create_test_bls_keypair();
 		let (_delegate_sk, delegate_pk) = create_test_bls_keypair();
-		
+
 		// Create a delegation with proper structure
 		let slot = 12345u64;
 		let committer = "0x1234567890123456789012345678901234567890";
-		
+
 		let delegation_message = DelegationMessage {
 			proposer: proposer_pk,
-			delegate: delegate_pk.clone(),
+			delegate: delegate_pk,
 			committer: committer.to_string(),
 			slot,
 		};
-		
+
 		// Create mock signature (real signature would require proper signing)
 		let mock_signature = BlsSignature([42u8; 96]);
-		let delegation = SignedDelegation {
-			message: delegation_message,
-			signature: mock_signature,
-		};
-		
+		let delegation = SignedDelegation { message: delegation_message, signature: mock_signature };
+
 		// Test the filtering logic that would be used in polling
 		let our_delegate_key = delegate_pk.0;
 		let delegation_delegate_key = delegation.message.delegate.0;
-		
+
 		// This delegation should match our delegate key
-		assert_eq!(delegation_delegate_key, our_delegate_key, 
-			"Delegation should match our delegate key");
-		
+		assert_eq!(delegation_delegate_key, our_delegate_key, "Delegation should match our delegate key");
+
 		// Verify delegation structure is complete
 		assert_eq!(delegation.message.slot, slot);
 		assert_eq!(delegation.message.committer, committer);
@@ -628,15 +619,16 @@ mod tests {
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 
 		let start_time = std::time::Instant::now();
-		
+
 		// Run a polling cycle
 		let result = timeout(
 			Duration::from_secs(10),
-			poll_delegations(beacon_client, constraints_client, db_pool, Arc::new(config))
-		).await;
-		
+			poll_delegations(beacon_client, constraints_client, db_pool, Arc::new(config)),
+		)
+		.await;
+
 		let elapsed = start_time.elapsed();
-		
+
 		assert!(result.is_ok(), "Polling should complete within timeout");
 		assert!(elapsed < Duration::from_secs(10), "Polling should complete reasonably quickly");
 	}
@@ -644,21 +636,21 @@ mod tests {
 	#[test]
 	fn test_delegation_config_edge_cases() {
 		let mut config = create_mock_config();
-		
+
 		// Test with zero lookahead
 		config.delegation.lookahead_epochs = 0;
 		let lookahead_slots = config.delegation.lookahead_epochs * crate::types::beacon::timing::SLOTS_PER_EPOCH;
 		assert_eq!(lookahead_slots, 0, "Zero lookahead should result in zero slots");
-		
+
 		// Test with very high lookahead
 		config.delegation.lookahead_epochs = 100;
 		let lookahead_slots = config.delegation.lookahead_epochs * crate::types::beacon::timing::SLOTS_PER_EPOCH;
 		assert_eq!(lookahead_slots, 3200, "High lookahead should calculate correctly");
-		
+
 		// Test with very short polling interval
 		config.delegation.polling_interval_secs = 1;
 		assert_eq!(config.delegation.polling_interval_secs, 1);
-		
+
 		// Test with very short cache TTL
 		config.delegation.cache_ttl_secs = 1;
 		assert_eq!(config.delegation.cache_ttl_secs, 1);
@@ -668,11 +660,11 @@ mod tests {
 	fn test_bls_key_conversion() {
 		// Test BLS key type conversions used in the polling logic
 		let (_, pk) = create_test_bls_keypair();
-		
+
 		// Test conversion to blst::min_pk::PublicKey
 		let blst_pk = blst::min_pk::PublicKey::from_bytes(&pk.0).expect("Valid BLS public key");
 		let converted_bytes = blst_pk.to_bytes();
-		
+
 		assert_eq!(converted_bytes, pk.0, "Key conversion should preserve bytes");
 		assert_eq!(converted_bytes.len(), 48, "BLS public key should be 48 bytes");
 	}
