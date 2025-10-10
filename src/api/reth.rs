@@ -33,16 +33,6 @@ impl GasPriceInfo {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// use ethers_core::types::U256;
-	///
-	/// let info = crate::api::reth::GasPriceInfo { gas_price: U256::from(20u64), block_number: 0, timestamp: 0 };
-	/// assert_eq!(info.gas_price_as_u64_clamped(), 20u64);
-	///
-	/// let big_price = U256::from(u128::MAX);
-	/// let big_info = crate::api::reth::GasPriceInfo { gas_price: big_price, block_number: 0, timestamp: 0 };
-	/// assert_eq!(big_info.gas_price_as_u64_clamped(), u64::MAX);
-	/// ```ignore
 	pub fn gas_price_as_u64_clamped(&self) -> u64 {
 		if self.gas_price > U256::from(u64::MAX) { u64::MAX } else { self.gas_price.as_u64() }
 	}
@@ -54,12 +44,6 @@ impl GasPriceInfo {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// use ethers_core::types::U256;
-	///
-	/// let info = crate::api::reth::GasPriceInfo { gas_price: U256::from(20u64), block_number: 0, timestamp: 0 };
-	/// assert_eq!(info.gas_price_as_u64_checked().unwrap(), 20u64);
-	/// ```ignore
 	pub fn gas_price_as_u64_checked(&self) -> Result<u64> {
 		if self.gas_price > U256::from(u64::MAX) {
 			Err(anyhow::anyhow!("Gas price {} exceeds u64::MAX ({})", self.gas_price, u64::MAX))
@@ -81,20 +65,6 @@ mod u256_serde {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// use ethers_core::types::U256;
-	/// use serde::Serialize;
-	///
-	/// #[derive(Serialize)]
-	/// struct Example {
-	///     #[serde(with = "crate::api::reth::u256_serde")]
-	///     value: U256,
-	/// }
-	///
-	/// let example = Example { value: U256::from(0x1a_u64) };
-	/// let json = serde_json::to_string(&example).unwrap();
-	/// assert_eq!(json, r#"{"value":"0x1a"}"#);
-	/// ```ignore
 	pub fn serialize<S>(value: &U256, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -109,19 +79,6 @@ mod u256_serde {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// use ethers_core::types::U256;
-	/// use serde::Deserialize;
-	///
-	/// #[derive(Deserialize)]
-	/// struct Example {
-	///     #[serde(with = "crate::api::reth::u256_serde")]
-	///     value: U256,
-	/// }
-	///
-	/// let example: Example = serde_json::from_str(r#"{"value":"0x1dcd6500"}"#).unwrap();
-	/// assert_eq!(example.value, U256::from(0x1dcd6500u64));
-	/// ```ignore
 	pub fn deserialize<'de, D>(deserializer: D) -> Result<U256, D::Error>
 	where
 		D: Deserializer<'de>,
@@ -148,12 +105,6 @@ impl Default for RethApiConfig {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let cfg = crate::api::reth::RethApiConfig::default();
-	/// assert_eq!(cfg.endpoint, "http://localhost:8545");
-	/// assert_eq!(cfg.request_timeout_secs, 10);
-	/// assert_eq!(cfg.max_retries, 3);
-	/// ```ignore
 	fn default() -> Self {
 		Self { endpoint: "http://localhost:8545".to_string(), request_timeout_secs: 10, max_retries: 3 }
 	}
@@ -168,14 +119,6 @@ impl RethApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let cfg = RethApiConfig {
-	///     endpoint: "http://localhost:8545".to_string(),
-	///     request_timeout_secs: 5,
-	///     max_retries: 3,
-	/// };
-	/// let client = RethApiClient::new(cfg).expect("failed to create RethApiClient");
-	/// ```ignore
 	pub fn new(config: RethApiConfig) -> Result<Self> {
 		let client = Client::builder()
 			.timeout(Duration::from_secs(config.request_timeout_secs))
@@ -198,17 +141,6 @@ impl RethApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # use std::time::Duration;
-	/// # use tokio::runtime::Runtime;
-	/// # use crate::api::reth::{RethApiClient, RethApiConfig};
-	/// let rt = Runtime::new().unwrap();
-	/// let config = RethApiConfig { endpoint: "http://localhost:8545".into(), request_timeout_secs: 10, max_retries: 3 };
-	/// let client = RethApiClient::new(config).unwrap();
-	/// let info = rt.block_on(async { client.get_gas_price().await.unwrap() });
-	/// // gas_price is a U256, block_number is a u64, timestamp is seconds since epoch
-	/// assert!(info.timestamp > 0);
-	/// ```ignore
 	pub async fn get_gas_price(&self) -> Result<GasPriceInfo> {
 		debug!("Fetching gas price from Reth node: {}", self.endpoint);
 
@@ -253,13 +185,6 @@ impl RethApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # async fn example(client: &crate::RethApiClient) -> anyhow::Result<()> {
-	/// let block = client.get_block_number().await?;
-	/// println!("block: {}", block);
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub async fn get_block_number(&self) -> Result<u64> {
 		let payload = json!({
 			"jsonrpc": "2.0",
@@ -296,20 +221,6 @@ impl RethApiClient {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// use serde_json::json;
-	///
-	/// // `client` is an existing `RethApiClient` instance.
-	/// let payload = json!({
-	///     "jsonrpc": "2.0",
-	///     "method": "web3_clientVersion",
-	///     "params": [],
-	///     "id": 1
-	/// });
-	///
-	/// // Inside an async context:
-	/// // let resp = client.make_rpc_call(payload).await?;
-	/// ```ignore
 	async fn make_rpc_call(&self, payload: Value) -> Result<Value> {
 		let mut attempts = 0;
 		let max_retries = self.max_retries;

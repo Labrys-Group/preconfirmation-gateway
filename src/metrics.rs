@@ -46,11 +46,6 @@ impl MetricsRegistry {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let registry = MetricsRegistry::new().unwrap();
-	/// let encoded = registry.render_metrics().unwrap();
-	/// assert!(encoded.contains("gateway_commitments_total"));
-	/// ```ignore
 	pub fn new() -> Result<Self> {
 		let registry = Registry::new();
 
@@ -136,10 +131,6 @@ impl MetricsRegistry {
 	///
 	/// # Examples
 	///
-	/// ```ignoreignore
-	/// // Within an async context:
-	/// // metrics.update_metrics(&database_context, &fee_pricing_engine).await?;
-	/// ```ignore
 	pub async fn update_metrics(&self, database: &DatabaseContext, fee_engine: &FeePricingEngine) -> Result<()> {
 		// Update commitment stats
 		if let Ok(commitment_stats) = database.get_stats().await {
@@ -188,12 +179,6 @@ impl MetricsRegistry {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// let reg = MetricsRegistry::new().unwrap();
-	/// // (populate metrics here)
-	/// let text = reg.render_metrics().unwrap();
-	/// assert!(text.contains("# HELP") || text.contains("commitments_total"));
-	/// ```ignore
 	pub fn render_metrics(&self) -> Result<String> {
 		let encoder = TextEncoder::new();
 		let metric_families = self.registry.gather();
@@ -215,14 +200,6 @@ impl MetricsRegistry {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # use anyhow::Result;
-	/// # async fn try_main() -> Result<()> {
-	/// let metrics = MetricsRegistry::new()?;
-	/// metrics.update_commitment_stats(42, 7);
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub fn update_commitment_stats(&self, total: i64, type_1: i64) {
 		self.commitments_total.with_label_values(&["all"]).set(total);
 		self.commitments_by_type.with_label_values(&["inclusion"]).set(type_1);
@@ -239,10 +216,6 @@ impl MetricsRegistry {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// // assume `metrics` is a `MetricsRegistry` instance
-	/// metrics.update_delegation_stats(42, 10, 7, 5, 3);
-	/// ```ignore
 	pub fn update_delegation_stats(&self, total: i64, active: i64, proposers: i64, delegates: i64, slots: i64) {
 		self.delegations_total.with_label_values(&["all"]).set(total);
 		self.delegations_active.with_label_values(&["current"]).set(active);
@@ -264,10 +237,6 @@ impl MetricsRegistry {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # // Assuming `metrics` is an initialized `MetricsRegistry`
-	/// metrics.update_congestion_stats(0.32, 0.75, 1.12);
-	/// ```ignore
 	pub fn update_congestion_stats(&self, avg_congestion: f64, highest: f64, avg_multiplier: f64) {
 		self.average_congestion.with_label_values(&["24h"]).set(avg_congestion);
 		self.highest_congestion.with_label_values(&["24h"]).set(highest);
@@ -281,15 +250,6 @@ impl MetricsRegistry {
 	///
 	/// # Examples
 	///
-	/// ```ignore
-	/// # use anyhow::Result;
-	/// # async fn doc() -> Result<()> {
-	/// let registry = MetricsRegistry::new()?;
-	/// registry.update_pricing_stats(42, Some(100));
-	/// registry.update_pricing_stats(43, None);
-	/// # Ok(())
-	/// # }
-	/// ```ignore
 	pub fn update_pricing_stats(&self, slot: u64, gas_price: Option<u64>) {
 		self.current_slot.with_label_values(&["beacon"]).set(slot as i64);
 		if let Some(price) = gas_price {

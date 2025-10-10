@@ -11,12 +11,6 @@ use super::handlers;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// // Construct an appropriate RpcContext for your environment.
-/// let ctx = /* RpcContext::new(...) */ unimplemented!();
-/// let module = setup_rpc_methods(ctx).expect("failed to register RPC methods");
-/// // `module` is ready to be served by a jsonrpsee server.
-/// ```ignore
 pub fn setup_rpc_methods(rpc_context: RpcContext) -> anyhow::Result<RpcModule<RpcContext>> {
 	let mut module = RpcModule::new(rpc_context);
 
@@ -26,4 +20,35 @@ pub fn setup_rpc_methods(rpc_context: RpcContext) -> anyhow::Result<RpcModule<Rp
 	module.register_async_method("fee", handlers::fee_handler)?;
 
 	Ok(module)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::config::Config;
+	use crate::testing::helpers::TestHelpers;
+	use std::sync::Arc;
+
+	#[tokio::test]
+	async fn test_setup_rpc_methods() {
+		// Create a test RPC context
+		let config = Arc::new(Config::default());
+		let rpc_context = TestHelpers::create_test_rpc_context(config);
+
+		// Test that we can create the RPC module without errors
+		let module = setup_rpc_methods((*rpc_context).clone());
+		assert!(module.is_ok(), "Should be able to set up RPC methods");
+
+		let module = module.unwrap();
+
+		// Verify that the module has the expected methods registered
+		let method_names = module.method_names().collect::<Vec<_>>();
+		assert_eq!(method_names.len(), 4, "Should register exactly 4 methods");
+
+		// Verify specific method names are registered
+		assert!(method_names.contains(&"commitmentRequest"), "Should register commitmentRequest method");
+		assert!(method_names.contains(&"commitmentResult"), "Should register commitmentResult method");
+		assert!(method_names.contains(&"slots"), "Should register slots method");
+		assert!(method_names.contains(&"fee"), "Should register fee method");
+	}
 }
