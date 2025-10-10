@@ -24,7 +24,15 @@ impl BeaconApiClient {
 	/// Creates a new BeaconApiClient configured with the provided BeaconApiConfig.
 	///
 	/// The created client uses the config's `request_timeout_secs` to set the HTTP client timeout.
-	/// Returns an error if the underlying HTTP client cannot be constructed.
+	/// Returns an error if the underlying HTTP client cannot be constructed or if the configuration
+	/// is invalid (e.g., empty primary endpoint or zero timeout).
+	///
+	/// # Errors
+	///
+	/// Returns an error if:
+	/// - The primary endpoint is empty
+	/// - The request timeout is zero (would cause immediate timeouts)
+	/// - The underlying HTTP client cannot be constructed
 	///
 	/// # Examples
 	///
@@ -35,6 +43,15 @@ impl BeaconApiClient {
 	/// // let client = BeaconApiClient::new(config)?;
 	/// ```ignore
 	pub fn new(config: BeaconApiConfig) -> Result<Self> {
+		// Validate configuration
+		if config.primary_endpoint.trim().is_empty() {
+			anyhow::bail!("Primary endpoint cannot be empty");
+		}
+		
+		if config.request_timeout_secs == 0 {
+			anyhow::bail!("Request timeout must be greater than zero");
+		}
+
 		let client = Client::builder()
 			.timeout(Duration::from_secs(config.request_timeout_secs))
 			.build()
@@ -419,18 +436,48 @@ mod tests {
 
 	#[test]
 	fn test_config_validation() {
-		// Test various config combinations
+		// Test that invalid configurations are properly rejected
 		let mut config = create_test_config();
 		
 		// Test with empty primary endpoint
 		config.primary_endpoint = "".to_string();
 		let client = BeaconApiClient::new(config.clone());
-		assert!(client.is_ok(), "Should handle empty primary endpoint");
+		assert!(client.is_err(), "Should reject empty primary endpoint");
+		let error_msg = format!("{}", client.unwrap_err());
+		assert!(error_msg.contains("Primary endpoint cannot be empty"), 
+			"Error should mention empty endpoint");
+
+		// Test with whitespace-only primary endpoint
+		config.primary_endpoint = "   ".to_string();
+		let client = BeaconApiClient::new(config.clone());
+		assert!(client.is_err(), "Should reject whitespace-only primary endpoint");
 
 		// Test with zero timeout
+		config.primary_endpoint = "https://valid-endpoint.com".to_string();
 		config.request_timeout_secs = 0;
 		let client = BeaconApiClient::new(config);
-		assert!(client.is_ok(), "Should handle zero timeout");
+		assert!(client.is_err(), "Should reject zero timeout");
+		let error_msg = format!("{}", client.unwrap_err());
+		assert!(error_msg.contains("Request timeout must be greater than zero"), 
+			"Error should mention zero timeout");
+	}
+
+	#[test]
+	fn test_client_creation_with_minimal_valid_config() {
+		// Test that minimal valid configurations work
+		let config = BeaconApiConfig {
+			primary_endpoint: "https://minimal.example.com".to_string(),
+			fallback_endpoints: vec![], // Empty fallbacks should be fine
+			request_timeout_secs: 1, // Minimal valid timeout
+			genesis_time: 0, // Any genesis time should be fine
+		};
+
+		let client = BeaconApiClient::new(config);
+		assert!(client.is_ok(), "Should accept minimal valid configuration");
+		
+		let client = client.unwrap();
+		assert_eq!(client.config.request_timeout_secs, 1);
+		assert!(client.config.fallback_endpoints.is_empty());
 	}
 
 	#[test]
