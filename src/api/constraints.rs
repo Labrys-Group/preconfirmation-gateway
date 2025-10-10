@@ -48,10 +48,16 @@ impl ConstraintsApiClient {
 	/// Creates a new ConstraintsApiClient configured from `config`.
 	///
 	/// The created client uses the request timeout specified by `config.request_timeout_secs`.
+	/// Returns an error if the underlying HTTP client cannot be constructed or if the configuration
+	/// is invalid (e.g., empty relay endpoint, zero timeout, or excessive retry count).
 	///
 	/// # Errors
 	///
-	/// Returns an error if the underlying HTTP client cannot be constructed.
+	/// Returns an error if:
+	/// - The relay endpoint is empty
+	/// - The request timeout is zero (would cause immediate timeouts)
+	/// - The max_retries is unreasonably high (> 10)
+	/// - The underlying HTTP client cannot be constructed
 	///
 	/// # Examples
 	///
@@ -65,6 +71,19 @@ impl ConstraintsApiClient {
 	/// let client = ConstraintsApiClient::new(cfg).expect("client creation failed");
 	/// ```ignore
 	pub fn new(config: ConstraintsApiConfig) -> Result<Self> {
+		// Validate configuration
+		if config.relay_endpoint.trim().is_empty() {
+			anyhow::bail!("Relay endpoint cannot be empty");
+		}
+		
+		if config.request_timeout_secs == 0 {
+			anyhow::bail!("Request timeout must be greater than zero");
+		}
+		
+		if config.max_retries > 10 {
+			anyhow::bail!("Max retries cannot exceed 10 (got {})", config.max_retries);
+		}
+
 		let client = Client::builder()
 			.timeout(Duration::from_secs(config.request_timeout_secs))
 			.build()
@@ -566,23 +585,77 @@ mod tests {
 
 	#[test]
 	fn test_config_validation() {
-		// Test various config combinations
+		// Test that invalid configurations are properly rejected
 		let mut config = create_test_config();
 		
 		// Test with empty relay endpoint
 		config.relay_endpoint = "".to_string();
 		let client = ConstraintsApiClient::new(config.clone());
-		assert!(client.is_ok(), "Should handle empty relay endpoint");
+		assert!(client.is_err(), "Should reject empty relay endpoint");
+		let error_msg = format!("{}", client.unwrap_err());
+		assert!(error_msg.contains("Relay endpoint cannot be empty"), 
+			"Error should mention empty endpoint");
+
+		// Test with whitespace-only relay endpoint
+		config.relay_endpoint = "   ".to_string();
+		let client = ConstraintsApiClient::new(config.clone());
+		assert!(client.is_err(), "Should reject whitespace-only relay endpoint");
 
 		// Test with zero timeout
+		config.relay_endpoint = "https://valid-endpoint.com".to_string();
 		config.request_timeout_secs = 0;
 		let client = ConstraintsApiClient::new(config.clone());
-		assert!(client.is_ok(), "Should handle zero timeout");
+		assert!(client.is_err(), "Should reject zero timeout");
+		let error_msg = format!("{}", client.unwrap_err());
+		assert!(error_msg.contains("Request timeout must be greater than zero"), 
+			"Error should mention zero timeout");
 
-		// Test with very high retry count
+		// Test with excessive retry count
+		config.request_timeout_secs = 10;
 		config.max_retries = 100;
 		let client = ConstraintsApiClient::new(config);
-		assert!(client.is_ok(), "Should handle high retry count");
+		assert!(client.is_err(), "Should reject excessive retry count");
+		let error_msg = format!("{}", client.unwrap_err());
+		assert!(error_msg.contains("Max retries cannot exceed 10"), 
+			"Error should mention excessive retries");
+	}
+
+	#[test]
+	fn test_client_creation_with_minimal_valid_config() {
+		// Test that minimal valid configurations work
+		let config = ConstraintsApiConfig {
+			relay_endpoint: "https://minimal.example.com".to_string(),
+			request_timeout_secs: 1, // Minimal valid timeout
+			max_retries: 0, // Zero retries should be fine (no retries)
+			authorized_builders: vec![], // Empty builders should be fine
+		};
+
+		let client = ConstraintsApiClient::new(config);
+		assert!(client.is_ok(), "Should accept minimal valid configuration");
+		
+		let client = client.unwrap();
+		assert_eq!(client.config.request_timeout_secs, 1);
+		assert_eq!(client.config.max_retries, 0);
+		assert!(client.config.authorized_builders.is_empty());
+	}
+
+	#[test]
+	fn test_client_creation_with_maximum_valid_config() {
+		// Test that maximum valid configurations work
+		let config = ConstraintsApiConfig {
+			relay_endpoint: "https://maximal.example.com".to_string(),
+			request_timeout_secs: 300, // 5 minutes should be fine
+			max_retries: 10, // Maximum allowed retries
+			authorized_builders: vec!["0x1111".to_string(), "0x2222".to_string()],
+		};
+
+		let client = ConstraintsApiClient::new(config);
+		assert!(client.is_ok(), "Should accept maximum valid configuration");
+		
+		let client = client.unwrap();
+		assert_eq!(client.config.request_timeout_secs, 300);
+		assert_eq!(client.config.max_retries, 10);
+		assert_eq!(client.config.authorized_builders.len(), 2);
 	}
 
 	#[test]
