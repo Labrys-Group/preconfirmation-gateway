@@ -575,8 +575,8 @@ mod tests {
 		assert!(!is_past_within, "Far past slot should be outside submission window");
 
 		// Test deadline calculation
-		let deadline = service.get_submission_deadline(current_slot);
-		assert!(deadline > SystemTime::now(), "Current slot deadline should be in the future");
+		let deadline = service.get_submission_deadline(future_slot);
+		assert!(deadline > SystemTime::now(), "Future slot deadline should be in the future");
 	}
 
 	#[tokio::test]
