@@ -48,14 +48,33 @@ impl ConstraintsApiClient {
 	/// Creates a new ConstraintsApiClient configured from `config`.
 	///
 	/// The created client uses the request timeout specified by `config.request_timeout_secs`.
+	/// Returns an error if the underlying HTTP client cannot be constructed or if the configuration
+	/// is invalid (e.g., empty relay endpoint, zero timeout, or excessive retry count).
 	///
 	/// # Errors
 	///
-	/// Returns an error if the underlying HTTP client cannot be constructed.
+	/// Returns an error if:
+	/// - The relay endpoint is empty
+	/// - The request timeout is zero (would cause immediate timeouts)
+	/// - The max_retries is unreasonably high (> 10)
+	/// - The underlying HTTP client cannot be constructed
 	///
 	/// # Examples
 	///
 	pub fn new(config: ConstraintsApiConfig) -> Result<Self> {
+		// Validate configuration
+		if config.relay_endpoint.trim().is_empty() {
+			anyhow::bail!("Relay endpoint cannot be empty");
+		}
+		
+		if config.request_timeout_secs == 0 {
+			anyhow::bail!("Request timeout must be greater than zero");
+		}
+		
+		if config.max_retries > 10 {
+			anyhow::bail!("Max retries cannot exceed 10 (got {})", config.max_retries);
+		}
+
 		let client = Client::builder()
 			.timeout(Duration::from_secs(config.request_timeout_secs))
 			.build()
@@ -255,6 +274,10 @@ impl ConstraintsApiClient {
 mod tests {
 	use super::*;
 	use crate::config::ConstraintsApiConfig;
+	use crate::types::delegation::{BlsSignature, ConstraintsMessage, SignedConstraints, Constraint};
+	use crate::testing::mocks::create_test_bls_keypair;
+	use std::time::Duration;
+	use tokio::time::timeout;
 
 	/// Creates a sample `ConstraintsApiConfig` pre-filled with deterministic test values.
 	///
@@ -272,11 +295,76 @@ mod tests {
 		}
 	}
 
+	fn create_test_config_with_short_timeout() -> ConstraintsApiConfig {
+		ConstraintsApiConfig {
+			relay_endpoint: "https://invalid-endpoint.test".to_string(),
+			request_timeout_secs: 1,
+			max_retries: 1,
+			authorized_builders: vec![],
+		}
+	}
+
+	fn create_test_config_no_retries() -> ConstraintsApiConfig {
+		ConstraintsApiConfig {
+			relay_endpoint: "https://invalid-endpoint.test".to_string(),
+			request_timeout_secs: 1,
+			max_retries: 0,
+			authorized_builders: vec![],
+		}
+	}
+
+	fn create_test_signed_constraints() -> SignedConstraints {
+		let (_proposer_sk, proposer_pk) = create_test_bls_keypair();
+		let (_delegate_sk, delegate_pk) = create_test_bls_keypair();
+		let slot = 12345u64;
+
+		// Create a simple constraint
+		let constraint = Constraint::from_inclusion_commitment(vec![1, 2, 3, 4]);
+
+		let constraints_message = ConstraintsMessage::new(
+			proposer_pk,
+			delegate_pk,
+			slot,
+			vec![constraint],
+			vec![],
+		);
+
+		SignedConstraints {
+			message: constraints_message,
+			signature: BlsSignature([42u8; 96]), // Mock signature
+		}
+	}
+
 	#[test]
 	fn test_client_creation() {
 		let config = create_test_config();
 		let client = ConstraintsApiClient::new(config);
-		assert!(client.is_ok());
+		assert!(client.is_ok(), "Should be able to create constraints API client");
+
+		let client = client.unwrap();
+		assert_eq!(client.config.request_timeout_secs, 10);
+		assert_eq!(client.config.max_retries, 3);
+	}
+
+	#[test]
+	fn test_client_creation_with_short_timeout() {
+		let config = create_test_config_with_short_timeout();
+		let client = ConstraintsApiClient::new(config);
+		assert!(client.is_ok(), "Should create client even with short timeout");
+
+		let client = client.unwrap();
+		assert_eq!(client.config.request_timeout_secs, 1);
+		assert_eq!(client.config.max_retries, 1);
+	}
+
+	#[test]
+	fn test_client_creation_no_retries() {
+		let config = create_test_config_no_retries();
+		let client = ConstraintsApiClient::new(config);
+		assert!(client.is_ok(), "Should create client even with no retries");
+
+		let client = client.unwrap();
+		assert_eq!(client.config.max_retries, 0);
 	}
 
 	#[test]
@@ -296,6 +384,358 @@ mod tests {
 		assert_eq!(url_with_slash, "https://relay.example.com/test/endpoint");
 	}
 
+	#[test]
+	fn test_url_building_edge_cases() {
+		let config = ConstraintsApiConfig {
+			relay_endpoint: "https://example.com".to_string(),
+			request_timeout_secs: 1,
+			max_retries: 1,
+			authorized_builders: vec![],
+		};
+		let client = ConstraintsApiClient::new(config).unwrap();
+
+		// Test with empty endpoint
+		let url = client.build_url("");
+		assert_eq!(url, "https://example.com/");
+
+		// Test with leading slash
+		let url2 = client.build_url("/leading/slash");
+		assert_eq!(url2, "https://example.com//leading/slash");
+
+		// Test with multiple slashes
+		let url3 = client.build_url("multiple//slashes");
+		assert_eq!(url3, "https://example.com/multiple//slashes");
+	}
+
+	#[tokio::test]
+	async fn test_get_delegations_for_slot_timeout() {
+		let config = create_test_config_with_short_timeout();
+		let client = ConstraintsApiClient::new(config).unwrap();
+
+		// This should fail due to invalid endpoint
+		let result = timeout(Duration::from_secs(5), client.get_delegations_for_slot(12345)).await;
+		
+		assert!(result.is_ok(), "Request should complete within timeout");
+		let delegations_result = result.unwrap();
+		assert!(delegations_result.is_err(), "Should fail with invalid endpoint");
+	}
+
+	#[tokio::test]
+	async fn test_get_delegations_error_handling() {
+		let config = create_test_config_with_short_timeout();
+		let client = ConstraintsApiClient::new(config).unwrap();
+
+		// Test with various slots
+		for slot in [0, 12345, u64::MAX] {
+			let result = client.get_delegations_for_slot(slot).await;
+			assert!(result.is_err(), "Should fail due to invalid endpoint for slot {}", slot);
+			
+			// Verify error contains meaningful information
+			let error = result.unwrap_err();
+			let error_string = format!("{}", error);
+			assert!(!error_string.is_empty(), "Error message should not be empty");
+		}
+	}
+
+	#[tokio::test]
+	async fn test_submit_constraints_timeout() {
+		let config = create_test_config_with_short_timeout();
+		let client = ConstraintsApiClient::new(config).unwrap();
+		let constraints = create_test_signed_constraints();
+
+		// This should fail due to invalid endpoint
+		let result = timeout(Duration::from_secs(10), client.submit_constraints(&constraints)).await;
+		
+		assert!(result.is_ok(), "Request should complete within timeout");
+		let submission_result = result.unwrap();
+		assert!(submission_result.is_err(), "Should fail with invalid endpoint");
+	}
+
+	#[tokio::test]
+	async fn test_submit_constraints_no_retries() {
+		let config = create_test_config_no_retries();
+		let client = ConstraintsApiClient::new(config).unwrap();
+		let constraints = create_test_signed_constraints();
+
+		// Should fail immediately without retries
+		let result = client.submit_constraints(&constraints).await;
+		assert!(result.is_err(), "Should fail without retries");
+	}
+
+	#[tokio::test]
+	async fn test_submit_constraints_error_handling() {
+		let config = create_test_config_with_short_timeout();
+		let client = ConstraintsApiClient::new(config).unwrap();
+		let constraints = create_test_signed_constraints();
+
+		// Test that submission fails gracefully with meaningful error
+		let result = client.submit_constraints(&constraints).await;
+		assert!(result.is_err(), "Should fail due to invalid endpoint");
+		
+		let error = result.unwrap_err();
+		let error_string = format!("{}", error);
+		assert!(!error_string.is_empty(), "Error message should not be empty");
+		assert!(error_string.contains("Failed to submit constraints") || error_string.contains("error"), 
+			"Error should mention submission failure or contain error details");
+	}
+
+	#[tokio::test]
+	async fn test_concurrent_delegations_requests() {
+		let config = create_test_config_with_short_timeout();
+		let client = ConstraintsApiClient::new(config).unwrap();
+
+		// Test multiple concurrent delegation requests
+		let mut handles = Vec::new();
+		
+		for i in 0..5 {
+			let client_clone = client.clone();
+			let handle = tokio::spawn(async move {
+				client_clone.get_delegations_for_slot(i + 100).await
+			});
+			handles.push(handle);
+		}
+
+		// Wait for all requests to complete
+		for handle in handles {
+			let result = handle.await.unwrap();
+			// All should fail due to invalid endpoints, but shouldn't panic
+			assert!(result.is_err(), "Concurrent delegation requests should handle errors gracefully");
+		}
+	}
+
+	#[tokio::test]
+	async fn test_concurrent_constraint_submissions() {
+		let config = create_test_config_with_short_timeout();
+		let client = ConstraintsApiClient::new(config).unwrap();
+
+		// Test multiple concurrent constraint submissions
+		let mut handles = Vec::new();
+		
+		for _i in 0..3 { // Fewer constraints as they're more expensive to create
+			let client_clone = client.clone();
+			let constraints = create_test_signed_constraints();
+			let handle = tokio::spawn(async move {
+				client_clone.submit_constraints(&constraints).await
+			});
+			handles.push(handle);
+		}
+
+		// Wait for all requests to complete
+		for handle in handles {
+			let result = handle.await.unwrap();
+			// All should fail due to invalid endpoints, but shouldn't panic
+			assert!(result.is_err(), "Concurrent constraint submissions should handle errors gracefully");
+		}
+	}
+
+	#[test]
+	fn test_client_clone() {
+		let config = create_test_config();
+		let client = ConstraintsApiClient::new(config).unwrap();
+		
+		// Test that client can be cloned
+		let cloned_client = client.clone();
+		
+		// Verify the clone has the same configuration
+		assert_eq!(client.config.relay_endpoint, cloned_client.config.relay_endpoint);
+		assert_eq!(client.config.request_timeout_secs, cloned_client.config.request_timeout_secs);
+		assert_eq!(client.config.max_retries, cloned_client.config.max_retries);
+	}
+
+	#[test]
+	fn test_config_validation() {
+		// Test that invalid configurations are properly rejected
+		let mut config = create_test_config();
+		
+		// Test with empty relay endpoint
+		config.relay_endpoint = "".to_string();
+		let client = ConstraintsApiClient::new(config.clone());
+		assert!(client.is_err(), "Should reject empty relay endpoint");
+		let error_msg = format!("{}", client.unwrap_err());
+		assert!(error_msg.contains("Relay endpoint cannot be empty"), 
+			"Error should mention empty endpoint");
+
+		// Test with whitespace-only relay endpoint
+		config.relay_endpoint = "   ".to_string();
+		let client = ConstraintsApiClient::new(config.clone());
+		assert!(client.is_err(), "Should reject whitespace-only relay endpoint");
+
+		// Test with zero timeout
+		config.relay_endpoint = "https://valid-endpoint.com".to_string();
+		config.request_timeout_secs = 0;
+		let client = ConstraintsApiClient::new(config.clone());
+		assert!(client.is_err(), "Should reject zero timeout");
+		let error_msg = format!("{}", client.unwrap_err());
+		assert!(error_msg.contains("Request timeout must be greater than zero"), 
+			"Error should mention zero timeout");
+
+		// Test with excessive retry count
+		config.request_timeout_secs = 10;
+		config.max_retries = 100;
+		let client = ConstraintsApiClient::new(config);
+		assert!(client.is_err(), "Should reject excessive retry count");
+		let error_msg = format!("{}", client.unwrap_err());
+		assert!(error_msg.contains("Max retries cannot exceed 10"), 
+			"Error should mention excessive retries");
+	}
+
+	#[test]
+	fn test_client_creation_with_minimal_valid_config() {
+		// Test that minimal valid configurations work
+		let config = ConstraintsApiConfig {
+			relay_endpoint: "https://minimal.example.com".to_string(),
+			request_timeout_secs: 1, // Minimal valid timeout
+			max_retries: 0, // Zero retries should be fine (no retries)
+			authorized_builders: vec![], // Empty builders should be fine
+		};
+
+		let client = ConstraintsApiClient::new(config);
+		assert!(client.is_ok(), "Should accept minimal valid configuration");
+		
+		let client = client.unwrap();
+		assert_eq!(client.config.request_timeout_secs, 1);
+		assert_eq!(client.config.max_retries, 0);
+		assert!(client.config.authorized_builders.is_empty());
+	}
+
+	#[test]
+	fn test_client_creation_with_maximum_valid_config() {
+		// Test that maximum valid configurations work
+		let config = ConstraintsApiConfig {
+			relay_endpoint: "https://maximal.example.com".to_string(),
+			request_timeout_secs: 300, // 5 minutes should be fine
+			max_retries: 10, // Maximum allowed retries
+			authorized_builders: vec!["0x1111".to_string(), "0x2222".to_string()],
+		};
+
+		let client = ConstraintsApiClient::new(config);
+		assert!(client.is_ok(), "Should accept maximum valid configuration");
+		
+		let client = client.unwrap();
+		assert_eq!(client.config.request_timeout_secs, 300);
+		assert_eq!(client.config.max_retries, 10);
+		assert_eq!(client.config.authorized_builders.len(), 2);
+	}
+
+	#[test]
+	fn test_authorized_builders_config() {
+		let config = ConstraintsApiConfig {
+			relay_endpoint: "https://example.com".to_string(),
+			request_timeout_secs: 10,
+			max_retries: 3,
+			authorized_builders: vec![
+				"0x1111".to_string(),
+				"0x2222".to_string(),
+				"0x3333".to_string(),
+			],
+		};
+
+		let client = ConstraintsApiClient::new(config).unwrap();
+		
+		// Verify authorized builders are preserved
+		assert_eq!(client.config.authorized_builders.len(), 3);
+		assert!(client.config.authorized_builders.contains(&"0x1111".to_string()));
+		assert!(client.config.authorized_builders.contains(&"0x2222".to_string()));
+		assert!(client.config.authorized_builders.contains(&"0x3333".to_string()));
+	}
+
+	#[test]
+	fn test_constraints_serialization() {
+		let constraints = create_test_signed_constraints();
+		
+		// Test that constraints can be serialized to JSON for submission
+		let json_result = serde_json::to_value(&constraints);
+		assert!(json_result.is_ok(), "Should be able to serialize constraints to JSON");
+		
+		let json_value = json_result.unwrap();
+		assert!(json_value.is_object(), "Should serialize to JSON object");
+		
+		// Verify key fields are present
+		assert!(json_value.get("message").is_some(), "Should have message field");
+		assert!(json_value.get("signature").is_some(), "Should have signature field");
+	}
+
+	#[test]
+	fn test_delegation_response_deserialization() {
+		// Test that we can deserialize various delegation response formats
+		let json_empty = r#"{"delegations": []}"#;
+		let result: Result<DelegationsResponse, _> = serde_json::from_str(json_empty);
+		assert!(result.is_ok(), "Should deserialize empty delegations response");
+		
+		let response = result.unwrap();
+		assert_eq!(response.delegations.len(), 0);
+	}
+
+	#[test]
+	fn test_constraint_submission_response_deserialization() {
+		// Test successful response
+		let json_success = r#"{"success": true, "submission_id": "test123"}"#;
+		let result: Result<ConstraintSubmissionResponse, _> = serde_json::from_str(json_success);
+		assert!(result.is_ok(), "Should deserialize successful response");
+		
+		let response = result.unwrap();
+		assert!(response.success);
+		assert_eq!(response.submission_id, Some("test123".to_string()));
+
+		// Test failure response
+		let json_failure = r#"{"success": false, "submission_id": null}"#;
+		let result: Result<ConstraintSubmissionResponse, _> = serde_json::from_str(json_failure);
+		assert!(result.is_ok(), "Should deserialize failure response");
+		
+		let response = result.unwrap();
+		assert!(!response.success);
+		assert_eq!(response.submission_id, None);
+	}
+
+	#[test]
+	fn test_api_error_deserialization() {
+		let json_error = r#"{"error": "Invalid request", "code": 400}"#;
+		let result: Result<ConstraintsApiError, _> = serde_json::from_str(json_error);
+		assert!(result.is_ok(), "Should deserialize API error");
+		
+		let error = result.unwrap();
+		assert_eq!(error.error, "Invalid request");
+		assert_eq!(error.code, Some(400));
+
+		// Test error without code
+		let json_error_no_code = r#"{"error": "Server error"}"#;
+		let result: Result<ConstraintsApiError, _> = serde_json::from_str(json_error_no_code);
+		assert!(result.is_ok(), "Should deserialize API error without code");
+		
+		let error = result.unwrap();
+		assert_eq!(error.error, "Server error");
+		assert_eq!(error.code, None);
+	}
+
 	// Integration tests would require actual relay endpoints
 	// These should be marked with #[ignore] or put behind feature flags
+
+	#[tokio::test]
+	#[ignore = "Integration test - requires real constraints API"]
+	async fn test_real_constraints_api_integration() {
+		// This test would use real constraint endpoints and should only run in integration test mode
+		let config = ConstraintsApiConfig {
+			relay_endpoint: "https://relay.example.com".to_string(),
+			request_timeout_secs: 10,
+			max_retries: 3,
+			authorized_builders: vec![],
+		};
+
+		let client = ConstraintsApiClient::new(config).unwrap();
+		
+		// Test delegation fetch
+		let result = client.get_delegations_for_slot(12345).await;
+		match result {
+			Ok(delegations) => println!("Got {} delegations", delegations.len()),
+			Err(e) => println!("Integration test failed (expected in CI): {}", e),
+		}
+
+		// Test constraint submission (would need valid signed constraints)
+		let constraints = create_test_signed_constraints();
+		let result = client.submit_constraints(&constraints).await;
+		match result {
+			Ok(response) => println!("Submission success: {}", response.success),
+			Err(e) => println!("Submission failed (expected in CI): {}", e),
+		}
+	}
 }

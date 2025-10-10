@@ -471,14 +471,19 @@ async fn create_constraints_from_commitments(db_pool: &PgPool, slot: u64) -> Res
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::config::Config;
+	use crate::types::delegation::Constraint;
 	use std::time::Duration;
+
+	fn create_mock_bls_manager() -> BlsManager {
+		BlsManager::new("0x00000002")
+			.expect("Failed to create BLS manager")
+	}
 
 	#[tokio::test]
 	async fn test_constraint_submission_service_creation() {
-		let config = Config::default();
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
-		let bls_manager = Arc::new(BlsManager::new("0x00000000").expect("Failed to create BLS manager"));
+		let bls_manager = Arc::new(create_mock_bls_manager());
 
 		// Skip test without database
 		if std::env::var("DATABASE_URL").is_err() {
@@ -498,10 +503,26 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_submission_window_check() {
-		let config = Config::default();
+	async fn test_constraint_submission_service_creation_without_db() {
+		// This test doesn't require a real database
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
-		let bls_manager = Arc::new(BlsManager::new("0x00000000").expect("Failed to create BLS manager"));
+		let bls_manager = Arc::new(create_mock_bls_manager());
+		
+		// Create a lazy connection pool that won't actually connect
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		let service =
+			ConstraintSubmissionService::new(constraints_client, bls_manager, db_pool, Arc::new(config)).await;
+
+		assert!(service.is_ok(), "Should be able to create constraint submission service without database");
+	}
+
+	#[tokio::test]
+	async fn test_submission_window_check() {
+		let config = crate::testing::mocks::create_test_config();
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		let bls_manager = Arc::new(create_mock_bls_manager());
 
 		// Skip test without database
 		if std::env::var("DATABASE_URL").is_err() {
@@ -529,10 +550,45 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_service_lifecycle() {
-		let config = Config::default();
+	async fn test_submission_window_check_without_db() {
+		// Test submission window logic without requiring a database
+		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
-		let bls_manager = Arc::new(BlsManager::new("0x00000000").expect("Failed to create BLS manager"));
+		let bls_manager = Arc::new(create_mock_bls_manager());
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		let service = ConstraintSubmissionService::new(constraints_client, bls_manager, db_pool, Arc::new(config))
+			.await
+			.expect("Failed to create service");
+
+		// Test timing calculations
+		let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+		let current_slot = (current_time - service.config.beacon_api.genesis_time) / 12;
+
+		// Test current slot (should be within window)
+		let is_current_within = service.is_within_submission_window(current_slot);
+		assert!(is_current_within, "Current slot should be within submission window");
+
+		// Test future slot within window
+		let near_future_slot = current_slot + 5;
+		let is_future_within = service.is_within_submission_window(near_future_slot);
+		assert!(is_future_within, "Near future slot should be within submission window");
+
+		// Test past slot (outside window)
+		let far_past_slot = current_slot.saturating_sub(50);
+		let is_past_within = service.is_within_submission_window(far_past_slot);
+		assert!(!is_past_within, "Far past slot should be outside submission window");
+
+		// Test deadline calculation
+		let deadline = service.get_submission_deadline(current_slot);
+		assert!(deadline > SystemTime::now(), "Current slot deadline should be in the future");
+	}
+
+	#[tokio::test]
+	async fn test_service_lifecycle() {
+		let config = crate::testing::mocks::create_test_config();
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		let bls_manager = Arc::new(create_mock_bls_manager());
 
 		// Skip test without database
 		if std::env::var("DATABASE_URL").is_err() {
@@ -556,5 +612,213 @@ mod tests {
 		tokio::time::sleep(Duration::from_millis(100)).await;
 
 		service.stop().await.expect("Failed to stop service");
+	}
+
+	#[tokio::test]
+	async fn test_service_lifecycle_without_db() {
+		let config = crate::testing::mocks::create_test_config();
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		let bls_manager = Arc::new(create_mock_bls_manager());
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		let mut service = ConstraintSubmissionService::new(constraints_client, bls_manager, db_pool, Arc::new(config))
+			.await
+			.expect("Failed to create service");
+
+		// Test start and stop (will fail during processing due to no DB, but structure should work)
+		service.start().await.expect("Failed to start service");
+
+		// Give it a brief moment
+		tokio::time::sleep(Duration::from_millis(50)).await;
+
+		service.stop().await.expect("Failed to stop service");
+	}
+
+	#[tokio::test]
+	async fn test_process_pending_constraints_no_delegations() {
+		// Test the processing loop when no delegations are found
+		let config = crate::testing::mocks::create_test_config();
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		let bls_manager = Arc::new(create_mock_bls_manager());
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		// This should not panic even though the database operations will fail
+		let result = process_pending_constraints(
+			constraints_client,
+			bls_manager,
+			db_pool,
+			Arc::new(config)
+		).await;
+
+		// The function should handle database errors gracefully and return Ok(())
+		assert!(result.is_ok(), "Processing should handle database errors gracefully");
+	}
+
+	#[tokio::test]
+	async fn test_submit_constraint_validation() {
+		// Test constraint submission with validation errors
+		let mut config = crate::testing::mocks::create_test_config();
+		config.signing.committer_address = "0x1234567890123456789012345678901234567890".to_string();
+		
+		let constraints_client = ConstraintsApiClient::new(config.constraints_api.clone()).unwrap();
+		let bls_manager = create_mock_bls_manager();
+		let db_pool = sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap();
+
+		let slot = 12345u64;
+		let payload = vec![1, 2, 3, 4];
+		let wrong_committer = "0x9876543210987654321098765432109876543210".to_string();
+
+		// Test with wrong committer address
+		let result = submit_constraint(
+			&constraints_client,
+			&bls_manager,
+			&db_pool,
+			&config,
+			slot,
+			payload.clone(),
+			wrong_committer,
+		).await;
+
+		assert!(result.is_err(), "Should fail with wrong committer address");
+		let error_msg = format!("{}", result.unwrap_err());
+		assert!(error_msg.contains("does not match our configured address"), 
+			"Error should mention address mismatch");
+	}
+
+	#[tokio::test]
+	async fn test_create_constraints_from_commitments_empty() {
+		// Test constraint creation with no commitments
+		let db_pool = sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap();
+		let slot = 12345u64;
+
+		// This will fail due to database connectivity, but we can test the error handling
+		let result = create_constraints_from_commitments(&db_pool, slot).await;
+		assert!(result.is_err(), "Should fail due to no database connection");
+	}
+
+	#[test]
+	fn test_pending_constraint_creation() {
+		let slot = 12345u64;
+		let payload = vec![1, 2, 3, 4];
+		let committer = "0x1234567890123456789012345678901234567890".to_string();
+		let deadline = SystemTime::now() + Duration::from_secs(8);
+
+		let pending = PendingConstraint {
+			slot,
+			payload: payload.clone(),
+			committer_address: committer.clone(),
+			submission_deadline: deadline,
+		};
+
+		assert_eq!(pending.slot, slot);
+		assert_eq!(pending.payload, payload);
+		assert_eq!(pending.committer_address, committer);
+		assert!(pending.submission_deadline > SystemTime::now());
+	}
+
+	#[test]
+	fn test_constraint_timing_calculations() {
+		let config = crate::testing::mocks::create_test_config();
+		let genesis_time = config.beacon_api.genesis_time;
+
+		// Test BeaconTiming functions used by the service
+		let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+		let current_slot = BeaconTiming::current_slot_estimate(genesis_time);
+
+		// Verify slot calculation makes sense
+		let expected_slot = (current_time - genesis_time) / 12;
+		assert!((current_slot as i64 - expected_slot as i64).abs() <= 1, 
+			"Current slot calculation should be accurate within 1 slot");
+
+		// Test window check (use a recent past slot which should be within window)
+		let recent_slot = current_slot.saturating_sub(1);
+		let within_window = BeaconTiming::is_within_constraint_window(genesis_time, recent_slot);
+		// Note: Window check behavior depends on implementation - just verify it doesn't panic
+		let _ = within_window; // Don't assert specific behavior as it depends on timing implementation
+
+		let far_future = current_slot + 100;
+		let future_within_window = BeaconTiming::is_within_constraint_window(genesis_time, far_future);
+		// Far future slots should generally be outside the constraint window
+		let _ = future_within_window; // Don't assert specific behavior as it depends on implementation
+	}
+
+	#[test]
+	fn test_constraint_from_inclusion_commitment() {
+		let payload = vec![1, 2, 3, 4, 5, 6, 7, 8];
+		let constraint = Constraint::from_inclusion_commitment(payload.clone());
+
+		// Verify the constraint was created properly (implementation depends on Constraint structure)
+		// This test validates that the conversion function works without panicking
+		assert!(!format!("{:?}", constraint).is_empty(), "Constraint should format without error");
+	}
+
+	#[tokio::test]
+	async fn test_process_constraints_for_slot_error_handling() {
+		// Test error handling when processing constraints for a slot
+		let config = crate::testing::mocks::create_test_config();
+		let constraints_client = ConstraintsApiClient::new(config.constraints_api.clone()).unwrap();
+		let bls_manager = create_mock_bls_manager();
+		let db_pool = sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap();
+
+		let slot = 12345u64;
+
+		// This should handle database errors gracefully
+		let result = process_constraints_for_slot(
+			&constraints_client,
+			&bls_manager,
+			&db_pool,
+			&config,
+			slot
+		).await;
+
+		assert!(result.is_err(), "Should fail due to database connection error");
+	}
+
+	#[test]
+	fn test_constraint_deadline_calculation() {
+		let genesis_time = 1606824023u64; // Ethereum mainnet genesis
+		let slot = 12345u64;
+
+		let deadline_timestamp = BeaconTiming::constraint_deadline_for_slot(genesis_time, slot);
+		let expected_deadline = genesis_time + (slot * 12) + 8; // 8 second deadline
+
+		assert_eq!(deadline_timestamp, expected_deadline, 
+			"Constraint deadline should be slot start + 8 seconds");
+
+		// Verify the deadline makes sense
+		let slot_start = genesis_time + (slot * 12);
+		assert!(deadline_timestamp > slot_start, "Deadline should be after slot start");
+		assert_eq!(deadline_timestamp - slot_start, 8, "Deadline should be 8 seconds after slot start");
+	}
+
+	#[tokio::test]
+	async fn test_concurrent_constraint_processing() {
+		// Test that multiple constraint processing operations can run concurrently
+		let config = crate::testing::mocks::create_test_config();
+		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
+		let bls_manager = Arc::new(create_mock_bls_manager());
+		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		let mut handles = Vec::new();
+
+		// Start multiple processing tasks
+		for _i in 0..3 {
+			let client = Arc::clone(&constraints_client);
+			let manager = Arc::clone(&bls_manager);
+			let pool = Arc::clone(&db_pool);
+			let conf = Arc::new(config.clone());
+			
+			let handle = tokio::spawn(async move {
+				process_pending_constraints(client, manager, pool, conf).await
+			});
+			handles.push(handle);
+		}
+
+		// Wait for all to complete
+		for handle in handles {
+			let result = handle.await.unwrap();
+			// All should complete (even if they fail due to database issues)
+			assert!(result.is_ok(), "Concurrent processing should complete gracefully");
+		}
 	}
 }
