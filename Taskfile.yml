@@ -23,7 +23,13 @@ tasks:
 
   test:
     cmds:
-      - cargo test
+      - task: db:reset
+      - cargo test --lib
+
+  test:integration:
+    cmds:
+      - task: db:reset
+      - cargo test --lib -- --ignored
 
   coverage:
     cmds:
@@ -40,4 +46,9 @@ tasks:
   db:migrate:
     desc: "Run sql migration files against database"
     cmds:
-      - sqlx migrate run
+      - cargo sqlx migrate run
+
+  db:reset:
+    desc: "Wipes and migrates the database"
+    cmds:
+      - cargo sqlx database reset -yf

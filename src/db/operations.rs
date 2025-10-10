@@ -297,38 +297,44 @@ mod tests {
 
 	/// Creates a PostgreSQL connection pool configured for use by tests.
 	///
-	/// This function is a placeholder intended to establish and return a `PgPool` connected to the
-	/// test database; replace its body with test-specific connection logic.
+	/// Helper function to get a test database pool.
+	///
+	/// Returns `None` if DATABASE_URL is not set, allowing tests to be skipped gracefully.
 	///
 	/// # Examples
 	///
 	/// ```ignore
 	/// # async fn run() {
-	/// let pool = setup_test_pool().await;
-	/// // use `pool` for test queries
+	/// if let pool =setup_test_pool().await {
+	///     // use `pool` for test queries
+	/// }
 	/// # }
 	/// ```ignore
-	async fn setup_test_pool() -> PgPool {
-		// This would connect to a test database
-		// For now, we'll skip actual DB tests until we have the database running
-		todo!("Setup test database connection")
+	async fn setup_test_pool() -> Option<PgPool> {
+		let database_url = std::env::var("DATABASE_URL").ok()?;
+		PgPool::connect(&database_url).await.ok()
 	}
 
 	#[tokio::test]
-	#[ignore] // Ignore until we have test database setup
+	#[ignore] // Run with: cargo test --package preconfirmation-gateway --lib -- db::operations::tests --ignored
 	async fn test_save_and_retrieve_commitment() {
-		let pool = setup_test_pool().await;
+		let pool = setup_test_pool().await.expect("DATABASE_URL must be set for integration tests");
+
+		// Generate unique request hash using timestamp
+		use std::time::{SystemTime, UNIX_EPOCH};
+		let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().subsec_nanos();
+		let unique_hash = format!("0x{:0<64}", format!("{:x}", nanos));
 
 		let commitment = Commitment {
 			commitment_type: 1,
 			payload: vec![1, 2, 3, 4],
-			request_hash: "0x1234567890123456789012345678901234567890123456789012345678901234".to_string(),
+			request_hash: unique_hash.clone(),
 			slasher: "0x1234567890123456789012345678901234567890".to_string(),
 		};
 
 		let signed_commitment = SignedCommitment {
 			commitment: commitment.clone(),
-			signature: "0x1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890".to_string(),
+			signature: "0x12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678".to_string(),
 		};
 
 		// Save commitment
@@ -346,31 +352,34 @@ mod tests {
 	}
 
 	#[tokio::test]
-	#[ignore] // Ignore until we have test database setup
+	#[ignore] // Run with: cargo test --package preconfirmation-gateway --lib -- db::operations::tests --ignored
 	async fn test_commitment_exists() {
-		let pool = setup_test_pool().await;
+		let pool = setup_test_pool().await.expect("DATABASE_URL must be set for integration tests");
 
-		let request_hash = "0x1234567890123456789012345678901234567890123456789012345678901234";
+		// Generate unique request hash using timestamp
+		use std::time::{SystemTime, UNIX_EPOCH};
+		let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().subsec_nanos();
+		let request_hash = format!("0x{:0<64}", format!("{:x}", nanos + 12345)); // Add offset to differ from other test
 
 		// Should not exist initially
-		assert!(!commitment_exists(&pool, request_hash).await.unwrap());
+		assert!(!commitment_exists(&pool, &request_hash).await.unwrap());
 
 		// Create and save a commitment
 		let commitment = Commitment {
 			commitment_type: 1,
 			payload: vec![1, 2, 3, 4],
-			request_hash: request_hash.to_string(),
+			request_hash: request_hash.clone(),
 			slasher: "0x1234567890123456789012345678901234567890".to_string(),
 		};
 
 		let signed_commitment = SignedCommitment {
 			commitment,
-			signature: "0x1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890".to_string(),
+			signature: "0x12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678".to_string(),
 		};
 
 		save_commitment(&pool, &signed_commitment).await.unwrap();
 
 		// Should now exist
-		assert!(commitment_exists(&pool, request_hash).await.unwrap());
+		assert!(commitment_exists(&pool, &request_hash).await.unwrap());
 	}
 }
