@@ -68,11 +68,11 @@ pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment
 		RETURNING id
 		"#,
 		id,
-		commitment.request_hash,
+		&commitment.request_hash,
 		commitment_type,
-		commitment.payload,
-		commitment.slasher,
-		signed_commitment.signature,
+		&commitment.payload,
+		&commitment.slasher,
+		&signed_commitment.signature,
 		slot_number
 	)
 	.fetch_one(pool)

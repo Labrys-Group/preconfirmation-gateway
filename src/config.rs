@@ -1145,7 +1145,10 @@ cache_ttl_secs = 60
 	#[test]
 	fn test_beacon_api_fallback_endpoints() {
 		let config = BeaconApiConfig {
-			fallback_endpoints: vec!["https://fallback1.beacon.com".to_string(), "https://fallback2.beacon.com".to_string()],
+			fallback_endpoints: vec![
+				"https://fallback1.beacon.com".to_string(),
+				"https://fallback2.beacon.com".to_string(),
+			],
 			..Default::default()
 		};
 
