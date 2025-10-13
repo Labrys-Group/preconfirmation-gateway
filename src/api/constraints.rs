@@ -147,11 +147,13 @@ impl ConstraintsApiClient {
 		// Serialize constraints for submission
 		let submission_payload = serde_json::to_value(constraints).context("Failed to serialize constraints")?;
 
+		// Ensure at least one attempt is made, even when max_retries is 0
+		let max_attempts = std::cmp::max(1, self.config.max_retries);
 		let mut attempt = 0;
 		let mut last_error = None;
 
 		// Retry logic for constraint submission
-		while attempt < self.config.max_retries {
+		while attempt < max_attempts {
 			attempt += 1;
 
 			match self
