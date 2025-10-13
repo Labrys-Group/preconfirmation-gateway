@@ -654,45 +654,42 @@ mod tests {
 		// This test would require a real PostgreSQL database
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
-		if let Ok(pool) = pool_result {
-			if pool.acquire().await.is_ok() {
-				let delegation = create_test_delegation();
+		if let Ok(pool) = pool_result
+			&& pool.acquire().await.is_ok()
+		{
+			let delegation = create_test_delegation();
 
-				// Test save
-				let saved_id = save_delegation(&pool, &delegation).await.unwrap();
-				assert!(!saved_id.is_nil());
+			// Test save
+			let saved_id = save_delegation(&pool, &delegation).await.unwrap();
+			assert!(!saved_id.is_nil());
 
-				// Test retrieval by slot
-				let retrieved = get_delegations_for_slot(&pool, delegation.message.slot).await.unwrap();
-				assert_eq!(retrieved.len(), 1);
-				assert_eq!(retrieved[0].message.slot, delegation.message.slot);
+			// Test retrieval by slot
+			let retrieved = get_delegations_for_slot(&pool, delegation.message.slot).await.unwrap();
+			assert_eq!(retrieved.len(), 1);
+			assert_eq!(retrieved[0].message.slot, delegation.message.slot);
 
-				// Test retrieval by proposer and slot
-				let by_proposer =
-					get_delegation_by_proposer_slot(&pool, &delegation.message.proposer, delegation.message.slot)
-						.await
-						.unwrap();
-				assert!(by_proposer.is_some());
+			// Test retrieval by proposer and slot
+			let by_proposer =
+				get_delegation_by_proposer_slot(&pool, &delegation.message.proposer, delegation.message.slot)
+					.await
+					.unwrap();
+			assert!(by_proposer.is_some());
 
-				// Test retrieval by delegate
-				let by_delegate = get_delegations_by_delegate(&pool, &delegation.message.delegate).await.unwrap();
-				assert_eq!(by_delegate.len(), 1);
+			// Test retrieval by delegate
+			let by_delegate = get_delegations_by_delegate(&pool, &delegation.message.delegate).await.unwrap();
+			assert_eq!(by_delegate.len(), 1);
 
-				// Test existence check
-				let exists = delegation_exists_for_slot_and_committer(
-					&pool,
-					delegation.message.slot,
-					&delegation.message.committer,
-				)
-				.await
-				.unwrap();
-				assert!(exists);
+			// Test existence check
+			let exists =
+				delegation_exists_for_slot_and_committer(&pool, delegation.message.slot, &delegation.message.committer)
+					.await
+					.unwrap();
+			assert!(exists);
 
-				// Test stats
-				let stats = get_delegation_stats(&pool).await.unwrap();
-				assert!(stats.total_count > 0);
-				assert!(stats.active_count > 0);
-			}
+			// Test stats
+			let stats = get_delegation_stats(&pool).await.unwrap();
+			assert!(stats.total_count > 0);
+			assert!(stats.active_count > 0);
 		}
 	}
 
@@ -702,23 +699,23 @@ mod tests {
 		// This test would require a real PostgreSQL database
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
-		if let Ok(pool) = pool_result {
-			if pool.acquire().await.is_ok() {
-				let delegations = vec![
-					create_test_delegation_variant([1u8; 48], [2u8; 48], 12345),
-					create_test_delegation_variant([3u8; 48], [4u8; 48], 12346),
-					create_test_delegation_variant([5u8; 48], [6u8; 48], 12347),
-				];
+		if let Ok(pool) = pool_result
+			&& pool.acquire().await.is_ok()
+		{
+			let delegations = vec![
+				create_test_delegation_variant([1u8; 48], [2u8; 48], 12345),
+				create_test_delegation_variant([3u8; 48], [4u8; 48], 12346),
+				create_test_delegation_variant([5u8; 48], [6u8; 48], 12347),
+			];
 
-				// Test batch save
-				let saved_ids = save_delegations_batch(&pool, &delegations).await.unwrap();
-				assert_eq!(saved_ids.len(), 3);
+			// Test batch save
+			let saved_ids = save_delegations_batch(&pool, &delegations).await.unwrap();
+			assert_eq!(saved_ids.len(), 3);
 
-				// Verify all were saved
-				for delegation in delegations.iter() {
-					let retrieved = get_delegations_for_slot(&pool, delegation.message.slot).await.unwrap();
-					assert!(!retrieved.is_empty());
-				}
+			// Verify all were saved
+			for delegation in delegations.iter() {
+				let retrieved = get_delegations_for_slot(&pool, delegation.message.slot).await.unwrap();
+				assert!(!retrieved.is_empty());
 			}
 		}
 	}
@@ -729,28 +726,28 @@ mod tests {
 		// This test would require a real PostgreSQL database
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
-		if let Ok(pool) = pool_result {
-			if pool.acquire().await.is_ok() {
-				// Create delegations for different slots
-				let old_delegation = create_test_delegation_variant([1u8; 48], [2u8; 48], 1000);
-				let current_delegation = create_test_delegation_variant([3u8; 48], [4u8; 48], 12345);
+		if let Ok(pool) = pool_result
+			&& pool.acquire().await.is_ok()
+		{
+			// Create delegations for different slots
+			let old_delegation = create_test_delegation_variant([1u8; 48], [2u8; 48], 1000);
+			let current_delegation = create_test_delegation_variant([3u8; 48], [4u8; 48], 12345);
 
-				// Save both
-				save_delegation(&pool, &old_delegation).await.unwrap();
-				save_delegation(&pool, &current_delegation).await.unwrap();
+			// Save both
+			save_delegation(&pool, &old_delegation).await.unwrap();
+			save_delegation(&pool, &current_delegation).await.unwrap();
 
-				// Deactivate expired delegations (slot 1000 < 12345)
-				let deactivated_count = deactivate_expired_delegations(&pool, 12345).await.unwrap();
-				assert!(deactivated_count > 0);
+			// Deactivate expired delegations (slot 1000 < 12345)
+			let deactivated_count = deactivate_expired_delegations(&pool, 12345).await.unwrap();
+			assert!(deactivated_count > 0);
 
-				// Verify old delegation is no longer active
-				let old_delegations = get_delegations_for_slot(&pool, 1000).await.unwrap();
-				assert_eq!(old_delegations.len(), 0);
+			// Verify old delegation is no longer active
+			let old_delegations = get_delegations_for_slot(&pool, 1000).await.unwrap();
+			assert_eq!(old_delegations.len(), 0);
 
-				// Verify current delegation is still active
-				let current_delegations = get_delegations_for_slot(&pool, 12345).await.unwrap();
-				assert_eq!(current_delegations.len(), 1);
-			}
+			// Verify current delegation is still active
+			let current_delegations = get_delegations_for_slot(&pool, 12345).await.unwrap();
+			assert_eq!(current_delegations.len(), 1);
 		}
 	}
 }

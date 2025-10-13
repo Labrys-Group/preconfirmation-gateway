@@ -796,28 +796,28 @@ mod tests {
 		// This test would require a real PostgreSQL database
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
-		if let Ok(pool) = pool_result {
-			if pool.acquire().await.is_ok() {
-				let slot = 12345;
-				let base_price = 1_000_000_000;
-				let gas_limit = 30_000_000;
-				let genesis_time = 1606824023;
+		if let Ok(pool) = pool_result
+			&& pool.acquire().await.is_ok()
+		{
+			let slot = 12345;
+			let base_price = 1_000_000_000;
+			let gas_limit = 30_000_000;
+			let genesis_time = 1606824023;
 
-				// Test create/get
-				let congestion =
-					get_or_create_slot_congestion(&pool, slot, base_price, gas_limit, genesis_time).await.unwrap();
-				assert_eq!(congestion.slot, slot);
-				assert_eq!(congestion.base_gas_price, base_price);
+			// Test create/get
+			let congestion =
+				get_or_create_slot_congestion(&pool, slot, base_price, gas_limit, genesis_time).await.unwrap();
+			assert_eq!(congestion.slot, slot);
+			assert_eq!(congestion.base_gas_price, base_price);
 
-				// Test update
-				let updated = update_slot_congestion_gas_usage(&pool, slot, 1_000_000, 2.0).await.unwrap();
-				assert_eq!(updated.preconfirmed_gas, 1_000_000);
+			// Test update
+			let updated = update_slot_congestion_gas_usage(&pool, slot, 1_000_000, 2.0).await.unwrap();
+			assert_eq!(updated.preconfirmed_gas, 1_000_000);
 
-				// Test get current price
-				let price = get_current_gas_price_for_slot(&pool, slot).await.unwrap();
-				assert!(price.is_some());
-				assert!(price.unwrap() > base_price);
-			}
+			// Test get current price
+			let price = get_current_gas_price_for_slot(&pool, slot).await.unwrap();
+			assert!(price.is_some());
+			assert!(price.unwrap() > base_price);
 		}
 	}
 
@@ -827,23 +827,23 @@ mod tests {
 		// This test would require a real PostgreSQL database
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
-		if let Ok(pool) = pool_result {
-			if pool.acquire().await.is_ok() {
-				let slot = 12346;
-				let base_price = 1_000_000_000;
-				let gas_limit = 30_000_000;
-				let genesis_time = 1606824023;
+		if let Ok(pool) = pool_result
+			&& pool.acquire().await.is_ok()
+		{
+			let slot = 12346;
+			let base_price = 1_000_000_000;
+			let gas_limit = 30_000_000;
+			let genesis_time = 1606824023;
 
-				// Create initial congestion
-				get_or_create_slot_congestion(&pool, slot, base_price, gas_limit, genesis_time).await.unwrap();
+			// Create initial congestion
+			get_or_create_slot_congestion(&pool, slot, base_price, gas_limit, genesis_time).await.unwrap();
 
-				// Simulate concurrent updates (in real scenario, these would be from different tasks)
-				let update1 = update_slot_congestion_gas_usage(&pool, slot, 5_000_000, 2.0).await.unwrap();
-				let update2 = update_slot_congestion_gas_usage(&pool, slot, 3_000_000, 2.0).await.unwrap();
+			// Simulate concurrent updates (in real scenario, these would be from different tasks)
+			let update1 = update_slot_congestion_gas_usage(&pool, slot, 5_000_000, 2.0).await.unwrap();
+			let update2 = update_slot_congestion_gas_usage(&pool, slot, 3_000_000, 2.0).await.unwrap();
 
-				// Second update should have higher gas usage
-				assert!(update2.preconfirmed_gas > update1.preconfirmed_gas);
-			}
+			// Second update should have higher gas usage
+			assert!(update2.preconfirmed_gas > update1.preconfirmed_gas);
 		}
 	}
 
@@ -853,31 +853,31 @@ mod tests {
 		// This test would require a real PostgreSQL database
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
-		if let Ok(pool) = pool_result {
-			if pool.acquire().await.is_ok() {
-				let old_slot = 1000;
-				let current_slot = 12347;
-				let base_price = 1_000_000_000;
-				let gas_limit = 30_000_000;
-				let genesis_time = 1606824023;
+		if let Ok(pool) = pool_result
+			&& pool.acquire().await.is_ok()
+		{
+			let old_slot = 1000;
+			let current_slot = 12347;
+			let base_price = 1_000_000_000;
+			let gas_limit = 30_000_000;
+			let genesis_time = 1606824023;
 
-				// Create old congestion record
-				get_or_create_slot_congestion(&pool, old_slot, base_price, gas_limit, genesis_time).await.unwrap();
+			// Create old congestion record
+			get_or_create_slot_congestion(&pool, old_slot, base_price, gas_limit, genesis_time).await.unwrap();
 
-				// Create current congestion record
-				get_or_create_slot_congestion(&pool, current_slot, base_price, gas_limit, genesis_time).await.unwrap();
+			// Create current congestion record
+			get_or_create_slot_congestion(&pool, current_slot, base_price, gas_limit, genesis_time).await.unwrap();
 
-				// Cleanup old records (keep only 1 hour)
-				let _deleted_count = cleanup_old_slot_congestion(&pool, 1).await.unwrap();
+			// Cleanup old records (keep only 1 hour)
+			let _deleted_count = cleanup_old_slot_congestion(&pool, 1).await.unwrap();
 
-				// Verify old record is gone
-				let old_price = get_current_gas_price_for_slot(&pool, old_slot).await.unwrap();
-				assert!(old_price.is_none());
+			// Verify old record is gone
+			let old_price = get_current_gas_price_for_slot(&pool, old_slot).await.unwrap();
+			assert!(old_price.is_none());
 
-				// Verify current record still exists
-				let current_price = get_current_gas_price_for_slot(&pool, current_slot).await.unwrap();
-				assert!(current_price.is_some());
-			}
+			// Verify current record still exists
+			let current_price = get_current_gas_price_for_slot(&pool, current_slot).await.unwrap();
+			assert!(current_price.is_some());
 		}
 	}
 
@@ -887,24 +887,24 @@ mod tests {
 		// This test would require a real PostgreSQL database
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
-		if let Ok(pool) = pool_result {
-			if pool.acquire().await.is_ok() {
-				let base_price = 1_000_000_000;
-				let gas_limit = 30_000_000;
-				let genesis_time = 1606824023;
+		if let Ok(pool) = pool_result
+			&& pool.acquire().await.is_ok()
+		{
+			let base_price = 1_000_000_000;
+			let gas_limit = 30_000_000;
+			let genesis_time = 1606824023;
 
-				// Create multiple congestion records
-				for slot in 12348..12353 {
-					get_or_create_slot_congestion(&pool, slot, base_price, gas_limit, genesis_time).await.unwrap();
-					update_slot_congestion_gas_usage(&pool, slot, slot * 1000, 2.0).await.unwrap();
-				}
-
-				// Get aggregated stats
-				let stats = get_congestion_stats(&pool).await.unwrap();
-				assert!(stats.total_slots_tracked > 0);
-				assert!(stats.current_average_congestion >= 0.0);
-				assert!(stats.average_fee_multiplier >= 1.0);
+			// Create multiple congestion records
+			for slot in 12348..12353 {
+				get_or_create_slot_congestion(&pool, slot, base_price, gas_limit, genesis_time).await.unwrap();
+				update_slot_congestion_gas_usage(&pool, slot, slot * 1000, 2.0).await.unwrap();
 			}
+
+			// Get aggregated stats
+			let stats = get_congestion_stats(&pool).await.unwrap();
+			assert!(stats.total_slots_tracked > 0);
+			assert!(stats.current_average_congestion >= 0.0);
+			assert!(stats.average_fee_multiplier >= 1.0);
 		}
 	}
 }
