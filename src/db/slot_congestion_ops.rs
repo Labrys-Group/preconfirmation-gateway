@@ -705,7 +705,7 @@ mod tests {
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
 		if let Ok(pool) = pool_result {
-			if let Ok(_) = pool.acquire().await {
+			if pool.acquire().await.is_ok() {
 				let slot = 12345;
 				let base_price = 1_000_000_000;
 				let gas_limit = 30_000_000;
@@ -736,7 +736,7 @@ mod tests {
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
 		if let Ok(pool) = pool_result {
-			if let Ok(_) = pool.acquire().await {
+			if pool.acquire().await.is_ok() {
 				let slot = 12346;
 				let base_price = 1_000_000_000;
 				let gas_limit = 30_000_000;
@@ -762,7 +762,7 @@ mod tests {
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
 		if let Ok(pool) = pool_result {
-			if let Ok(_) = pool.acquire().await {
+			if pool.acquire().await.is_ok() {
 				let old_slot = 1000;
 				let current_slot = 12347;
 				let base_price = 1_000_000_000;
@@ -776,8 +776,7 @@ mod tests {
 				get_or_create_slot_congestion(&pool, current_slot, base_price, gas_limit, genesis_time).await.unwrap();
 
 				// Cleanup old records (keep only 1 hour)
-				let deleted_count = cleanup_old_slot_congestion(&pool, 1).await.unwrap();
-				assert!(deleted_count >= 0); // This is always true for u64, but tests the function call
+				let _deleted_count = cleanup_old_slot_congestion(&pool, 1).await.unwrap();
 
 				// Verify old record is gone
 				let old_price = get_current_gas_price_for_slot(&pool, old_slot).await.unwrap();
@@ -797,7 +796,7 @@ mod tests {
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
 		if let Ok(pool) = pool_result {
-			if let Ok(_) = pool.acquire().await {
+			if pool.acquire().await.is_ok() {
 				let base_price = 1_000_000_000;
 				let gas_limit = 30_000_000;
 				let genesis_time = 1606824023;

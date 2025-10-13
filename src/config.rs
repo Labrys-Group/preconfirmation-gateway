@@ -1144,9 +1144,10 @@ cache_ttl_secs = 60
 
 	#[test]
 	fn test_beacon_api_fallback_endpoints() {
-		let mut config = BeaconApiConfig::default();
-		config.fallback_endpoints =
-			vec!["https://fallback1.beacon.com".to_string(), "https://fallback2.beacon.com".to_string()];
+		let config = BeaconApiConfig {
+			fallback_endpoints: vec!["https://fallback1.beacon.com".to_string(), "https://fallback2.beacon.com".to_string()],
+			..Default::default()
+		};
 
 		assert_eq!(config.fallback_endpoints.len(), 2);
 		assert!(config.fallback_endpoints.contains(&"https://fallback1.beacon.com".to_string()));
@@ -1155,8 +1156,10 @@ cache_ttl_secs = 60
 
 	#[test]
 	fn test_constraints_api_authorized_builders() {
-		let mut config = ConstraintsApiConfig::default();
-		config.authorized_builders = vec!["builder1".to_string(), "builder2".to_string(), "builder3".to_string()];
+		let config = ConstraintsApiConfig {
+			authorized_builders: vec!["builder1".to_string(), "builder2".to_string(), "builder3".to_string()],
+			..Default::default()
+		};
 
 		assert_eq!(config.authorized_builders.len(), 3);
 		assert!(config.authorized_builders.contains(&"builder1".to_string()));
@@ -1184,7 +1187,7 @@ cache_ttl_secs = 60
 	#[test]
 	fn test_logging_config_traced_methods() {
 		let config = LoggingConfig::default();
-		assert!(config.traced_methods.len() > 0);
+		assert!(!config.traced_methods.is_empty());
 		assert!(config.traced_methods.contains(&"commitmentRequest".to_string()));
 		assert!(config.traced_methods.contains(&"commitmentResult".to_string()));
 		assert!(config.traced_methods.contains(&"slots".to_string()));

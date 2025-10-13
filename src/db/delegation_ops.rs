@@ -655,7 +655,7 @@ mod tests {
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
 		if let Ok(pool) = pool_result {
-			if let Ok(_) = pool.acquire().await {
+			if pool.acquire().await.is_ok() {
 				let delegation = create_test_delegation();
 
 				// Test save
@@ -703,7 +703,7 @@ mod tests {
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
 		if let Ok(pool) = pool_result {
-			if let Ok(_) = pool.acquire().await {
+			if pool.acquire().await.is_ok() {
 				let delegations = vec![
 					create_test_delegation_variant([1u8; 48], [2u8; 48], 12345),
 					create_test_delegation_variant([3u8; 48], [4u8; 48], 12346),
@@ -715,7 +715,7 @@ mod tests {
 				assert_eq!(saved_ids.len(), 3);
 
 				// Verify all were saved
-				for (_i, delegation) in delegations.iter().enumerate() {
+				for delegation in delegations.iter() {
 					let retrieved = get_delegations_for_slot(&pool, delegation.message.slot).await.unwrap();
 					assert!(!retrieved.is_empty());
 				}
@@ -730,7 +730,7 @@ mod tests {
 		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
 
 		if let Ok(pool) = pool_result {
-			if let Ok(_) = pool.acquire().await {
+			if pool.acquire().await.is_ok() {
 				// Create delegations for different slots
 				let old_delegation = create_test_delegation_variant([1u8; 48], [2u8; 48], 1000);
 				let current_delegation = create_test_delegation_variant([3u8; 48], [4u8; 48], 12345);
