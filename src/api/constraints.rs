@@ -28,13 +28,11 @@ pub struct DelegationsResponse {
 	pub delegations: Vec<SignedDelegation>,
 }
 
-/// Response from constraint submission
-#[derive(Debug, Clone, Deserialize)]
+/// Response from constraint submission (spec says Empty on success)
+#[derive(Debug, Clone)]
 pub struct ConstraintSubmissionResponse {
-	/// Success status
-	pub success: bool,
-	/// Submission ID for tracking
-	pub submission_id: Option<String>,
+	/// HTTP status code received
+	pub status: u16,
 }
 
 /// Error response from constraints API
@@ -168,18 +166,16 @@ impl ConstraintsApiClient {
 				Ok(response) => {
 					match response.status() {
 						StatusCode::OK | StatusCode::ACCEPTED => {
-							let result: ConstraintSubmissionResponse =
-								response.json().await.context("Failed to parse constraint submission response")?;
+							let status_code = response.status().as_u16();
 
 							debug!(
 								slot = constraints.message.slot,
-								success = result.success,
-								submission_id = result.submission_id,
+								status = status_code,
 								attempt = attempt,
 								"Constraints submitted successfully"
 							);
 
-							return Ok(result);
+							return Ok(ConstraintSubmissionResponse { status: status_code });
 						}
 						StatusCode::TOO_MANY_REQUESTS => {
 							warn!(
@@ -653,24 +649,13 @@ mod tests {
 	}
 
 	#[test]
-	fn test_constraint_submission_response_deserialization() {
-		// Test successful response
-		let json_success = r#"{"success": true, "submission_id": "test123"}"#;
-		let result: Result<ConstraintSubmissionResponse, _> = serde_json::from_str(json_success);
-		assert!(result.is_ok(), "Should deserialize successful response");
+	fn test_constraint_submission_response_creation() {
+		// Test response creation with various status codes
+		let response_ok = ConstraintSubmissionResponse { status: 200 };
+		assert_eq!(response_ok.status, 200);
 
-		let response = result.unwrap();
-		assert!(response.success);
-		assert_eq!(response.submission_id, Some("test123".to_string()));
-
-		// Test failure response
-		let json_failure = r#"{"success": false, "submission_id": null}"#;
-		let result: Result<ConstraintSubmissionResponse, _> = serde_json::from_str(json_failure);
-		assert!(result.is_ok(), "Should deserialize failure response");
-
-		let response = result.unwrap();
-		assert!(!response.success);
-		assert_eq!(response.submission_id, None);
+		let response_accepted = ConstraintSubmissionResponse { status: 202 };
+		assert_eq!(response_accepted.status, 202);
 	}
 
 	#[test]
@@ -720,7 +705,7 @@ mod tests {
 		let constraints = create_test_signed_constraints();
 		let result = client.submit_constraints(&constraints).await;
 		match result {
-			Ok(response) => println!("Submission success: {}", response.success),
+			Ok(response) => println!("Submission success: status {}", response.status),
 			Err(e) => println!("Submission failed (expected in CI): {}", e),
 		}
 	}

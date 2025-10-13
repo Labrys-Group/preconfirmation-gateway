@@ -232,8 +232,8 @@ impl MockConstraintsApiClient {
 		if let Some(response) = responses.first() {
 			Ok(response.clone())
 		} else {
-			// Default mock response
-			Ok(ConstraintSubmissionResponse { success: true, submission_id: Some("test_submission_id".to_string()) })
+			// Default mock response (200 OK)
+			Ok(ConstraintSubmissionResponse { status: 200 })
 		}
 	}
 
