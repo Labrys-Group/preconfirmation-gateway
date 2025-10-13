@@ -82,7 +82,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
 
       - name: Generate coverage report
-        run: cargo tarpaulin --lib --all-features --out Xml --output-dir coverage --verbose
+        run: cargo tarpaulin --all-targets --all-features --out Xml --output-dir coverage --verbose
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
           RUST_LOG: debug
@@ -100,14 +100,133 @@ jobs:
           COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' coverage/cobertura.xml | head -1 | awk '{printf "%.2f", $1 * 100}')
           echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
 
-          # Create markdown summary
-          cat > coverage/summary.md << EOF
-          ## Test Coverage Report
+          # Parse XML for detailed file coverage
+          python3 << 'PYTHON_SCRIPT'
+          import xml.etree.ElementTree as ET
+          import sys
 
-          **Coverage:** $COVERAGE%
+          tree = ET.parse('coverage/cobertura.xml')
+          root = tree.getroot()
 
-          $(cargo tarpaulin --lib --all-features --print-summary 2>/dev/null || echo "Run cargo tarpaulin locally for detailed coverage information")
-          EOF
+          print("## 📊 Test Coverage Report\n")
+          print(f"**Overall Coverage:** {float(root.attrib['line-rate']) * 100:.2f}%\n")
+
+          # Collect all files with their coverage
+          files = []
+          for pkg in root.findall('.//package'):
+              for cls in pkg.findall('.//class'):
+                  filename = cls.attrib['filename']
+                  line_rate = float(cls.attrib['line-rate'])
+
+                  # Get lines info
+                  lines = cls.findall('.//line')
+                  covered = sum(1 for line in lines if int(line.attrib['hits']) > 0)
+                  total = len(lines)
+
+                  # Find uncovered lines
+                  uncovered = [line.attrib['number'] for line in lines if int(line.attrib['hits']) == 0]
+
+                  if total > 0:
+                      files.append({
+                          'name': filename,
+                          'coverage': line_rate * 100,
+                          'covered': covered,
+                          'total': total,
+                          'uncovered': uncovered
+                      })
+
+          # Sort by coverage percentage (lowest first to highlight areas needing attention)
+          files.sort(key=lambda x: x['coverage'])
+
+          print("### 📁 Coverage by File\n")
+          print("| File | Coverage | Lines | Uncovered Lines |")
+          print("|------|----------|-------|-----------------|")
+
+          for f in files:
+              name = f['name'].replace('src/', '')
+              cov = f['coverage']
+              emoji = '🔴' if cov < 50 else '🟡' if cov < 80 else '🟢'
+              uncovered_str = ', '.join(f['uncovered'][:10])  # Show first 10 uncovered lines
+              if len(f['uncovered']) > 10:
+                  uncovered_str += f" ... (+{len(f['uncovered']) - 10} more)"
+              if not uncovered_str:
+                  uncovered_str = "All covered ✅"
+              print(f"| {emoji} `{name}` | {cov:.1f}% | {f['covered']}/{f['total']} | {uncovered_str} |")
+
+          # Summary stats
+          total_files = len(files)
+          high_coverage = sum(1 for f in files if f['coverage'] >= 80)
+          medium_coverage = sum(1 for f in files if 50 <= f['coverage'] < 80)
+          low_coverage = sum(1 for f in files if f['coverage'] < 50)
+
+          print(f"\n### 📈 Summary\n")
+          print(f"- 🟢 **High coverage (≥80%):** {high_coverage} files")
+          print(f"- 🟡 **Medium coverage (50-79%):** {medium_coverage} files")
+          print(f"- 🔴 **Low coverage (<50%):** {low_coverage} files")
+          print(f"- 📦 **Total files:** {total_files}")
+
+          PYTHON_SCRIPT
+
+          python3 << 'PYTHON_SCRIPT' > coverage/summary.md
+          import xml.etree.ElementTree as ET
+          import sys
+
+          tree = ET.parse('coverage/cobertura.xml')
+          root = tree.getroot()
+
+          print("## 📊 Test Coverage Report\n")
+          print(f"**Overall Coverage:** {float(root.attrib['line-rate']) * 100:.2f}%\n")
+
+          files = []
+          for pkg in root.findall('.//package'):
+              for cls in pkg.findall('.//class'):
+                  filename = cls.attrib['filename']
+                  line_rate = float(cls.attrib['line-rate'])
+
+                  lines = cls.findall('.//line')
+                  covered = sum(1 for line in lines if int(line.attrib['hits']) > 0)
+                  total = len(lines)
+
+                  uncovered = [line.attrib['number'] for line in lines if int(line.attrib['hits']) == 0]
+
+                  if total > 0:
+                      files.append({
+                          'name': filename,
+                          'coverage': line_rate * 100,
+                          'covered': covered,
+                          'total': total,
+                          'uncovered': uncovered
+                      })
+
+          files.sort(key=lambda x: x['coverage'])
+
+          print("### 📁 Coverage by File\n")
+          print("| File | Coverage | Lines | Uncovered Lines |")
+          print("|------|----------|-------|-----------------|")
+
+          for f in files:
+              name = f['name'].replace('src/', '')
+              cov = f['coverage']
+              emoji = '🔴' if cov < 50 else '🟡' if cov < 80 else '🟢'
+              uncovered_str = ', '.join(f['uncovered'][:10])
+              if len(f['uncovered']) > 10:
+                  uncovered_str += f" ... (+{len(f['uncovered']) - 10} more)"
+              if not uncovered_str:
+                  uncovered_str = "All covered ✅"
+              print(f"| {emoji} `{name}` | {cov:.1f}% | {f['covered']}/{f['total']} | {uncovered_str} |")
+
+          total_files = len(files)
+          high_coverage = sum(1 for f in files if f['coverage'] >= 80)
+          medium_coverage = sum(1 for f in files if 50 <= f['coverage'] < 80)
+          low_coverage = sum(1 for f in files if f['coverage'] < 50)
+
+          print(f"\n### 📈 Summary\n")
+          print(f"- 🟢 **High coverage (≥80%):** {high_coverage} files")
+          print(f"- 🟡 **Medium coverage (50-79%):** {medium_coverage} files")
+          print(f"- 🔴 **Low coverage (<50%):** {low_coverage} files")
+          print(f"- 📦 **Total files:** {total_files}")
+
+          PYTHON_SCRIPT
 
       - name: Comment PR with coverage
         if: github.event_name == 'pull_request'
