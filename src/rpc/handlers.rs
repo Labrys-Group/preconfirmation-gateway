@@ -19,7 +19,7 @@ fn validate_and_extract_slot(commitment_type: u64, payload: &[u8]) -> Result<u64
 }
 
 /// Check if we have valid delegation authority for the given slot and committer
-async fn verify_delegation_authority(context: &RpcContext, slot: u64, committer_address: &str) -> Result<(), String> {
+async fn verify_delegation_authority(context: &RpcContext, slot: u64, committer_address: &str) -> Result<String, String> {
 	// Get delegations for this slot from the database
 	let delegations = get_delegations_for_slot(context.database.pool(), slot)
 		.await
@@ -107,7 +107,7 @@ async fn verify_delegation_authority(context: &RpcContext, slot: u64, committer_
 	}
 
 	info!("Delegation authority verified for slot {} and committer {}", slot, committer_address);
-	Ok(())
+	Ok(delegation.message.committer.clone())
 }
 
 /// Find the appropriate ECDSA key for signing based on the committer address
@@ -151,13 +151,14 @@ pub async fn commitment_request_handler(
 	info!("Extracted slot {} from commitment payload", slot);
 
 	// DELEGATION-FIRST SECURITY: Verify delegation authority BEFORE any signing
-	verify_delegation_authority(&context, slot, &request.slasher).await.map_err(|e| {
+	// This returns the validated committer address from the delegation
+	let committer_address = verify_delegation_authority(&context, slot, &request.slasher).await.map_err(|e| {
 		error!("Delegation verification failed: {}", e);
 		jsonrpsee::types::error::ErrorCode::InvalidRequest
 	})?;
 
-	// Find the appropriate signing key for this committer
-	let signing_key = find_signing_key_for_committer(&context, &request.slasher).map_err(|e| {
+	// Find the appropriate signing key for this committer (use delegation.committer, not request.slasher)
+	let signing_key = find_signing_key_for_committer(&context, &committer_address).map_err(|e| {
 		error!("No signing key found: {}", e);
 		jsonrpsee::types::error::ErrorCode::InvalidRequest
 	})?;
