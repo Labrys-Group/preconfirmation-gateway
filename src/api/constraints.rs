@@ -223,9 +223,25 @@ impl ConstraintsApiClient {
 								));
 							}
 
-							// Don't retry on client errors (4xx)
+							// Don't retry on client errors (4xx) except TOO_MANY_REQUESTS
 							if status.is_client_error() && status != StatusCode::TOO_MANY_REQUESTS {
 								break;
+							}
+
+							// Apply exponential backoff for server errors (5xx) to avoid tight retry loops
+							if status.is_server_error() {
+								warn!(
+									slot = constraints.message.slot,
+									attempt = attempt,
+									status = status.as_u16(),
+									"Server error from constraints API, retrying with backoff"
+								);
+
+								// Wait before retry (exponential backoff with overflow protection)
+								let shift = attempt.min(10); // Cap shift to prevent overflow
+								let delay_ms = 100u64.saturating_mul(2u64.saturating_pow(shift as u32));
+								let delay = Duration::from_millis(delay_ms.min(30_000)); // Max 30 seconds
+								tokio::time::sleep(delay).await;
 							}
 
 							continue;
