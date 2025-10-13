@@ -434,8 +434,12 @@ mod tests {
 
 		// Test that we can access the pool
 		let pool = context.pool();
-		// Lazy connections might not be closed initially, so just test that we can access it
-		assert!(!pool.is_closed() || pool.is_closed()); // This is always true, just testing access
+
+		// Verify that the pool is created (but not necessarily connected since it's lazy)
+		// Attempting to acquire a connection will fail with the test database,
+		// but this validates the pool structure is valid
+		let acquire_result = pool.acquire().await;
+		assert!(acquire_result.is_err()); // Expected to fail with test database URL
 	}
 
 	#[tokio::test]
