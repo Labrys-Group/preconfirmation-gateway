@@ -71,7 +71,12 @@ jobs:
             ${{ runner.os }}-cargo-tarpaulin-
 
       - name: Install tarpaulin
-        run: cargo install cargo-tarpaulin --version 0.33.0 --locked || cargo install cargo-tarpaulin --version 0.33.0
+        run: |
+          if ! command -v cargo-tarpaulin &> /dev/null; then
+            cargo install cargo-tarpaulin --version 0.33.0 --locked
+          else
+            echo "cargo-tarpaulin already installed, skipping"
+          fi
 
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --no-default-features --features postgres
