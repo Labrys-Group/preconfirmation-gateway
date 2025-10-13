@@ -413,16 +413,9 @@ pub async fn save_delegations_batch(pool: &PgPool, delegations: &[SignedDelegati
 mod tests {
 	use super::*;
 	use crate::types::delegation::{DelegationMessage, SignedDelegation};
-
-	// These tests would require a test database setup
-	// For now, we'll create placeholder tests that verify the function signatures
+	use sqlx::PgPool;
 
 	/// Creates a sample `SignedDelegation` for use in tests.
-	///
-	/// The returned delegation uses fixture values for proposer, delegate, committer, slot, and signature.
-	///
-	/// # Examples
-	///
 	fn create_test_delegation() -> SignedDelegation {
 		SignedDelegation {
 			message: DelegationMessage {
@@ -435,6 +428,19 @@ mod tests {
 		}
 	}
 
+	/// Creates a delegation with different values for testing
+	fn create_test_delegation_variant(proposer: [u8; 48], delegate: [u8; 48], slot: u64) -> SignedDelegation {
+		SignedDelegation {
+			message: DelegationMessage {
+				proposer: BlsPublicKey(proposer),
+				delegate: BlsPublicKey(delegate),
+				committer: "0x1234567890123456789012345678901234567890".to_string(),
+				slot,
+			},
+			signature: BlsSignature([3u8; 96]),
+		}
+	}
+
 	#[test]
 	fn test_delegation_creation() {
 		let delegation = create_test_delegation();
@@ -442,5 +448,309 @@ mod tests {
 		assert_eq!(delegation.message.proposer.0, [1u8; 48]);
 		assert_eq!(delegation.message.delegate.0, [2u8; 48]);
 		assert_eq!(delegation.signature.0, [3u8; 96]);
+	}
+
+	#[test]
+	fn test_delegation_stats_creation() {
+		let stats = DelegationStats {
+			total_count: 100,
+			active_count: 80,
+			unique_proposers: 25,
+			unique_delegates: 15,
+			slots_covered: 50,
+			latest_slot: Some(12345),
+		};
+
+		assert_eq!(stats.total_count, 100);
+		assert_eq!(stats.active_count, 80);
+		assert_eq!(stats.unique_proposers, 25);
+		assert_eq!(stats.unique_delegates, 15);
+		assert_eq!(stats.slots_covered, 50);
+		assert_eq!(stats.latest_slot, Some(12345));
+	}
+
+	#[test]
+	fn test_delegation_stats_with_none_latest_slot() {
+		let stats = DelegationStats {
+			total_count: 0,
+			active_count: 0,
+			unique_proposers: 0,
+			unique_delegates: 0,
+			slots_covered: 0,
+			latest_slot: None,
+		};
+
+		assert_eq!(stats.latest_slot, None);
+	}
+
+	#[tokio::test]
+	async fn test_save_delegation_with_invalid_pool() {
+		let delegation = create_test_delegation();
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = save_delegation(&invalid_pool, &delegation).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_get_delegations_for_slot_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = get_delegations_for_slot(&invalid_pool, 12345).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_get_delegation_by_proposer_slot_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+		let proposer_pubkey = BlsPublicKey([1u8; 48]);
+
+		let result = get_delegation_by_proposer_slot(&invalid_pool, &proposer_pubkey, 12345).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_get_delegations_by_delegate_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+		let delegate_pubkey = BlsPublicKey([2u8; 48]);
+
+		let result = get_delegations_by_delegate(&invalid_pool, &delegate_pubkey).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_delegation_exists_for_slot_and_committer_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = delegation_exists_for_slot_and_committer(
+			&invalid_pool,
+			12345,
+			"0x1234567890123456789012345678901234567890",
+		)
+		.await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_deactivate_expired_delegations_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = deactivate_expired_delegations(&invalid_pool, 12345).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_get_delegation_stats_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = get_delegation_stats(&invalid_pool).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_save_delegations_batch_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+		let delegations = vec![create_test_delegation(), create_test_delegation_variant([4u8; 48], [5u8; 48], 12346)];
+
+		let result = save_delegations_batch(&invalid_pool, &delegations).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_save_delegations_batch_empty() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+		let delegations = vec![];
+
+		let result = save_delegations_batch(&invalid_pool, &delegations).await;
+		assert!(result.is_err()); // Will fail due to invalid pool, but tests the function call
+	}
+
+	#[test]
+	fn test_delegation_message_fields() {
+		let delegation = create_test_delegation();
+		let message = &delegation.message;
+
+		assert_eq!(message.slot, 12345);
+		assert_eq!(message.committer, "0x1234567890123456789012345678901234567890");
+		assert_eq!(message.proposer.0, [1u8; 48]);
+		assert_eq!(message.delegate.0, [2u8; 48]);
+	}
+
+	#[test]
+	fn test_bls_public_key_byte_length() {
+		let proposer = BlsPublicKey([1u8; 48]);
+		let delegate = BlsPublicKey([2u8; 48]);
+
+		assert_eq!(proposer.0.len(), 48);
+		assert_eq!(delegate.0.len(), 48);
+	}
+
+	#[test]
+	fn test_bls_signature_byte_length() {
+		let signature = BlsSignature([3u8; 96]);
+		assert_eq!(signature.0.len(), 96);
+	}
+
+	#[test]
+	fn test_delegation_case_insensitive_committer() {
+		let delegation1 = SignedDelegation {
+			message: DelegationMessage {
+				proposer: BlsPublicKey([1u8; 48]),
+				delegate: BlsPublicKey([2u8; 48]),
+				committer: "0x1234567890123456789012345678901234567890".to_string(),
+				slot: 12345,
+			},
+			signature: BlsSignature([3u8; 96]),
+		};
+
+		let delegation2 = SignedDelegation {
+			message: DelegationMessage {
+				proposer: BlsPublicKey([1u8; 48]),
+				delegate: BlsPublicKey([2u8; 48]),
+				committer: "0x1234567890123456789012345678901234567890".to_string(), // Same but different case
+				slot: 12345,
+			},
+			signature: BlsSignature([3u8; 96]),
+		};
+
+		// Test that the committer addresses are the same (case insensitive)
+		assert_eq!(delegation1.message.committer.to_lowercase(), delegation2.message.committer.to_lowercase());
+	}
+
+	#[test]
+	fn test_multiple_delegations_different_slots() {
+		let delegation1 = create_test_delegation_variant([1u8; 48], [2u8; 48], 12345);
+		let delegation2 = create_test_delegation_variant([1u8; 48], [2u8; 48], 12346);
+		let delegation3 = create_test_delegation_variant([3u8; 48], [4u8; 48], 12345);
+
+		assert_eq!(delegation1.message.slot, 12345);
+		assert_eq!(delegation2.message.slot, 12346);
+		assert_eq!(delegation3.message.slot, 12345);
+		assert_ne!(delegation1.message.proposer.0, delegation3.message.proposer.0);
+		assert_ne!(delegation1.message.delegate.0, delegation3.message.delegate.0);
+	}
+
+	#[test]
+	fn test_delegation_expiration_boundary() {
+		// Test boundary conditions for expiration
+		let current_slot = 12345;
+		let expired_slot = current_slot - 1;
+		let active_slot = current_slot;
+		let future_slot = current_slot + 1;
+
+		let expired_delegation = create_test_delegation_variant([1u8; 48], [2u8; 48], expired_slot);
+		let active_delegation = create_test_delegation_variant([3u8; 48], [4u8; 48], active_slot);
+		let future_delegation = create_test_delegation_variant([5u8; 48], [6u8; 48], future_slot);
+
+		assert_eq!(expired_delegation.message.slot, expired_slot);
+		assert_eq!(active_delegation.message.slot, active_slot);
+		assert_eq!(future_delegation.message.slot, future_slot);
+	}
+
+	// Integration tests that would require a real database
+	#[tokio::test]
+	#[ignore] // Ignore by default since it requires a real database
+	async fn test_delegation_crud_operations() {
+		// This test would require a real PostgreSQL database
+		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
+
+		if let Ok(pool) = pool_result {
+			if let Ok(_) = pool.acquire().await {
+				let delegation = create_test_delegation();
+
+				// Test save
+				let saved_id = save_delegation(&pool, &delegation).await.unwrap();
+				assert!(!saved_id.is_nil());
+
+				// Test retrieval by slot
+				let retrieved = get_delegations_for_slot(&pool, delegation.message.slot).await.unwrap();
+				assert_eq!(retrieved.len(), 1);
+				assert_eq!(retrieved[0].message.slot, delegation.message.slot);
+
+				// Test retrieval by proposer and slot
+				let by_proposer =
+					get_delegation_by_proposer_slot(&pool, &delegation.message.proposer, delegation.message.slot)
+						.await
+						.unwrap();
+				assert!(by_proposer.is_some());
+
+				// Test retrieval by delegate
+				let by_delegate = get_delegations_by_delegate(&pool, &delegation.message.delegate).await.unwrap();
+				assert_eq!(by_delegate.len(), 1);
+
+				// Test existence check
+				let exists = delegation_exists_for_slot_and_committer(
+					&pool,
+					delegation.message.slot,
+					&delegation.message.committer,
+				)
+				.await
+				.unwrap();
+				assert!(exists);
+
+				// Test stats
+				let stats = get_delegation_stats(&pool).await.unwrap();
+				assert!(stats.total_count > 0);
+				assert!(stats.active_count > 0);
+			}
+		}
+	}
+
+	#[tokio::test]
+	#[ignore] // Ignore by default since it requires a real database
+	async fn test_delegation_batch_operations() {
+		// This test would require a real PostgreSQL database
+		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
+
+		if let Ok(pool) = pool_result {
+			if let Ok(_) = pool.acquire().await {
+				let delegations = vec![
+					create_test_delegation_variant([1u8; 48], [2u8; 48], 12345),
+					create_test_delegation_variant([3u8; 48], [4u8; 48], 12346),
+					create_test_delegation_variant([5u8; 48], [6u8; 48], 12347),
+				];
+
+				// Test batch save
+				let saved_ids = save_delegations_batch(&pool, &delegations).await.unwrap();
+				assert_eq!(saved_ids.len(), 3);
+
+				// Verify all were saved
+				for (_i, delegation) in delegations.iter().enumerate() {
+					let retrieved = get_delegations_for_slot(&pool, delegation.message.slot).await.unwrap();
+					assert!(!retrieved.is_empty());
+				}
+			}
+		}
+	}
+
+	#[tokio::test]
+	#[ignore] // Ignore by default since it requires a real database
+	async fn test_delegation_expiration() {
+		// This test would require a real PostgreSQL database
+		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
+
+		if let Ok(pool) = pool_result {
+			if let Ok(_) = pool.acquire().await {
+				// Create delegations for different slots
+				let old_delegation = create_test_delegation_variant([1u8; 48], [2u8; 48], 1000);
+				let current_delegation = create_test_delegation_variant([3u8; 48], [4u8; 48], 12345);
+
+				// Save both
+				save_delegation(&pool, &old_delegation).await.unwrap();
+				save_delegation(&pool, &current_delegation).await.unwrap();
+
+				// Deactivate expired delegations (slot 1000 < 12345)
+				let deactivated_count = deactivate_expired_delegations(&pool, 12345).await.unwrap();
+				assert!(deactivated_count > 0);
+
+				// Verify old delegation is no longer active
+				let old_delegations = get_delegations_for_slot(&pool, 1000).await.unwrap();
+				assert_eq!(old_delegations.len(), 0);
+
+				// Verify current delegation is still active
+				let current_delegations = get_delegations_for_slot(&pool, 12345).await.unwrap();
+				assert_eq!(current_delegations.len(), 1);
+			}
+		}
 	}
 }

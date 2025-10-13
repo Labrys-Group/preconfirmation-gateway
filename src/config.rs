@@ -561,3 +561,717 @@ impl Default for FeeConfig {
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::env;
+	use std::fs;
+	use tempfile::TempDir;
+
+	/// Helper function to create a temporary config file
+	fn create_temp_config_file(content: &str) -> TempDir {
+		let temp_dir = TempDir::new().unwrap();
+		let config_path = temp_dir.path().join("config.toml");
+		fs::write(&config_path, content).unwrap();
+		temp_dir
+	}
+
+	/// Helper function to create a test config with custom values
+	fn create_test_config() -> Config {
+		Config {
+			server: ServerConfig { host: "127.0.0.1".to_string(), port: 8080 },
+			database: DatabaseConfig { url: "postgresql://test:test@localhost/test_db".to_string() },
+			logging: LoggingConfig {
+				level: "info".to_string(),
+				enable_method_tracing: true,
+				traced_methods: vec!["test_method".to_string()],
+			},
+			validation: ValidationConfig { slasher_address: "0x1234567890123456789012345678901234567890".to_string() },
+			beacon_api: BeaconApiConfig {
+				primary_endpoint: "https://test.beacon.com".to_string(),
+				fallback_endpoints: vec!["https://fallback.beacon.com".to_string()],
+				request_timeout_secs: 30,
+				genesis_time: 1606824023,
+			},
+			constraints_api: ConstraintsApiConfig {
+				relay_endpoint: "https://test.relay.com".to_string(),
+				request_timeout_secs: 10,
+				max_retries: 3,
+				authorized_builders: vec!["builder1".to_string(), "builder2".to_string()],
+			},
+			delegation: DelegationConfig {
+				lookahead_epochs: 2,
+				polling_interval_secs: 60,
+				cache_ttl_secs: 300,
+				domain_application_gateway: "0x00000002".to_string(),
+			},
+			reth: RethConfig {
+				endpoint: "http://localhost:8545".to_string(),
+				request_timeout_secs: 10,
+				max_retries: 3,
+				fee_config: FeeConfig {
+					scaling_factor: 2.0,
+					default_gas_limit: 30_000_000,
+					min_fee_multiplier: 1.0,
+					max_fee_multiplier: 100.0,
+					cache_ttl_secs: 60,
+				},
+			},
+			signing: SigningConfig::default(),
+		}
+	}
+
+	#[test]
+	fn test_server_config_default() {
+		let config = ServerConfig::default();
+		assert_eq!(config.host, "127.0.0.1");
+		assert_eq!(config.port, 8080);
+	}
+
+	#[test]
+	fn test_database_config_default() {
+		let config = DatabaseConfig::default();
+		assert_eq!(config.url, "postgresql://localhost/preconfirmation_gateway");
+	}
+
+	#[test]
+	fn test_logging_config_default() {
+		let config = LoggingConfig::default();
+		assert_eq!(config.level, "info");
+		assert!(config.enable_method_tracing);
+		assert!(config.traced_methods.contains(&"commitmentRequest".to_string()));
+		assert!(config.traced_methods.contains(&"commitmentResult".to_string()));
+		assert!(config.traced_methods.contains(&"slots".to_string()));
+		assert!(config.traced_methods.contains(&"fee".to_string()));
+	}
+
+	#[test]
+	fn test_validation_config_default() {
+		let config = ValidationConfig::default();
+		assert_eq!(config.slasher_address, "0x0000000000000000000000000000000000000000");
+	}
+
+	#[test]
+	fn test_beacon_api_config_default() {
+		let config = BeaconApiConfig::default();
+		assert!(config.primary_endpoint.contains("alchemy.com"));
+		assert!(config.fallback_endpoints.is_empty());
+		assert_eq!(config.request_timeout_secs, 30);
+		assert_eq!(config.genesis_time, 1606824023);
+	}
+
+	#[test]
+	fn test_constraints_api_config_default() {
+		let config = ConstraintsApiConfig::default();
+		assert_eq!(config.relay_endpoint, "https://relay.example.com");
+		assert_eq!(config.request_timeout_secs, 10);
+		assert_eq!(config.max_retries, 3);
+		assert!(config.authorized_builders.is_empty());
+	}
+
+	#[test]
+	fn test_delegation_config_default() {
+		let config = DelegationConfig::default();
+		assert_eq!(config.lookahead_epochs, 2);
+		assert_eq!(config.polling_interval_secs, 60);
+		assert_eq!(config.cache_ttl_secs, 300);
+		assert_eq!(config.domain_application_gateway, "0x00000002");
+	}
+
+	#[test]
+	fn test_reth_config_default() {
+		let config = RethConfig::default();
+		assert_eq!(config.endpoint, "http://localhost:8545");
+		assert_eq!(config.request_timeout_secs, 10);
+		assert_eq!(config.max_retries, 3);
+	}
+
+	#[test]
+	fn test_fee_config_default() {
+		let config = FeeConfig::default();
+		assert_eq!(config.scaling_factor, 2.0);
+		assert_eq!(config.default_gas_limit, 30_000_000);
+		assert_eq!(config.min_fee_multiplier, 1.0);
+		assert_eq!(config.max_fee_multiplier, 100.0);
+		assert_eq!(config.cache_ttl_secs, 60);
+	}
+
+	#[test]
+	fn test_signing_config_default() {
+		let config = SigningConfig::default();
+		// Test that the default config creates valid keys
+		assert!(!config.committer_address.is_empty());
+		assert!(config.committer_address.starts_with("0x"));
+	}
+
+	#[test]
+	fn test_config_load_from_missing_file() {
+		let result = Config::load_from_file("nonexistent_config.toml");
+		assert!(result.is_ok());
+		let config = result.unwrap();
+		// Should return default config
+		assert_eq!(config.server.host, "127.0.0.1");
+	}
+
+	#[test]
+	fn test_config_load_from_invalid_toml() {
+		let temp_dir = create_temp_config_file("invalid toml content");
+		let config_path = temp_dir.path().join("config.toml");
+		let result = Config::load_from_file(&config_path);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_config_load_from_valid_toml() {
+		let config_content = r#"
+[server]
+host = "0.0.0.0"
+port = 9090
+
+[database]
+url = "postgresql://custom:custom@localhost/custom_db"
+
+[logging]
+level = "debug"
+enable_method_tracing = false
+traced_methods = ["custom_method"]
+
+[validation]
+slasher_address = "0x1234567890123456789012345678901234567890"
+
+[beacon_api]
+primary_endpoint = "https://test.beacon.com"
+fallback_endpoints = []
+request_timeout_secs = 30
+genesis_time = 1606824023
+
+[constraints_api]
+relay_endpoint = "https://test.relay.com"
+request_timeout_secs = 10
+max_retries = 3
+authorized_builders = []
+
+[delegation]
+lookahead_epochs = 2
+polling_interval_secs = 60
+cache_ttl_secs = 300
+domain_application_gateway = "0x00000002"
+
+[reth]
+endpoint = "http://localhost:8545"
+request_timeout_secs = 10
+max_retries = 3
+
+[reth.fee_config]
+scaling_factor = 2.0
+default_gas_limit = 30000000
+min_fee_multiplier = 1.0
+max_fee_multiplier = 100.0
+cache_ttl_secs = 60
+"#;
+		let temp_dir = create_temp_config_file(config_content);
+		let config_path = temp_dir.path().join("config.toml");
+		let result = Config::load_from_file(&config_path);
+		if let Err(e) = &result {
+			println!("Error: {}", e);
+		}
+		assert!(result.is_ok());
+
+		let config = result.unwrap();
+		assert_eq!(config.server.host, "0.0.0.0");
+		assert_eq!(config.server.port, 9090);
+		assert_eq!(config.database.url, "postgresql://custom:custom@localhost/custom_db");
+		assert_eq!(config.logging.level, "debug");
+		assert!(!config.logging.enable_method_tracing);
+		assert_eq!(config.logging.traced_methods, vec!["custom_method"]);
+	}
+
+	#[test]
+	fn test_config_database_url() {
+		let config = create_test_config();
+		assert_eq!(config.database_url(), "postgresql://test:test@localhost/test_db");
+	}
+
+	#[test]
+	fn test_environment_variable_substitution() {
+		// Save original environment
+		let original_beacon = env::var("BEACON_API_ENDPOINT").ok();
+		let original_reth = env::var("RETH_ENDPOINT").ok();
+		let original_constraints = env::var("CONSTRAINTS_API_ENDPOINT").ok();
+
+		// Set test environment variables
+		unsafe {
+			env::set_var("BEACON_API_ENDPOINT", "https://env.beacon.com");
+			env::set_var("RETH_ENDPOINT", "https://env.reth.com");
+			env::set_var("CONSTRAINTS_API_ENDPOINT", "https://env.constraints.com");
+		}
+
+		let mut config = create_test_config();
+		config.beacon_api.primary_endpoint = "${BEACON_API_ENDPOINT}".to_string();
+		config.reth.endpoint = "${RETH_ENDPOINT}".to_string();
+		config.constraints_api.relay_endpoint = "${CONSTRAINTS_API_ENDPOINT}".to_string();
+
+		let result = Config::substitute_env_vars(&mut config);
+		assert!(result.is_ok());
+
+		assert_eq!(config.beacon_api.primary_endpoint, "https://env.beacon.com");
+		assert_eq!(config.reth.endpoint, "https://env.reth.com");
+		assert_eq!(config.constraints_api.relay_endpoint, "https://env.constraints.com");
+
+		// Restore original environment
+		unsafe {
+			match original_beacon {
+				Some(val) => env::set_var("BEACON_API_ENDPOINT", val),
+				None => env::remove_var("BEACON_API_ENDPOINT"),
+			}
+			match original_reth {
+				Some(val) => env::set_var("RETH_ENDPOINT", val),
+				None => env::remove_var("RETH_ENDPOINT"),
+			}
+			match original_constraints {
+				Some(val) => env::set_var("CONSTRAINTS_API_ENDPOINT", val),
+				None => env::remove_var("CONSTRAINTS_API_ENDPOINT"),
+			}
+		}
+	}
+
+	#[test]
+	fn test_environment_variable_substitution_missing() {
+		let mut config = create_test_config();
+		config.beacon_api.primary_endpoint = "${MISSING_ENV_VAR}".to_string();
+
+		let result = Config::substitute_env_vars(&mut config);
+		assert!(result.is_ok());
+
+		// Should remain unchanged when env var is missing
+		assert_eq!(config.beacon_api.primary_endpoint, "${MISSING_ENV_VAR}");
+	}
+
+	#[test]
+	fn test_validate_beacon_endpoint_empty() {
+		let result = Config::validate_beacon_endpoint("");
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("empty"));
+	}
+
+	#[test]
+	fn test_validate_beacon_endpoint_placeholder() {
+		let result = Config::validate_beacon_endpoint("${BEACON_API_ENDPOINT}");
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("placeholder"));
+
+		let result = Config::validate_beacon_endpoint("https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY");
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("YOUR_API_KEY"));
+	}
+
+	#[test]
+	fn test_validate_beacon_endpoint_invalid_url() {
+		let result = Config::validate_beacon_endpoint("not-a-url");
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("HTTP/HTTPS URL"));
+	}
+
+	#[test]
+	fn test_validate_beacon_endpoint_valid() {
+		let result = Config::validate_beacon_endpoint("https://eth-mainnet.g.alchemy.com/v2/actual_key");
+		assert!(result.is_ok());
+
+		let result = Config::validate_beacon_endpoint("http://localhost:8545");
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_validate_endpoint_empty() {
+		let result = Config::validate_endpoint("", "TEST_ENDPOINT", "Test Service");
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("empty"));
+	}
+
+	#[test]
+	fn test_validate_endpoint_placeholder() {
+		let result = Config::validate_endpoint("${TEST_ENDPOINT}", "TEST_ENDPOINT", "Test Service");
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("placeholder"));
+
+		let result = Config::validate_endpoint("REPLACE_ME", "TEST_ENDPOINT", "Test Service");
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("REPLACE_ME"));
+
+		let result = Config::validate_endpoint("example.com", "TEST_ENDPOINT", "Test Service");
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("example.com"));
+	}
+
+	#[test]
+	fn test_validate_endpoint_invalid_url() {
+		let result = Config::validate_endpoint("not-a-url", "TEST_ENDPOINT", "Test Service");
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("HTTP/HTTPS URL"));
+	}
+
+	#[test]
+	fn test_validate_endpoint_valid() {
+		let result = Config::validate_endpoint("https://api.testservice.com", "TEST_ENDPOINT", "Test Service");
+		if let Err(e) = &result {
+			println!("Error: {}", e);
+		}
+		assert!(result.is_ok());
+
+		let result = Config::validate_endpoint("http://localhost:8080", "TEST_ENDPOINT", "Test Service");
+		if let Err(e) = &result {
+			println!("Error: {}", e);
+		}
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_signing_config_load_missing_env_vars() {
+		// Save original environment
+		let original_committer = env::var("COMMITTER_PRIVATE_KEY").ok();
+		let original_bls = env::var("BLS_PRIVATE_KEY").ok();
+
+		// Remove environment variables
+		unsafe {
+			env::remove_var("COMMITTER_PRIVATE_KEY");
+			env::remove_var("BLS_PRIVATE_KEY");
+		}
+
+		let result = SigningConfig::load();
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("COMMITTER_PRIVATE_KEY"));
+
+		// Restore original environment
+		unsafe {
+			match original_committer {
+				Some(val) => env::set_var("COMMITTER_PRIVATE_KEY", val),
+				None => env::remove_var("COMMITTER_PRIVATE_KEY"),
+			}
+			match original_bls {
+				Some(val) => env::set_var("BLS_PRIVATE_KEY", val),
+				None => env::remove_var("BLS_PRIVATE_KEY"),
+			}
+		}
+	}
+
+	#[test]
+	fn test_signing_config_load_invalid_ecdsa_key() {
+		// Save original environment
+		let original_committer = env::var("COMMITTER_PRIVATE_KEY").ok();
+		let original_bls = env::var("BLS_PRIVATE_KEY").ok();
+
+		// Set invalid ECDSA key
+		unsafe {
+			env::set_var("COMMITTER_PRIVATE_KEY", "invalid_key");
+			env::set_var("BLS_PRIVATE_KEY", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
+		}
+
+		let result = SigningConfig::load();
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("Invalid COMMITTER_PRIVATE_KEY"));
+
+		// Restore original environment
+		unsafe {
+			match original_committer {
+				Some(val) => env::set_var("COMMITTER_PRIVATE_KEY", val),
+				None => env::remove_var("COMMITTER_PRIVATE_KEY"),
+			}
+			match original_bls {
+				Some(val) => env::set_var("BLS_PRIVATE_KEY", val),
+				None => env::remove_var("BLS_PRIVATE_KEY"),
+			}
+		}
+	}
+
+	#[test]
+	fn test_signing_config_load_invalid_bls_key() {
+		// Save original environment
+		let original_committer = env::var("COMMITTER_PRIVATE_KEY").ok();
+		let original_bls = env::var("BLS_PRIVATE_KEY").ok();
+
+		// Set invalid BLS key
+		unsafe {
+			env::set_var("COMMITTER_PRIVATE_KEY", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef");
+			env::set_var("BLS_PRIVATE_KEY", "invalid_bls_key");
+		}
+
+		let result = SigningConfig::load();
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("Invalid BLS_PRIVATE_KEY"));
+
+		// Restore original environment
+		unsafe {
+			match original_committer {
+				Some(val) => env::set_var("COMMITTER_PRIVATE_KEY", val),
+				None => env::remove_var("COMMITTER_PRIVATE_KEY"),
+			}
+			match original_bls {
+				Some(val) => env::set_var("BLS_PRIVATE_KEY", val),
+				None => env::remove_var("BLS_PRIVATE_KEY"),
+			}
+		}
+	}
+
+	#[test]
+	fn test_signing_config_parse_bls_key_valid() {
+		let valid_hex = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+		let result = SigningConfig::parse_bls_key(valid_hex);
+		assert!(result.is_ok());
+		let (private_key, public_key) = result.unwrap();
+		// Test that we can derive public key from private key
+		let derived_public = private_key.sk_to_pk();
+		assert_eq!(public_key, derived_public);
+	}
+
+	#[test]
+	fn test_signing_config_parse_bls_key_invalid_length() {
+		let invalid_hex = "1234567890abcdef"; // Too short
+		let result = SigningConfig::parse_bls_key(invalid_hex);
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("Invalid BLS private key hex"));
+	}
+
+	#[test]
+	fn test_signing_config_parse_bls_key_invalid_hex() {
+		let invalid_hex = "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg";
+		let result = SigningConfig::parse_bls_key(invalid_hex);
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_signing_config_debug_formatting() {
+		let config = SigningConfig::default();
+		let debug_str = format!("{:?}", config);
+		assert!(debug_str.contains("SigningConfig"));
+		assert!(debug_str.contains("<redacted>"));
+		assert!(debug_str.contains(&config.committer_address));
+	}
+
+	#[test]
+	fn test_config_serialization() {
+		let config = create_test_config();
+		let serialized = toml::to_string(&config).unwrap();
+		assert!(serialized.contains("host = \"127.0.0.1\""));
+		assert!(serialized.contains("port = 8080"));
+	}
+
+	#[test]
+	fn test_config_deserialization() {
+		let config_content = r#"
+[server]
+host = "0.0.0.0"
+port = 9090
+
+[database]
+url = "postgresql://test:test@localhost/test_db"
+
+[logging]
+level = "debug"
+enable_method_tracing = false
+traced_methods = []
+
+[validation]
+slasher_address = "0x1234567890123456789012345678901234567890"
+
+[beacon_api]
+primary_endpoint = "https://test.beacon.com"
+fallback_endpoints = ["https://fallback.beacon.com"]
+request_timeout_secs = 30
+genesis_time = 1606824023
+
+[constraints_api]
+relay_endpoint = "https://test.relay.com"
+request_timeout_secs = 10
+max_retries = 3
+authorized_builders = ["builder1", "builder2"]
+
+[delegation]
+lookahead_epochs = 2
+polling_interval_secs = 60
+cache_ttl_secs = 300
+domain_application_gateway = "0x00000002"
+
+[reth]
+endpoint = "http://localhost:8545"
+request_timeout_secs = 10
+max_retries = 3
+
+[reth.fee_config]
+scaling_factor = 2.0
+default_gas_limit = 30000000
+min_fee_multiplier = 1.0
+max_fee_multiplier = 100.0
+cache_ttl_secs = 60
+"#;
+		let config: Config = toml::from_str(config_content).unwrap();
+		assert_eq!(config.server.host, "0.0.0.0");
+		assert_eq!(config.server.port, 9090);
+		assert_eq!(config.database.url, "postgresql://test:test@localhost/test_db");
+		assert_eq!(config.logging.level, "debug");
+		assert!(!config.logging.enable_method_tracing);
+	}
+
+	#[test]
+	fn test_config_clone() {
+		let config1 = create_test_config();
+		let config2 = config1.clone();
+		assert_eq!(config1.server.host, config2.server.host);
+		assert_eq!(config1.server.port, config2.server.port);
+		assert_eq!(config1.database.url, config2.database.url);
+	}
+
+	#[test]
+	fn test_config_debug() {
+		let config = create_test_config();
+		let debug_str = format!("{:?}", config);
+		assert!(debug_str.contains("Config"));
+		assert!(debug_str.contains("127.0.0.1"));
+		assert!(debug_str.contains("8080"));
+	}
+
+	#[test]
+	fn test_fee_config_bounds() {
+		let fee_config = FeeConfig::default();
+
+		// Test that bounds are reasonable
+		assert!(fee_config.min_fee_multiplier >= 1.0);
+		assert!(fee_config.max_fee_multiplier > fee_config.min_fee_multiplier);
+		assert!(fee_config.scaling_factor > 0.0);
+		assert!(fee_config.default_gas_limit > 0);
+		assert!(fee_config.cache_ttl_secs > 0);
+	}
+
+	#[test]
+	fn test_beacon_api_fallback_endpoints() {
+		let mut config = BeaconApiConfig::default();
+		config.fallback_endpoints =
+			vec!["https://fallback1.beacon.com".to_string(), "https://fallback2.beacon.com".to_string()];
+
+		assert_eq!(config.fallback_endpoints.len(), 2);
+		assert!(config.fallback_endpoints.contains(&"https://fallback1.beacon.com".to_string()));
+		assert!(config.fallback_endpoints.contains(&"https://fallback2.beacon.com".to_string()));
+	}
+
+	#[test]
+	fn test_constraints_api_authorized_builders() {
+		let mut config = ConstraintsApiConfig::default();
+		config.authorized_builders = vec!["builder1".to_string(), "builder2".to_string(), "builder3".to_string()];
+
+		assert_eq!(config.authorized_builders.len(), 3);
+		assert!(config.authorized_builders.contains(&"builder1".to_string()));
+		assert!(config.authorized_builders.contains(&"builder2".to_string()));
+		assert!(config.authorized_builders.contains(&"builder3".to_string()));
+	}
+
+	#[test]
+	fn test_delegation_config_domain_separator() {
+		let config = DelegationConfig::default();
+		assert_eq!(config.domain_application_gateway, "0x00000002");
+		assert!(config.domain_application_gateway.starts_with("0x"));
+		assert_eq!(config.domain_application_gateway.len(), 10); // 0x + 8 hex chars
+	}
+
+	#[test]
+	fn test_reth_config_timeout_values() {
+		let config = RethConfig::default();
+		assert!(config.request_timeout_secs > 0);
+		assert!(config.max_retries > 0);
+		assert!(config.request_timeout_secs <= 300); // Reasonable upper bound
+		assert!(config.max_retries <= 10); // Reasonable upper bound
+	}
+
+	#[test]
+	fn test_logging_config_traced_methods() {
+		let config = LoggingConfig::default();
+		assert!(config.traced_methods.len() > 0);
+		assert!(config.traced_methods.contains(&"commitmentRequest".to_string()));
+		assert!(config.traced_methods.contains(&"commitmentResult".to_string()));
+		assert!(config.traced_methods.contains(&"slots".to_string()));
+		assert!(config.traced_methods.contains(&"fee".to_string()));
+	}
+
+	#[test]
+	fn test_validation_config_slasher_address() {
+		let config = ValidationConfig::default();
+		assert!(config.slasher_address.starts_with("0x"));
+		assert_eq!(config.slasher_address.len(), 42); // 0x + 40 hex chars
+	}
+
+	#[test]
+	fn test_beacon_api_genesis_time() {
+		let config = BeaconApiConfig::default();
+		assert_eq!(config.genesis_time, 1606824023); // Ethereum mainnet genesis
+		assert!(config.genesis_time > 0);
+	}
+
+	#[test]
+	fn test_config_load_full_flow() {
+		// This test would require setting up environment variables
+		// For now, we'll test the individual components
+		let config_content = r#"
+[server]
+host = "0.0.0.0"
+port = 8080
+
+[database]
+url = "postgresql://test:test@localhost/test_db"
+
+[logging]
+level = "info"
+enable_method_tracing = true
+traced_methods = []
+
+[validation]
+slasher_address = "0x0000000000000000000000000000000000000000"
+
+[beacon_api]
+primary_endpoint = "https://eth-mainnet.g.alchemy.com/v2/test_key"
+fallback_endpoints = []
+request_timeout_secs = 30
+genesis_time = 1606824023
+
+[constraints_api]
+relay_endpoint = "https://relay.example.com"
+request_timeout_secs = 10
+max_retries = 3
+authorized_builders = []
+
+[delegation]
+lookahead_epochs = 2
+polling_interval_secs = 60
+cache_ttl_secs = 300
+domain_application_gateway = "0x00000002"
+
+[reth]
+endpoint = "http://localhost:8545"
+request_timeout_secs = 10
+max_retries = 3
+
+[reth.fee_config]
+scaling_factor = 2.0
+default_gas_limit = 30000000
+min_fee_multiplier = 1.0
+max_fee_multiplier = 100.0
+cache_ttl_secs = 60
+"#;
+		let temp_dir = create_temp_config_file(config_content);
+		let config_path = temp_dir.path().join("config.toml");
+
+		let result = Config::load_from_file(&config_path);
+		assert!(result.is_ok());
+
+		let config = result.unwrap();
+		assert_eq!(config.server.host, "0.0.0.0");
+		assert_eq!(config.server.port, 8080);
+		assert_eq!(config.database.url, "postgresql://test:test@localhost/test_db");
+		assert_eq!(config.logging.level, "info");
+		assert!(config.logging.enable_method_tracing);
+		assert_eq!(config.validation.slasher_address, "0x0000000000000000000000000000000000000000");
+		assert_eq!(config.beacon_api.primary_endpoint, "https://eth-mainnet.g.alchemy.com/v2/test_key");
+		assert_eq!(config.constraints_api.relay_endpoint, "https://relay.example.com");
+		assert_eq!(config.delegation.lookahead_epochs, 2);
+		assert_eq!(config.reth.endpoint, "http://localhost:8545");
+		assert_eq!(config.reth.fee_config.scaling_factor, 2.0);
+	}
+}

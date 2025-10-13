@@ -59,7 +59,8 @@ impl DelegationPollingService {
 			let config = Arc::clone(&config);
 
 			Box::pin(async move {
-				if let Err(e) = poll_delegations(beacon_client, constraints_client, db_pool, config, bls_manager).await {
+				if let Err(e) = poll_delegations(beacon_client, constraints_client, db_pool, config, bls_manager).await
+				{
 					error!("Delegation polling failed: {}", e);
 				}
 			})
@@ -467,14 +468,7 @@ mod tests {
 
 		// This should fail due to invalid API endpoints and no database connection
 		let blst_pk = blst::min_pk::PublicKey::from_bytes(&pk.0).expect("Valid BLS public key");
-		let result = poll_delegations_for_slot(
-			&constraints_client,
-			&db_pool,
-			slot,
-			&blst_pk,
-			&bls_manager,
-		)
-		.await;
+		let result = poll_delegations_for_slot(&constraints_client, &db_pool, slot, &blst_pk, &bls_manager).await;
 		assert!(result.is_err(), "Should fail due to connectivity issues");
 	}
 
@@ -590,7 +584,8 @@ mod tests {
 			let pool = Arc::clone(&db_pool);
 			let conf = Arc::new(config.clone());
 
-			let handle = tokio::spawn(async move { poll_delegations(beacon, constraints, pool, conf, bls_manager).await });
+			let handle =
+				tokio::spawn(async move { poll_delegations(beacon, constraints, pool, conf, bls_manager).await });
 			handles.push(handle);
 		}
 
