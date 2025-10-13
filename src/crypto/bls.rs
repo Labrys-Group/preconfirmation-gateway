@@ -21,6 +21,10 @@ pub mod domains {
 	/// Domain separator for delegation signatures (from spec: 0x0044656c)
 	pub const DELEGATION_DOMAIN_SEPARATOR: [u8; 4] = [0x00, 0x44, 0x65, 0x6c];
 
+	/// BLS signature ciphersuite DST (Domain Separation Tag) for Proof of Possession
+	/// This is the standard DST from the BLS signature specification (draft-irtf-cfrg-bls-signature)
+	pub const BLS_POP_DST: &[u8] = b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
+
 	/// Parses a 4-byte application gateway domain separator from a hex string.
 	///
 	/// Accepts an optional `0x` prefix. Returns an error if the string is not valid hex
@@ -89,8 +93,8 @@ impl BlsManager {
 		let signature = BlsSignature::from_bytes(&delegation.signature.0)
 			.map_err(|e| anyhow::anyhow!("Invalid BLS signature: {:?}", e))?;
 
-		// 5. Verify signature
-		let result = signature.verify(true, &signing_root, b"", &[], &proposer_pubkey, true);
+		// 5. Verify signature with standard BLS POP DST
+		let result = signature.verify(true, &signing_root, domains::BLS_POP_DST, &[], &proposer_pubkey, true);
 		Ok(result == BLST_ERROR::BLST_SUCCESS)
 	}
 
@@ -116,8 +120,8 @@ impl BlsManager {
 		// 2. Calculate signing root with application gateway domain
 		let signing_root = self.calculate_signing_root(&encoded, &self.application_gateway_domain);
 
-		// 3. Sign the message
-		let signature = private_key.sign(&signing_root, b"", &[]);
+		// 3. Sign the message with standard BLS POP DST
+		let signature = private_key.sign(&signing_root, domains::BLS_POP_DST, &[]);
 
 		// 4. Return signature bytes
 		Ok(signature.to_bytes())
@@ -220,12 +224,12 @@ pub mod keys {
 	/// # Examples
 	///
 	pub fn generate_keypair() -> (BlsSecretKey, BlsPublicKey) {
-		// Use proper key generation with random seed
+		// Use proper key generation with random seed and standard BLS POP DST
 		use rand::Rng;
 		let mut rng = rand::thread_rng();
 		let mut seed = [0u8; 32];
 		rng.fill(&mut seed);
-		let private_key = BlsSecretKey::key_gen(&seed, b"BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_").unwrap();
+		let private_key = BlsSecretKey::key_gen(&seed, super::domains::BLS_POP_DST).unwrap();
 		let public_key = private_key.sk_to_pk();
 		(private_key, public_key)
 	}
