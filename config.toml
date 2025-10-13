@@ -26,7 +26,12 @@ traced_methods = [
 
 [validation]
 # Validation configuration
-slasher_address = "0x0000000000000000000000000000000000000000"  # Ethereum address that must match request slasher
+# Whitelist of allowed slasher contract addresses
+# REQUIRED: Must contain at least one address for security
+# Only commitment requests with slasher addresses in this list will be accepted
+slasher_whitelist = [
+    "0x0000000000000000000000000000000000000000"
+]
 
 [beacon_api]
 # Beacon API configuration for validator duties and timing

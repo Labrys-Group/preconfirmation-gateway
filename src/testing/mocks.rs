@@ -472,7 +472,7 @@ pub fn create_test_config() -> Config {
 			traced_methods: vec![],
 		},
 		validation: crate::config::ValidationConfig {
-			slasher_address: "0x1234567890123456789012345678901234567890".to_string(),
+			slasher_whitelist: vec!["0x1234567890123456789012345678901234567890".to_string()],
 		},
 		beacon_api: crate::config::BeaconApiConfig {
 			primary_endpoint: "http://localhost:5051".to_string(),

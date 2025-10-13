@@ -18,6 +18,30 @@ fn validate_and_extract_slot(commitment_type: u64, payload: &[u8]) -> Result<u64
 		.map_err(|e| format!("Failed to extract slot from payload: {}", e))
 }
 
+/// Validate slasher address against whitelist
+fn validate_slasher_address(context: &RpcContext, slasher_address: &str) -> Result<(), String> {
+	// Normalize the provided slasher address for comparison
+	let canonical_slasher = normalize_address(slasher_address);
+
+	// Check if the slasher address is in the whitelist
+	// Note: The whitelist is guaranteed to be non-empty by config validation at startup
+	let is_whitelisted = context
+		.config
+		.validation
+		.slasher_whitelist
+		.iter()
+		.any(|whitelisted| normalize_address(whitelisted) == canonical_slasher);
+
+	if is_whitelisted {
+		Ok(())
+	} else {
+		Err(format!(
+			"Slasher address {} is not in the configured whitelist. Only whitelisted slasher contracts are allowed.",
+			slasher_address
+		))
+	}
+}
+
 /// Check if we have valid delegation authority for the given slot and committer
 async fn verify_delegation_authority(context: &RpcContext, slot: u64, committer_address: &str) -> Result<String, String> {
 	// Get delegations for this slot from the database
@@ -141,6 +165,12 @@ pub async fn commitment_request_handler(
 		warn!("Invalid commitment type: {}", request.commitment_type);
 		return Err(jsonrpsee::types::error::ErrorCode::InvalidParams.into());
 	}
+
+	// Validate slasher address against whitelist
+	validate_slasher_address(&context, &request.slasher).map_err(|e| {
+		warn!("Slasher validation failed: {}", e);
+		jsonrpsee::types::error::ErrorCode::InvalidRequest
+	})?;
 
 	// Extract slot from payload - CRITICAL: This must succeed before any signing
 	let slot = validate_and_extract_slot(request.commitment_type, &request.payload).map_err(|e| {
@@ -390,7 +420,7 @@ mod tests {
 				traced_methods: vec![],
 			},
 			validation: crate::config::ValidationConfig {
-				slasher_address: "0x1234567890123456789012345678901234567890".to_string(),
+				slasher_whitelist: vec!["0x1234567890123456789012345678901234567890".to_string()],
 			},
 			beacon_api: crate::config::BeaconApiConfig {
 				primary_endpoint: "http://localhost:3500".to_string(),
@@ -469,6 +499,79 @@ mod tests {
 	}
 
 	#[test]
+	fn test_validate_slasher_address_whitelisted() {
+		// Test that whitelisted addresses are accepted
+		let context = create_test_context();
+		let mut config = (*context.config).clone();
+		config.validation.slasher_whitelist = vec![
+			"0x1234567890123456789012345678901234567890".to_string(),
+			"0xabcdefabcdefabcdefabcdefabcdefabcdefabcd".to_string(),
+		];
+
+		let context_with_whitelist = Arc::new(RpcContext {
+			database: context.database.clone(),
+			config: Arc::new(config),
+			fee_engine: context.fee_engine.clone(),
+			beacon_client: context.beacon_client.clone(),
+		});
+
+		// Test exact match
+		let result = validate_slasher_address(&context_with_whitelist, "0x1234567890123456789012345678901234567890");
+		assert!(result.is_ok());
+
+		// Test case-insensitive match
+		let result = validate_slasher_address(&context_with_whitelist, "0x1234567890123456789012345678901234567890");
+		assert!(result.is_ok());
+
+		// Test uppercase
+		let result = validate_slasher_address(&context_with_whitelist, "0xABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD");
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_validate_slasher_address_not_whitelisted() {
+		// Test that non-whitelisted addresses are rejected
+		let context = create_test_context();
+		let mut config = (*context.config).clone();
+		config.validation.slasher_whitelist = vec!["0x1234567890123456789012345678901234567890".to_string()];
+
+		let context_with_whitelist = Arc::new(RpcContext {
+			database: context.database.clone(),
+			config: Arc::new(config),
+			fee_engine: context.fee_engine.clone(),
+			beacon_client: context.beacon_client.clone(),
+		});
+
+		let result = validate_slasher_address(&context_with_whitelist, "0x9999999999999999999999999999999999999999");
+		assert!(result.is_err());
+		assert!(result.unwrap_err().contains("not in the configured whitelist"));
+	}
+
+	#[test]
+	fn test_validate_slasher_address_normalization() {
+		// Test that address normalization works correctly
+		let context = create_test_context();
+		let mut config = (*context.config).clone();
+		config.validation.slasher_whitelist =
+			vec!["0x1234567890ABCdef1234567890abcdef12345678".to_string()]; // Mixed case
+
+		let context_with_whitelist = Arc::new(RpcContext {
+			database: context.database.clone(),
+			config: Arc::new(config),
+			fee_engine: context.fee_engine.clone(),
+			beacon_client: context.beacon_client.clone(),
+		});
+
+		// Test lowercase version of mixed case address
+		let result = validate_slasher_address(&context_with_whitelist, "0x1234567890abcdef1234567890abcdef12345678");
+		assert!(result.is_ok());
+
+		// Test uppercase version of mixed case address
+		let result = validate_slasher_address(&context_with_whitelist, "0x1234567890ABCDEF1234567890ABCDEF12345678");
+		assert!(result.is_ok());
+	}
+
+	#[test]
 	fn test_find_signing_key_for_committer_success() {
 		// Test key finding logic directly without database context
 		use crate::crypto::{ecdsa_to_address, parse_private_key};
@@ -517,7 +620,7 @@ mod tests {
 			let invalid_request = CommitmentRequest {
 				commitment_type: 99, // Invalid type
 				payload: vec![1, 2, 3, 4],
-				slasher: context.config.validation.slasher_address.clone(),
+				slasher: context.config.validation.slasher_whitelist.first().unwrap_or(&"0x0000000000000000000000000000000000000000".to_string()).clone(),
 			};
 
 			// We can't call the handler directly due to database dependencies,
@@ -529,7 +632,7 @@ mod tests {
 			let invalid_payload_request = CommitmentRequest {
 				commitment_type: 1,
 				payload: vec![0xff, 0xff, 0xff, 0xff], // Invalid payload
-				slasher: context.config.validation.slasher_address.clone(),
+				slasher: context.config.validation.slasher_whitelist.first().unwrap_or(&"0x0000000000000000000000000000000000000000".to_string()).clone(),
 			};
 
 			let slot_result =
@@ -538,7 +641,7 @@ mod tests {
 
 			// Test 3: Valid payload structure
 			let valid_request =
-				TestFixtures::create_inclusion_commitment_request(12345, &context.config.validation.slasher_address);
+				TestFixtures::create_inclusion_commitment_request(12345, context.config.validation.slasher_whitelist.first().unwrap_or(&"0x0000000000000000000000000000000000000000".to_string()));
 
 			let slot_result = validate_and_extract_slot(valid_request.commitment_type, &valid_request.payload);
 			assert!(slot_result.is_ok());

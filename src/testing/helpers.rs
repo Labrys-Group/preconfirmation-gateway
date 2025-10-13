@@ -286,7 +286,7 @@ impl TestHelpers {
 
 			let commitment_request = crate::testing::fixtures::TestFixtures::create_inclusion_commitment_request(
 				slot,
-				&context.config.validation.slasher_address,
+				context.config.validation.slasher_whitelist.first().unwrap_or(&"0x0000000000000000000000000000000000000000".to_string()),
 			);
 
 			// Simulate the request

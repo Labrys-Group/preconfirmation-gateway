@@ -41,7 +41,7 @@ pub struct LoggingConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationConfig {
-	pub slasher_address: String,
+	pub slasher_whitelist: Vec<String>,
 }
 
 /// Configuration for Beacon API integration
@@ -176,12 +176,12 @@ impl Default for LoggingConfig {
 impl Default for ValidationConfig {
 	/// Creates a `ValidationConfig` populated with sensible defaults.
 	///
-	/// The default sets the `slasher_address` to the zero Ethereum address.
+	/// The default sets the `slasher_whitelist` to an empty list (no restrictions).
 	///
 	/// # Examples
 	///
 	fn default() -> Self {
-		Self { slasher_address: "0x0000000000000000000000000000000000000000".to_string() }
+		Self { slasher_whitelist: vec![] }
 	}
 }
 
@@ -360,6 +360,9 @@ impl Config {
 		Self::validate_endpoint(&config.reth.endpoint, "RETH_ENDPOINT", "Reth")?;
 		Self::validate_endpoint(&config.constraints_api.relay_endpoint, "CONSTRAINTS_API_ENDPOINT", "Constraints API")?;
 
+		// Validate slasher whitelist is not empty
+		Self::validate_slasher_whitelist(&config.validation)?;
+
 		Ok(config)
 	}
 
@@ -485,6 +488,41 @@ impl Config {
 		Ok(())
 	}
 
+	/// Validates that the slasher whitelist is not empty.
+	///
+	/// An empty whitelist would allow all slasher addresses, which is a security risk.
+	/// The configuration must explicitly specify at least one allowed slasher contract address.
+	///
+	/// # Parameters
+	///
+	/// - `validation_config`: The validation configuration to check.
+	///
+	/// # Returns
+	///
+	/// `Ok(())` if the whitelist contains at least one address, an `Err` otherwise.
+	///
+	/// # Examples
+	///
+	fn validate_slasher_whitelist(validation_config: &ValidationConfig) -> Result<()> {
+		if validation_config.slasher_whitelist.is_empty() {
+			anyhow::bail!(
+				"Slasher whitelist is empty. For security, you must configure at least one allowed slasher contract address in config.toml under [validation] slasher_whitelist"
+			);
+		}
+
+		// Validate that all addresses in the whitelist are valid Ethereum addresses
+		for address in &validation_config.slasher_whitelist {
+			if !address.starts_with("0x") || address.len() != 42 {
+				anyhow::bail!(
+					"Invalid slasher address in whitelist: '{}'. Expected format: 0x followed by 40 hex characters (e.g., 0x1234567890123456789012345678901234567890)",
+					address
+				);
+			}
+		}
+
+		Ok(())
+	}
+
 	/// Load configuration from a TOML file, falling back to defaults when the file is absent.
 	///
 	/// If the given path exists, the file is read and parsed as TOML into a `Config`. If the file
@@ -588,7 +626,7 @@ mod tests {
 				enable_method_tracing: true,
 				traced_methods: vec!["test_method".to_string()],
 			},
-			validation: ValidationConfig { slasher_address: "0x1234567890123456789012345678901234567890".to_string() },
+			validation: ValidationConfig { slasher_whitelist: vec!["0x1234567890123456789012345678901234567890".to_string()] },
 			beacon_api: BeaconApiConfig {
 				primary_endpoint: "https://test.beacon.com".to_string(),
 				fallback_endpoints: vec!["https://fallback.beacon.com".to_string()],
@@ -650,7 +688,7 @@ mod tests {
 	#[test]
 	fn test_validation_config_default() {
 		let config = ValidationConfig::default();
-		assert_eq!(config.slasher_address, "0x0000000000000000000000000000000000000000");
+		assert_eq!(config.slasher_whitelist, Vec::<String>::new());
 	}
 
 	#[test]
@@ -739,7 +777,7 @@ enable_method_tracing = false
 traced_methods = ["custom_method"]
 
 [validation]
-slasher_address = "0x1234567890123456789012345678901234567890"
+slasher_whitelist = ["0x1234567890123456789012345678901234567890"]
 
 [beacon_api]
 primary_endpoint = "https://test.beacon.com"
@@ -1077,7 +1115,7 @@ enable_method_tracing = false
 traced_methods = []
 
 [validation]
-slasher_address = "0x1234567890123456789012345678901234567890"
+slasher_whitelist = ["0x1234567890123456789012345678901234567890"]
 
 [beacon_api]
 primary_endpoint = "https://test.beacon.com"
@@ -1203,10 +1241,60 @@ cache_ttl_secs = 60
 	}
 
 	#[test]
-	fn test_validation_config_slasher_address() {
+	fn test_validation_config_slasher_whitelist() {
 		let config = ValidationConfig::default();
-		assert!(config.slasher_address.starts_with("0x"));
-		assert_eq!(config.slasher_address.len(), 42); // 0x + 40 hex chars
+		assert_eq!(config.slasher_whitelist, Vec::<String>::new());
+
+		// Test with custom whitelist
+		let config_with_whitelist = ValidationConfig {
+			slasher_whitelist: vec!["0x1234567890123456789012345678901234567890".to_string()],
+		};
+		assert_eq!(config_with_whitelist.slasher_whitelist.len(), 1);
+		assert!(config_with_whitelist.slasher_whitelist[0].starts_with("0x"));
+		assert_eq!(config_with_whitelist.slasher_whitelist[0].len(), 42); // 0x + 40 hex chars
+	}
+
+	#[test]
+	fn test_validate_slasher_whitelist_empty() {
+		let config = ValidationConfig { slasher_whitelist: vec![] };
+		let result = Config::validate_slasher_whitelist(&config);
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("Slasher whitelist is empty"));
+	}
+
+	#[test]
+	fn test_validate_slasher_whitelist_valid() {
+		let config = ValidationConfig {
+			slasher_whitelist: vec![
+				"0x1234567890123456789012345678901234567890".to_string(),
+				"0xabcdefabcdefabcdefabcdefabcdefabcdefabcd".to_string(),
+			],
+		};
+		let result = Config::validate_slasher_whitelist(&config);
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn test_validate_slasher_whitelist_invalid_format() {
+		// Missing 0x prefix
+		let config = ValidationConfig { slasher_whitelist: vec!["1234567890123456789012345678901234567890".to_string()] };
+		let result = Config::validate_slasher_whitelist(&config);
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("Invalid slasher address"));
+
+		// Too short
+		let config = ValidationConfig { slasher_whitelist: vec!["0x1234567890".to_string()] };
+		let result = Config::validate_slasher_whitelist(&config);
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("Invalid slasher address"));
+
+		// Too long
+		let config = ValidationConfig {
+			slasher_whitelist: vec!["0x123456789012345678901234567890123456789012".to_string()],
+		};
+		let result = Config::validate_slasher_whitelist(&config);
+		assert!(result.is_err());
+		assert!(result.unwrap_err().to_string().contains("Invalid slasher address"));
 	}
 
 	#[test]
@@ -1234,7 +1322,7 @@ enable_method_tracing = true
 traced_methods = []
 
 [validation]
-slasher_address = "0x0000000000000000000000000000000000000000"
+slasher_whitelist = ["0x0000000000000000000000000000000000000000"]
 
 [beacon_api]
 primary_endpoint = "https://eth-mainnet.g.alchemy.com/v2/test_key"
@@ -1278,7 +1366,7 @@ cache_ttl_secs = 60
 		assert_eq!(config.database.url, "postgresql://test:test@localhost/test_db");
 		assert_eq!(config.logging.level, "info");
 		assert!(config.logging.enable_method_tracing);
-		assert_eq!(config.validation.slasher_address, "0x0000000000000000000000000000000000000000");
+		assert_eq!(config.validation.slasher_whitelist, vec!["0x0000000000000000000000000000000000000000".to_string()]);
 		assert_eq!(config.beacon_api.primary_endpoint, "https://eth-mainnet.g.alchemy.com/v2/test_key");
 		assert_eq!(config.constraints_api.relay_endpoint, "https://relay.example.com");
 		assert_eq!(config.delegation.lookahead_epochs, 2);
