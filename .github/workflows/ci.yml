@@ -60,7 +60,8 @@ jobs:
         run: cargo install cargo-tarpaulin --version 0.33.0 --locked || cargo install cargo-tarpaulin --version 0.33.0
 
       - name: Generate coverage report
-        run: cargo tarpaulin --lib --all-features --out Xml --output-dir coverage
+        run: cargo tarpaulin --lib --all-features --out Xml --output-dir coverage --timeout 300
+        timeout-minutes: 8
         env:
           RUST_LOG: info
 
