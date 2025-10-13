@@ -92,12 +92,6 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
           RUST_LOG: debug
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage/cobertura.xml
-          fail_ci_if_error: false
-
       - name: Generate coverage summary
         id: coverage
         run: |
