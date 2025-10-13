@@ -2,6 +2,8 @@ pub mod api;
 pub mod config;
 pub mod crypto;
 pub mod db;
+#[cfg(test)]
+pub mod main_components_tests;
 pub mod metrics;
 pub mod rpc;
 pub mod server;

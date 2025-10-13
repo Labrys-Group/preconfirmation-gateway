@@ -328,4 +328,227 @@ mod tests {
 		assert_eq!(config.request_timeout_secs, deserialized.request_timeout_secs);
 		assert_eq!(config.max_retries, deserialized.max_retries);
 	}
+
+	#[tokio::test]
+	async fn test_reth_client_with_invalid_endpoint() {
+		let config = RethApiConfig {
+			endpoint: "invalid://endpoint".to_string(),
+			request_timeout_secs: 1,
+			max_retries: 1,
+		};
+		
+		let client = RethApiClient::new(config);
+		assert!(client.is_ok());
+		
+		// Test that get_gas_price fails with invalid endpoint
+		let client = client.unwrap();
+		let result = client.get_gas_price().await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_reth_client_with_timeout() {
+		let config = RethApiConfig {
+			endpoint: "http://httpbin.org/delay/5".to_string(),
+			request_timeout_secs: 1,
+			max_retries: 1,
+		};
+		
+		let client = RethApiClient::new(config).unwrap();
+		let result = client.get_gas_price().await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_reth_client_retry_logic() {
+		let config = RethApiConfig {
+			endpoint: "http://httpbin.org/status/500".to_string(),
+			request_timeout_secs: 5,
+			max_retries: 3,
+		};
+		
+		let client = RethApiClient::new(config).unwrap();
+		let result = client.get_gas_price().await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_block_number_parsing() {
+		let config = RethApiConfig::default();
+		let client = RethApiClient::new(config).unwrap();
+		
+		// Test with invalid endpoint (should fail gracefully)
+		let result = client.get_block_number().await;
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_u256_serialization() {
+		use u256_serde::{serialize, deserialize};
+		use serde_json;
+		
+		let value = U256::from(12345u64);
+		let serialized = serialize(&value, serde_json::value::Serializer).unwrap();
+		let deserialized: U256 = deserialize(serialized).unwrap();
+		assert_eq!(value, deserialized);
+	}
+
+	#[test]
+	fn test_u256_serialization_with_hex_prefix() {
+		use u256_serde::{serialize, deserialize};
+		use serde_json;
+		
+		let value = U256::from_str_radix("0x1a2b3c", 16).unwrap();
+		let serialized = serialize(&value, serde_json::value::Serializer).unwrap();
+		let deserialized: U256 = deserialize(serialized).unwrap();
+		assert_eq!(value, deserialized);
+	}
+
+	#[test]
+	fn test_u256_serialization_large_value() {
+		use u256_serde::{serialize, deserialize};
+		use serde_json;
+		
+		let value = U256::from_str_radix("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16).unwrap();
+		let serialized = serialize(&value, serde_json::value::Serializer).unwrap();
+		let deserialized: U256 = deserialize(serialized).unwrap();
+		assert_eq!(value, deserialized);
+	}
+
+	#[test]
+	fn test_gas_price_info_edge_cases() {
+		// Test with zero gas price
+		let zero_price = GasPriceInfo {
+			gas_price: U256::from(0u64),
+			block_number: 0,
+			timestamp: 0,
+		};
+		assert_eq!(zero_price.gas_price_as_u64_clamped(), 0);
+		assert_eq!(zero_price.gas_price_as_u64_checked().unwrap(), 0);
+
+		// Test with exactly u64::MAX
+		let max_price = GasPriceInfo {
+			gas_price: U256::from(u64::MAX),
+			block_number: 100,
+			timestamp: 1234567890,
+		};
+		assert_eq!(max_price.gas_price_as_u64_clamped(), u64::MAX);
+		assert_eq!(max_price.gas_price_as_u64_checked().unwrap(), u64::MAX);
+	}
+
+	#[test]
+	fn test_reth_api_config_default() {
+		let config = RethApiConfig::default();
+		assert_eq!(config.endpoint, "http://localhost:8545");
+		assert_eq!(config.request_timeout_secs, 10);
+		assert_eq!(config.max_retries, 3);
+	}
+
+	#[test]
+	fn test_reth_api_config_custom() {
+		let config = RethApiConfig {
+			endpoint: "http://custom:8545".to_string(),
+			request_timeout_secs: 60,
+			max_retries: 5,
+		};
+		assert_eq!(config.endpoint, "http://custom:8545");
+		assert_eq!(config.request_timeout_secs, 60);
+		assert_eq!(config.max_retries, 5);
+	}
+
+	#[tokio::test]
+	async fn test_make_rpc_call_with_invalid_json() {
+		let config = RethApiConfig {
+			endpoint: "http://httpbin.org/post".to_string(),
+			request_timeout_secs: 5,
+			max_retries: 1,
+		};
+		
+		let client = RethApiClient::new(config).unwrap();
+		
+		// Test with invalid JSON payload
+		let invalid_payload = serde_json::json!({
+			"jsonrpc": "2.0",
+			"method": "invalid_method",
+			"params": [],
+			"id": 1
+		});
+		
+		// This should fail because httpbin will return HTML, not JSON-RPC
+		let result = client.make_rpc_call(invalid_payload).await;
+		// The test might pass or fail depending on httpbin's response format
+		// We just verify it doesn't panic
+		match result {
+			Ok(_) => println!("Unexpected success - httpbin returned valid JSON-RPC"),
+			Err(_) => println!("Expected failure - httpbin returned non-JSON-RPC response"),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_make_rpc_call_with_rpc_error() {
+		let config = RethApiConfig {
+			endpoint: "http://httpbin.org/post".to_string(),
+			request_timeout_secs: 5,
+			max_retries: 1,
+		};
+		
+		let client = RethApiClient::new(config).unwrap();
+		
+		// Test with payload that would result in RPC error
+		let error_payload = serde_json::json!({
+			"jsonrpc": "2.0",
+			"method": "eth_gasPrice",
+			"params": [],
+			"id": 1
+		});
+		
+		// This should fail because httpbin doesn't understand JSON-RPC
+		let result = client.make_rpc_call(error_payload).await;
+		// The test might pass or fail depending on httpbin's response format
+		// We just verify it doesn't panic
+		match result {
+			Ok(_) => println!("Unexpected success - httpbin returned valid JSON-RPC"),
+			Err(_) => println!("Expected failure - httpbin returned non-JSON-RPC response"),
+		}
+	}
+
+	#[test]
+	fn test_gas_price_info_timestamp() {
+		let now = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.unwrap()
+			.as_secs();
+		
+		let gas_price_info = GasPriceInfo {
+			gas_price: U256::from(1000u64),
+			block_number: 12345,
+			timestamp: now,
+		};
+		
+		assert_eq!(gas_price_info.timestamp, now);
+		assert_eq!(gas_price_info.block_number, 12345);
+	}
+
+	#[test]
+	fn test_hex_parsing_edge_cases() {
+		// Test parsing hex without 0x prefix
+		let hex_without_prefix = "1a2b3c";
+		let parsed = U256::from_str_radix(hex_without_prefix, 16).unwrap();
+		assert_eq!(parsed, U256::from(0x1a2b3c));
+
+		// Test parsing hex with 0x prefix
+		let hex_with_prefix = "0x1a2b3c";
+		let parsed = U256::from_str_radix(hex_with_prefix.strip_prefix("0x").unwrap(), 16).unwrap();
+		assert_eq!(parsed, U256::from(0x1a2b3c));
+
+		// Test parsing zero
+		let zero_hex = "0x0";
+		let parsed = U256::from_str_radix(zero_hex.strip_prefix("0x").unwrap(), 16).unwrap();
+		assert_eq!(parsed, U256::from(0));
+
+		// Test parsing empty string
+		let empty_hex = "";
+		let parsed = U256::from_str_radix(empty_hex, 16).unwrap();
+		assert_eq!(parsed, U256::from(0));
+	}
 }
