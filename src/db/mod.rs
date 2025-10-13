@@ -146,7 +146,10 @@ impl DatabaseContext {
 	///
 	/// # Examples
 	///
-	pub async fn save_commitment(&self, signed_commitment: &crate::types::SignedCommitment) -> Result<Option<uuid::Uuid>> {
+	pub async fn save_commitment(
+		&self,
+		signed_commitment: &crate::types::SignedCommitment,
+	) -> Result<Option<uuid::Uuid>> {
 		operations::save_commitment(&self.pool, signed_commitment).await
 	}
 
