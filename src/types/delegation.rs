@@ -53,9 +53,9 @@ impl<'de> Deserialize<'de> for BlsPublicKey {
 }
 
 impl Serialize for BlsSignature {
-	/// Serializes the key as a hex string prefixed with `0x`.
+	/// Serializes the signature as a hex string prefixed with `0x`.
 	///
-	/// The output is a JSON string containing the lowercase hex encoding of the inner 48-byte array with a `0x` prefix.
+	/// The output is a JSON string containing the lowercase hex encoding of the inner 96-byte array with a `0x` prefix.
 	///
 	/// # Examples
 	///
