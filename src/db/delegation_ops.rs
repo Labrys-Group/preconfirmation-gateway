@@ -29,9 +29,8 @@ pub async fn save_delegation(
 	bls_manager: &BlsManager,
 ) -> Result<Uuid> {
 	// Verify delegation signature before storing
-	let is_valid = bls_manager
-		.verify_delegation_signature(signed_delegation)
-		.context("Failed to verify delegation signature")?;
+	let is_valid =
+		bls_manager.verify_delegation_signature(signed_delegation).context("Failed to verify delegation signature")?;
 
 	if !is_valid {
 		anyhow::bail!(
@@ -401,9 +400,8 @@ pub async fn save_delegations_batch(
 ) -> Result<Vec<Uuid>> {
 	// Verify all delegation signatures before storing any
 	for delegation in delegations {
-		let is_valid = bls_manager
-			.verify_delegation_signature(delegation)
-			.context("Failed to verify delegation signature")?;
+		let is_valid =
+			bls_manager.verify_delegation_signature(delegation).context("Failed to verify delegation signature")?;
 
 		if !is_valid {
 			anyhow::bail!(
@@ -529,10 +527,7 @@ mod tests {
 		use crate::crypto::bls::BlsManager;
 
 		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
-		let delegations = vec![
-			create_test_delegation(),
-			create_test_delegation_variant([4u8; 48], [5u8; 48], 12346),
-		];
+		let delegations = vec![create_test_delegation(), create_test_delegation_variant([4u8; 48], [5u8; 48], 12346)];
 		let bls_manager = BlsManager::new("0x00000002").unwrap();
 
 		// This should fail due to invalid signatures

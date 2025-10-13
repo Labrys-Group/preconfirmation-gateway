@@ -626,7 +626,9 @@ mod tests {
 				enable_method_tracing: true,
 				traced_methods: vec!["test_method".to_string()],
 			},
-			validation: ValidationConfig { slasher_whitelist: vec!["0x1234567890123456789012345678901234567890".to_string()] },
+			validation: ValidationConfig {
+				slasher_whitelist: vec!["0x1234567890123456789012345678901234567890".to_string()],
+			},
 			beacon_api: BeaconApiConfig {
 				primary_endpoint: "https://test.beacon.com".to_string(),
 				fallback_endpoints: vec!["https://fallback.beacon.com".to_string()],
@@ -1246,9 +1248,8 @@ cache_ttl_secs = 60
 		assert_eq!(config.slasher_whitelist, Vec::<String>::new());
 
 		// Test with custom whitelist
-		let config_with_whitelist = ValidationConfig {
-			slasher_whitelist: vec!["0x1234567890123456789012345678901234567890".to_string()],
-		};
+		let config_with_whitelist =
+			ValidationConfig { slasher_whitelist: vec!["0x1234567890123456789012345678901234567890".to_string()] };
 		assert_eq!(config_with_whitelist.slasher_whitelist.len(), 1);
 		assert!(config_with_whitelist.slasher_whitelist[0].starts_with("0x"));
 		assert_eq!(config_with_whitelist.slasher_whitelist[0].len(), 42); // 0x + 40 hex chars
@@ -1277,7 +1278,8 @@ cache_ttl_secs = 60
 	#[test]
 	fn test_validate_slasher_whitelist_invalid_format() {
 		// Missing 0x prefix
-		let config = ValidationConfig { slasher_whitelist: vec!["1234567890123456789012345678901234567890".to_string()] };
+		let config =
+			ValidationConfig { slasher_whitelist: vec!["1234567890123456789012345678901234567890".to_string()] };
 		let result = Config::validate_slasher_whitelist(&config);
 		assert!(result.is_err());
 		assert!(result.unwrap_err().to_string().contains("Invalid slasher address"));
@@ -1289,9 +1291,8 @@ cache_ttl_secs = 60
 		assert!(result.unwrap_err().to_string().contains("Invalid slasher address"));
 
 		// Too long
-		let config = ValidationConfig {
-			slasher_whitelist: vec!["0x123456789012345678901234567890123456789012".to_string()],
-		};
+		let config =
+			ValidationConfig { slasher_whitelist: vec!["0x123456789012345678901234567890123456789012".to_string()] };
 		let result = Config::validate_slasher_whitelist(&config);
 		assert!(result.is_err());
 		assert!(result.unwrap_err().to_string().contains("Invalid slasher address"));

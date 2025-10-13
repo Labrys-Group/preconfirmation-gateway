@@ -6,6 +6,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a sophisticated Rust-based preconfirmation gateway that implements the Ethereum Commitments API specification. The gateway enables validators to issue near-instant preconfirmation commitments for transaction inclusion while integrating with the Constraints API for relay communication and builder coordination.
 
+## Specification Documents
+
+**IMPORTANT**: The `spec/` folder contains the authoritative specifications for this project. Always refer to these documents when implementing or modifying functionality:
+
+### Core API Specifications
+- **`spec/commitments-api.md`**: Complete Commitments API specification defining the user-facing endpoints (commitmentRequest, commitmentResult, slots, fee) and data structures (CommitmentRequest, Commitment, SignedCommitment, etc.)
+- **`spec/constraints-api.md`**: Complete Constraints API specification defining relay communication endpoints for delegations, constraint submission, and block proofs with validation
+- **`spec/gateway.md`**: Gateway implementation guide explaining how to use both APIs together, including delegation processing, commitment signing, and constraint submission
+- **`spec/proposer.md`**: Proposer (validator) specification covering URC registration, delegating to gateways, block proposals, and slashing conditions
+
+### Inclusion Preconfirmation Specifications (Commitment Type 0x01)
+- **`spec/inclusion-preconf-specs.md`**: Detailed specification for inclusion preconfirmations including:
+  - `InclusionPayload` structure (tx_hash, nonce, gas_limit, slot)
+  - Proof formats (pessimistic Merkle proofs and optimistic builder attestations)
+  - Encoding requirements (ABI encoding, not SSZ)
+  - End-to-end flow examples
+
+### Implementation Guides
+- **`spec/testnet-implementation-checklist.md`**: Comprehensive implementation checklist covering the complete end-to-end flow from proposer registration to block submission with Commit-Boost integration
+- **`spec/urc-signature-guide.md`**: BLS signature handling guide for URC integration and Commit-Boost compatibility, including domain separators and signing data structures
+- **`spec/preconf-meeting-notes-2025-09-23.md`**: Meeting notes discussing gateway operations, timing requirements (8-second constraint submission window), and builder whitelisting
+- **`spec/preconfirmation-notes.md`**: Brief implementation notes for commitment request validation and constraint posting
+
+### Key Specifications to Remember
+- **Commitment Type 0x01**: Inclusion preconfirmations using `InclusionPayload` format
+- **Encoding**: Use ABI encoding (not SSZ) for URC compatibility
+- **Timing**: Constraints must be submitted within 8 seconds of slot start
+- **Chain Support**: Currently Hoodi chain (chain_id: 560048) for inclusion commitments
+- **Signature Domains**:
+  - `DELEGATION_DOMAIN_SEPARATOR`: 0x0044656c ("Del" in little endian)
+  - `REGISTRATION_DOMAIN_SEPARATOR`: 0x00555243 ("URC" in little endian)
+
 ## Development Commands
 
 This project uses Taskfile as the task runner with `.env` file support.
@@ -120,11 +152,11 @@ src/
 ### Four JSON-RPC Methods
 1. **commitmentRequest**: Main endpoint with delegation-first validation
 2. **commitmentResult**: Query existing commitments by hash
-3. **slots**: Service catalog showing available offerings (Hooli chain ID 560048 only)
+3. **slots**: Service catalog showing available offerings (Hoodi chain ID 560048 only)
 4. **fee**: Fee calculation (placeholder implementation)
 
-### Hooli Chain Integration
-The system specifically supports Hooli chain (chain_id: 560048) with inclusion commitments (type 1). The slots endpoint provides a service catalog for 64 future slots (2 epochs lookahead) using real-time beacon timing calculations.
+### Hoodi Chain Integration
+The system specifically supports Hoodi chain (chain_id: 560048) with inclusion commitments (type 1). The slots endpoint provides a service catalog for 64 future slots (2 epochs lookahead) using real-time beacon timing calculations.
 
 ### Payload Processing
 Supports multiple payload formats with robust slot extraction:
@@ -232,7 +264,7 @@ pub async fn commitment_request_handler(
 
 #### Key Documentation Principles
 - **Service Catalog vs Authority**: Clearly distinguish between what the gateway "can offer" (slots) vs "is delegated for" (commitments)
-- **Hooli Chain Specifics**: Always mention chain ID 560048 and inclusion commitments (type 1)
+- **Hoodi Chain Specifics**: Always mention chain ID 560048 and inclusion commitments (type 1)
 - **Security Model**: Emphasize delegation-first validation in all commitment flows
 - **Real-time Calculations**: Show actual beacon timing integration, not placeholder values
 - **Database-Free Operations**: Highlight which endpoints are computational-only (like slots)

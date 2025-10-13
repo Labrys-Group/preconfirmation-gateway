@@ -267,9 +267,7 @@ async fn process_constraints_for_slot(
 		// that need to be converted to constraints for this slot/delegation
 		// For now, we'll implement the framework and constraint creation logic
 
-		if let Err(e) =
-			process_delegation_constraints(constraints_client, bls_manager, db_pool, &delegation, &config.signing, slot)
-				.await
+		if let Err(e) = process_delegation_constraints(constraints_client, bls_manager, db_pool, &delegation, config, slot).await
 		{
 			warn!("Failed to process constraints for delegation in slot {}: {}", slot, e);
 		}
@@ -299,7 +297,7 @@ async fn process_delegation_constraints(
 	bls_manager: &BlsManager,
 	_db_pool: &PgPool,
 	delegation: &crate::types::delegation::SignedDelegation,
-	signing_config: &crate::config::SigningConfig,
+	config: &Config,
 	slot: u64,
 ) -> Result<()> {
 	debug!("Processing constraints for delegation in slot {} with committer {}", slot, delegation.message.committer);
@@ -318,17 +316,12 @@ async fn process_delegation_constraints(
 		.context("Failed to parse authorized builder public keys from config")?;
 
 	// Create constraints message
-	let constraints_message = ConstraintsMessage::new(
-		delegation.message.proposer,
-		delegation.message.delegate,
-		slot,
-		constraints,
-		receivers,
-	);
+	let constraints_message =
+		ConstraintsMessage::new(delegation.message.proposer, delegation.message.delegate, slot, constraints, receivers);
 
 	// Sign the constraints message with our BLS key
 	let signature_bytes = bls_manager
-		.sign_constraints_message(&constraints_message, &signing_config.bls_private_key)
+		.sign_constraints_message(&constraints_message, &config.signing.bls_private_key)
 		.context("Failed to sign constraints message")?;
 
 	// Create SignedConstraints object

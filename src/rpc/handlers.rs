@@ -43,7 +43,11 @@ fn validate_slasher_address(context: &RpcContext, slasher_address: &str) -> Resu
 }
 
 /// Check if we have valid delegation authority for the given slot and committer
-async fn verify_delegation_authority(context: &RpcContext, slot: u64, committer_address: &str) -> Result<String, String> {
+async fn verify_delegation_authority(
+	context: &RpcContext,
+	slot: u64,
+	committer_address: &str,
+) -> Result<String, String> {
 	// Get delegations for this slot from the database
 	let delegations = get_delegations_for_slot(context.database.pool(), slot)
 		.await
@@ -310,13 +314,13 @@ pub fn slots_handler(
 	let end_slot = start_slot + lookahead_slots;
 
 	for slot in start_slot..end_slot {
-		// Create offering for Hooli chain with inclusion commitments (type 1)
-		let hooli_offering = Offering {
-			chain_id: 560048,          // Hooli chain ID
+		// Create offering for Hoodi chain with inclusion commitments (type 1)
+		let hoodi_offering = Offering {
+			chain_id: 560048,          // Hoodi chain ID
 			commitment_types: vec![1], // Only support inclusion commitments
 		};
 
-		let slot_info = SlotInfo { slot, offerings: vec![hooli_offering] };
+		let slot_info = SlotInfo { slot, offerings: vec![hoodi_offering] };
 
 		slots.push(slot_info);
 	}
@@ -502,7 +506,7 @@ mod tests {
 	fn test_validate_slasher_address_whitelisted() {
 		// Test that whitelisted addresses are accepted
 		let context = create_test_context();
-		let mut config = (*context.config).clone();
+		let mut config = context.config.clone();
 		config.validation.slasher_whitelist = vec![
 			"0x1234567890123456789012345678901234567890".to_string(),
 			"0xabcdefabcdefabcdefabcdefabcdefabcdefabcd".to_string(),
@@ -510,7 +514,7 @@ mod tests {
 
 		let context_with_whitelist = Arc::new(RpcContext {
 			database: context.database.clone(),
-			config: Arc::new(config),
+			config,
 			fee_engine: context.fee_engine.clone(),
 			beacon_client: context.beacon_client.clone(),
 		});
@@ -532,12 +536,12 @@ mod tests {
 	fn test_validate_slasher_address_not_whitelisted() {
 		// Test that non-whitelisted addresses are rejected
 		let context = create_test_context();
-		let mut config = (*context.config).clone();
+		let mut config = context.config.clone();
 		config.validation.slasher_whitelist = vec!["0x1234567890123456789012345678901234567890".to_string()];
 
 		let context_with_whitelist = Arc::new(RpcContext {
 			database: context.database.clone(),
-			config: Arc::new(config),
+			config,
 			fee_engine: context.fee_engine.clone(),
 			beacon_client: context.beacon_client.clone(),
 		});
@@ -551,13 +555,12 @@ mod tests {
 	fn test_validate_slasher_address_normalization() {
 		// Test that address normalization works correctly
 		let context = create_test_context();
-		let mut config = (*context.config).clone();
-		config.validation.slasher_whitelist =
-			vec!["0x1234567890ABCdef1234567890abcdef12345678".to_string()]; // Mixed case
+		let mut config = context.config.clone();
+		config.validation.slasher_whitelist = vec!["0x1234567890ABCdef1234567890abcdef12345678".to_string()]; // Mixed case
 
 		let context_with_whitelist = Arc::new(RpcContext {
 			database: context.database.clone(),
-			config: Arc::new(config),
+			config,
 			fee_engine: context.fee_engine.clone(),
 			beacon_client: context.beacon_client.clone(),
 		});
@@ -620,7 +623,13 @@ mod tests {
 			let invalid_request = CommitmentRequest {
 				commitment_type: 99, // Invalid type
 				payload: vec![1, 2, 3, 4],
-				slasher: context.config.validation.slasher_whitelist.first().unwrap_or(&"0x0000000000000000000000000000000000000000".to_string()).clone(),
+				slasher: context
+					.config
+					.validation
+					.slasher_whitelist
+					.first()
+					.unwrap_or(&"0x0000000000000000000000000000000000000000".to_string())
+					.clone(),
 			};
 
 			// We can't call the handler directly due to database dependencies,
@@ -632,7 +641,13 @@ mod tests {
 			let invalid_payload_request = CommitmentRequest {
 				commitment_type: 1,
 				payload: vec![0xff, 0xff, 0xff, 0xff], // Invalid payload
-				slasher: context.config.validation.slasher_whitelist.first().unwrap_or(&"0x0000000000000000000000000000000000000000".to_string()).clone(),
+				slasher: context
+					.config
+					.validation
+					.slasher_whitelist
+					.first()
+					.unwrap_or(&"0x0000000000000000000000000000000000000000".to_string())
+					.clone(),
 			};
 
 			let slot_result =
@@ -640,8 +655,15 @@ mod tests {
 			assert!(slot_result.is_err());
 
 			// Test 3: Valid payload structure
-			let valid_request =
-				TestFixtures::create_inclusion_commitment_request(12345, context.config.validation.slasher_whitelist.first().unwrap_or(&"0x0000000000000000000000000000000000000000".to_string()));
+			let valid_request = TestFixtures::create_inclusion_commitment_request(
+				12345,
+				context
+					.config
+					.validation
+					.slasher_whitelist
+					.first()
+					.unwrap_or(&"0x0000000000000000000000000000000000000000".to_string()),
+			);
 
 			let slot_result = validate_and_extract_slot(valid_request.commitment_type, &valid_request.payload);
 			assert!(slot_result.is_ok());
@@ -711,7 +733,7 @@ mod tests {
 					traced_methods: vec![],
 				},
 				validation: crate::config::ValidationConfig {
-					slasher_address: "0x1234567890123456789012345678901234567890".to_string(),
+					slasher_whitelist: vec!["0x1234567890123456789012345678901234567890".to_string()],
 				},
 				beacon_api: BeaconApiConfig {
 					primary_endpoint: "http://localhost:3500".to_string(),
@@ -745,12 +767,12 @@ mod tests {
 			// Test the service catalog logic manually
 			let mut expected_slots = Vec::new();
 			for slot in expected_start_slot..expected_end_slot {
-				let hooli_offering = Offering {
-					chain_id: 560048,          // Hooli chain ID
+				let hoodi_offering = Offering {
+					chain_id: 560048,          // Hoodi chain ID
 					commitment_types: vec![1], // Only support inclusion commitments
 				};
 
-				let slot_info = SlotInfo { slot, offerings: vec![hooli_offering] };
+				let slot_info = SlotInfo { slot, offerings: vec![hoodi_offering] };
 
 				expected_slots.push(slot_info);
 			}
@@ -758,12 +780,12 @@ mod tests {
 			// Verify the logic produces correct results
 			assert_eq!(expected_slots.len(), lookahead_slots as usize);
 
-			// Verify each slot has the correct offering for Hooli chain
+			// Verify each slot has the correct offering for Hoodi chain
 			for slot_info in &expected_slots {
 				assert_eq!(slot_info.offerings.len(), 1);
 
 				let offering = &slot_info.offerings[0];
-				assert_eq!(offering.chain_id, 560048); // Hooli chain ID
+				assert_eq!(offering.chain_id, 560048); // Hoodi chain ID
 				assert_eq!(offering.commitment_types, vec![1]); // Only inclusion commitments
 
 				// Verify slot numbers are reasonable

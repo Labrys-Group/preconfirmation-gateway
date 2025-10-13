@@ -98,7 +98,7 @@ The integration tests validate:
 - ✓ Database migrations complete
 
 ### RPC Endpoints
-- ✓ `slots` - Returns 64 future slots with Hooli chain offerings
+- ✓ `slots` - Returns 64 future slots with Hoodi chain offerings
 - ✓ `fee` - Returns dynamic fee calculation
 - ✓ `commitmentRequest` - Accepts commitments and returns ECDSA signature
 - ✓ `commitmentResult` - Retrieves stored commitments by hash
