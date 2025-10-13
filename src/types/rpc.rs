@@ -47,6 +47,6 @@ pub struct SlotInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FeeInfo {
 	#[serde(with = "hex_bytes")]
-	pub fee_payload: Vec<u8>, // opaque fee payload
+	pub payload: Vec<u8>, // opaque fee payload
 	pub commitment_type: u64,
 }
