@@ -27,9 +27,31 @@ pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment
 	let commitment_type = i64::try_from(commitment.commitment_type).context("commitment_type exceeds i64::MAX")?;
 
 	// Extract slot from payload for constraint submission queries
-	let slot_number = PayloadParser::extract_slot(commitment.commitment_type, &commitment.payload)
-		.ok()
-		.and_then(|slot| i64::try_from(slot).ok());
+	let slot_number = match PayloadParser::extract_slot(commitment.commitment_type, &commitment.payload) {
+		Ok(slot) => match i64::try_from(slot) {
+			Ok(slot_i64) => Some(slot_i64),
+			Err(e) => {
+				tracing::warn!(
+					commitment_id = %id,
+					commitment_type = commitment.commitment_type,
+					slot = slot,
+					error = %e,
+					"Slot number exceeds i64::MAX, storing NULL slot_number"
+				);
+				None
+			}
+		},
+		Err(e) => {
+			tracing::warn!(
+				commitment_id = %id,
+				commitment_type = commitment.commitment_type,
+				payload_len = commitment.payload.len(),
+				error = %e,
+				"Failed to extract slot from payload, storing NULL slot_number"
+			);
+			None
+		}
+	};
 
 	let row = sqlx::query!(
 		r#"
@@ -478,6 +500,259 @@ mod tests {
 
 		// Should return None
 		assert!(result.is_none(), "Expected None for non-existent commitment");
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_save_commitment_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+		let commitment = create_test_commitment("test_invalid_pool");
+
+		let result = save_commitment(&invalid_pool, &commitment).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_get_commitment_by_hash_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = get_commitment_by_hash(&invalid_pool, "0x1234567890abcdef").await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_commitment_exists_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = commitment_exists(&invalid_pool, "0x1234567890abcdef").await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_get_commitment_stats_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = get_commitment_stats(&invalid_pool).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_get_unprocessed_commitments_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = get_unprocessed_commitments_for_slot(&invalid_pool, 12345).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_mark_commitments_as_processed_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+		let hashes = vec!["0x1234567890abcdef".to_string()];
+
+		let result = mark_commitments_as_processed(&invalid_pool, &hashes).await;
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_commitment_stats_creation() {
+		let stats = CommitmentStats {
+			total_count: 100,
+			commitment_type_1_count: 80,
+			latest_created_at: Some(chrono::Utc::now()),
+		};
+
+		assert_eq!(stats.total_count, 100);
+		assert_eq!(stats.commitment_type_1_count, 80);
+		assert!(stats.latest_created_at.is_some());
+	}
+
+	#[test]
+	fn test_commitment_stats_empty() {
+		let stats = CommitmentStats { total_count: 0, commitment_type_1_count: 0, latest_created_at: None };
+
+		assert_eq!(stats.total_count, 0);
+		assert_eq!(stats.commitment_type_1_count, 0);
+		assert!(stats.latest_created_at.is_none());
+	}
+
+	#[test]
+	fn test_commitment_stats_debug() {
+		let stats = CommitmentStats { total_count: 50, commitment_type_1_count: 30, latest_created_at: None };
+
+		let debug_str = format!("{:?}", stats);
+		assert!(debug_str.contains("CommitmentStats"));
+		assert!(debug_str.contains("50"));
+		assert!(debug_str.contains("30"));
+	}
+
+	#[test]
+	fn test_commitment_type_conversion_edge_cases() {
+		// Test valid conversion
+		let valid_type: u64 = 1;
+		let converted = i64::try_from(valid_type);
+		assert!(converted.is_ok());
+		assert_eq!(converted.unwrap(), 1);
+
+		// Test conversion back
+		let converted_back = u64::try_from(converted.unwrap());
+		assert!(converted_back.is_ok());
+		assert_eq!(converted_back.unwrap(), 1);
+	}
+
+	#[test]
+	fn test_slot_number_conversion_edge_cases() {
+		// Test valid slot conversion
+		let valid_slot: u64 = 12345;
+		let converted = i64::try_from(valid_slot);
+		assert!(converted.is_ok());
+		assert_eq!(converted.unwrap(), 12345);
+
+		// Test large slot number
+		let large_slot: u64 = u64::MAX;
+		let converted_large = i64::try_from(large_slot);
+		assert!(converted_large.is_err()); // Should fail for values > i64::MAX
+	}
+
+	#[test]
+	fn test_commitment_creation_with_different_types() {
+		use crate::types::payload::{InclusionPayload, PayloadParser};
+
+		// Test type 1 (inclusion)
+		let inclusion_payload = InclusionPayload::new(12345, vec![0x01, 0x02, 0x03]);
+		let payload_bytes = PayloadParser::encode_inclusion_payload(&inclusion_payload).unwrap();
+
+		let commitment_type_1 = Commitment {
+			commitment_type: 1,
+			payload: payload_bytes.clone(),
+			request_hash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+			slasher: "0x1234567890123456789012345678901234567890".to_string(),
+		};
+
+		assert_eq!(commitment_type_1.commitment_type, 1);
+		assert_eq!(commitment_type_1.payload.len(), payload_bytes.len());
+
+		// Test type 2 (execution)
+		let commitment_type_2 = Commitment {
+			commitment_type: 2,
+			payload: payload_bytes,
+			request_hash: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890".to_string(),
+			slasher: "0xabcdef1234567890abcdef1234567890abcdef12".to_string(),
+		};
+
+		assert_eq!(commitment_type_2.commitment_type, 2);
+		assert_ne!(commitment_type_1.request_hash, commitment_type_2.request_hash);
+	}
+
+	#[test]
+	fn test_signed_commitment_creation() {
+		let commitment = Commitment {
+			commitment_type: 1,
+			payload: vec![0x01, 0x02, 0x03],
+			request_hash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+			slasher: "0x1234567890123456789012345678901234567890".to_string(),
+		};
+
+		let signature = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string();
+
+		let signed_commitment = SignedCommitment { commitment, signature };
+
+		assert_eq!(signed_commitment.commitment.commitment_type, 1);
+		assert_eq!(signed_commitment.signature.len(), 130); // 0x + 128 hex chars
+	}
+
+	#[test]
+	fn test_payload_extraction_edge_cases() {
+		use crate::types::payload::{InclusionPayload, PayloadParser};
+
+		// Test with valid inclusion payload
+		let inclusion_payload = InclusionPayload::new(12345, vec![0x01, 0x02, 0x03]);
+		let payload_bytes = PayloadParser::encode_inclusion_payload(&inclusion_payload).unwrap();
+
+		let extracted_slot = PayloadParser::extract_slot(1, &payload_bytes);
+		assert!(extracted_slot.is_ok());
+		assert_eq!(extracted_slot.unwrap(), 12345);
+
+		// Test with invalid commitment type
+		let invalid_extraction = PayloadParser::extract_slot(999, &payload_bytes);
+		assert!(invalid_extraction.is_err());
+
+		// Test with empty payload
+		let empty_extraction = PayloadParser::extract_slot(1, &[]);
+		assert!(empty_extraction.is_err());
+	}
+
+	#[test]
+	fn test_request_hash_format() {
+		let valid_hash = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+		assert_eq!(valid_hash.len(), 66); // 0x + 64 hex chars
+		assert!(valid_hash.starts_with("0x"));
+
+		let invalid_hash = "0x1234567890abcdef"; // Too short
+		assert_ne!(invalid_hash.len(), 66);
+	}
+
+	#[test]
+	fn test_slasher_address_format() {
+		let valid_address = "0x1234567890123456789012345678901234567890";
+		assert_eq!(valid_address.len(), 42); // 0x + 40 hex chars
+		assert!(valid_address.starts_with("0x"));
+
+		let invalid_address = "0x1234567890abcdef"; // Too short
+		assert_ne!(invalid_address.len(), 42);
+	}
+
+	#[test]
+	fn test_signature_format() {
+		let valid_signature = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+		assert_eq!(valid_signature.len(), 130); // 0x + 128 hex chars
+		assert!(valid_signature.starts_with("0x"));
+
+		let invalid_signature = "0x1234567890abcdef"; // Too short
+		assert_ne!(invalid_signature.len(), 130);
+	}
+
+	#[tokio::test]
+	async fn test_mark_nonexistent_commitments() -> Result<()> {
+		let pool = match setup_test_pool().await {
+			Ok(p) => p,
+			Err(_) => {
+				eprintln!("Skipping test: DATABASE_URL not set");
+				return Ok(());
+			}
+		};
+
+		// Try to mark commitments that don't exist
+		let fake_hashes = vec![
+			"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".to_string(),
+			"0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".to_string(),
+		];
+
+		let marked = mark_commitments_as_processed(&pool, &fake_hashes).await?;
+		assert_eq!(marked, 0); // Should mark 0 commitments
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_duplicate_commitment_handling() -> Result<()> {
+		let pool = match setup_test_pool().await {
+			Ok(p) => p,
+			Err(_) => {
+				eprintln!("Skipping test: DATABASE_URL not set");
+				return Ok(());
+			}
+		};
+
+		let commitment = create_test_commitment("test_duplicate");
+
+		// Save first time
+		let id1 = save_commitment(&pool, &commitment).await?;
+		assert!(!id1.is_nil());
+
+		// Try to save again with same request hash (should fail due to unique constraint)
+		let result = save_commitment(&pool, &commitment).await;
+		assert!(result.is_err()); // Should fail due to unique constraint on request_hash
 
 		Ok(())
 	}
