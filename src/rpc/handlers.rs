@@ -369,17 +369,17 @@ pub async fn fee_handler(
 
 	// Encode the fee calculation result as opaque payload bytes
 	// Using a simple binary format: [total_cost (8 bytes) | final_price (8 bytes) | estimated_gas (8 bytes) | congestion_ratio (8 bytes)]
-	let mut fee_payload = Vec::with_capacity(32);
-	fee_payload.extend_from_slice(&fee_calculation.total_cost.to_le_bytes());
-	fee_payload.extend_from_slice(&fee_calculation.final_price.to_le_bytes());
-	fee_payload.extend_from_slice(&fee_calculation.estimated_gas.to_le_bytes());
+	let mut payload = Vec::with_capacity(32);
+	payload.extend_from_slice(&fee_calculation.total_cost.to_le_bytes());
+	payload.extend_from_slice(&fee_calculation.final_price.to_le_bytes());
+	payload.extend_from_slice(&fee_calculation.estimated_gas.to_le_bytes());
 
 	// Safely encode congestion ratio as parts-per-million (0.0-1.0 -> 0-1000000)
 	// Clamp to valid range and use saturating multiply to prevent overflow
 	let congestion_ppm = (fee_calculation.congestion_ratio.clamp(0.0, 1.0) * 1_000_000.0) as u64;
-	fee_payload.extend_from_slice(&congestion_ppm.to_le_bytes());
+	payload.extend_from_slice(&congestion_ppm.to_le_bytes());
 
-	let fee_info = FeeInfo { fee_payload, commitment_type: request.commitment_type };
+	let fee_info = FeeInfo { payload, commitment_type: request.commitment_type };
 
 	info!(
 		"Fee calculation completed for slot {}: total_cost={} wei, price={} wei/gas, congestion={:.2}%",

@@ -90,7 +90,7 @@ impl ConstraintsApiClient {
 	/// # Examples
 	///
 	pub async fn get_delegations_for_slot(&self, slot: u64) -> Result<Vec<SignedDelegation>> {
-		let endpoint = format!("constraints/v1/delegations/{}", slot);
+		let endpoint = format!("constraints/v0/relay/delegations/{}", slot);
 		let url = self.build_url(&endpoint);
 
 		debug!(slot = slot, url = %url, "Fetching delegations");

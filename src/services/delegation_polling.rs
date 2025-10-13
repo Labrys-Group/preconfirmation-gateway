@@ -262,8 +262,8 @@ async fn poll_delegations_for_slot(
 
 	debug!("Verified {} delegations with valid BLS signatures for slot {}", verified_delegations.len(), slot);
 
-	// Save the delegations to the database
-	let saved_ids = save_delegations_batch(db_pool, &verified_delegations)
+	// Save the delegations to the database with signature verification
+	let saved_ids = save_delegations_batch(db_pool, &verified_delegations, bls_manager)
 		.await
 		.with_context(|| format!("Failed to save delegations for slot {}", slot))?;
 
