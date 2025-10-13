@@ -188,16 +188,29 @@ impl DatabaseContext {
 
 	// Delegation operations
 
-	/// Persists a delegation record.
+	/// Persists a delegation record after verifying its BLS signature.
+	///
+	/// # Parameters
+	///
+	/// - `signed_delegation`: The delegation to save
+	/// - `bls_manager`: The BLS manager used to verify the delegation signature
 	///
 	/// # Returns
 	///
 	/// The UUID of the saved delegation.
 	///
+	/// # Errors
+	///
+	/// Returns an error if the signature is invalid or the database operation fails.
+	///
 	/// # Examples
 	///
-	pub async fn save_delegation(&self, signed_delegation: &crate::types::SignedDelegation) -> Result<uuid::Uuid> {
-		delegation_ops::save_delegation(&self.pool, signed_delegation).await
+	pub async fn save_delegation(
+		&self,
+		signed_delegation: &crate::types::SignedDelegation,
+		bls_manager: &crate::crypto::bls::BlsManager,
+	) -> Result<uuid::Uuid> {
+		delegation_ops::save_delegation(&self.pool, signed_delegation, bls_manager).await
 	}
 
 	/// Retrieve all signed delegations for the specified slot.
@@ -261,15 +274,26 @@ impl DatabaseContext {
 
 	/// Saves multiple signed delegations in a single batch and returns their database IDs in input order.
 	///
+	/// All delegations are verified for valid BLS signatures before any are stored.
 	/// The returned `Vec<uuid::Uuid>` contains the UUID for each saved delegation in the same order as the `delegations` slice.
+	///
+	/// # Parameters
+	///
+	/// - `delegations`: The delegations to save
+	/// - `bls_manager`: The BLS manager used to verify delegation signatures
+	///
+	/// # Errors
+	///
+	/// Returns an error if any signature is invalid or the database operation fails.
 	///
 	/// # Examples
 	///
 	pub async fn save_delegations_batch(
 		&self,
 		delegations: &[crate::types::SignedDelegation],
+		bls_manager: &crate::crypto::bls::BlsManager,
 	) -> Result<Vec<uuid::Uuid>> {
-		delegation_ops::save_delegations_batch(&self.pool, delegations).await
+		delegation_ops::save_delegations_batch(&self.pool, delegations, bls_manager).await
 	}
 
 	/// Retrieves aggregated delegation statistics.
@@ -444,7 +468,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_database_context_wrapper_methods() {
+		use crate::crypto::bls::BlsManager;
+
 		let context = DatabaseContext::new_for_testing();
+		let bls_manager = BlsManager::new("0x00000002").unwrap();
 
 		// Test commitment operations (these will fail with lazy connection, but we're testing the wrapper)
 		let commitment = create_test_commitment();
@@ -453,7 +480,7 @@ mod tests {
 
 		// Test delegation operations
 		let delegation = create_test_delegation();
-		let result = context.save_delegation(&delegation).await;
+		let result = context.save_delegation(&delegation, &bls_manager).await;
 		assert!(result.is_err()); // Expected to fail with test database
 
 		// Test slot congestion operations
