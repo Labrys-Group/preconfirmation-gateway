@@ -20,6 +20,7 @@ pub struct DelegationPollingService {
 	constraints_client: Arc<ConstraintsApiClient>,
 	db_pool: Arc<PgPool>,
 	config: Arc<Config>,
+	bls_manager: BlsManager,
 	scheduler: JobScheduler,
 }
 
@@ -33,7 +34,11 @@ impl DelegationPollingService {
 	) -> Result<Self> {
 		let scheduler = JobScheduler::new().await.context("Failed to create job scheduler")?;
 
-		Ok(Self { beacon_client, constraints_client, db_pool, config, scheduler })
+		// Initialize BLS manager once with configured domain for signature verification
+		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway)
+			.context("Failed to create BLS manager for delegation signature verification")?;
+
+		Ok(Self { beacon_client, constraints_client, db_pool, config, bls_manager, scheduler })
 	}
 
 	/// Start the delegation polling service with scheduled tasks
@@ -45,6 +50,7 @@ impl DelegationPollingService {
 		let constraints_client = Arc::clone(&self.constraints_client);
 		let db_pool = Arc::clone(&self.db_pool);
 		let config = Arc::clone(&self.config);
+		let bls_manager = self.bls_manager; // Copy the BlsManager
 
 		let delegation_job = Job::new_async("0/30 * * * * *", move |_uuid, _l| {
 			let beacon_client = Arc::clone(&beacon_client);
@@ -53,7 +59,7 @@ impl DelegationPollingService {
 			let config = Arc::clone(&config);
 
 			Box::pin(async move {
-				if let Err(e) = poll_delegations(beacon_client, constraints_client, db_pool, config).await {
+				if let Err(e) = poll_delegations(beacon_client, constraints_client, db_pool, config, bls_manager).await {
 					error!("Delegation polling failed: {}", e);
 				}
 			})
@@ -101,6 +107,7 @@ impl DelegationPollingService {
 			Arc::clone(&self.constraints_client),
 			Arc::clone(&self.db_pool),
 			Arc::clone(&self.config),
+			self.bls_manager,
 		)
 		.await
 	}
@@ -112,6 +119,7 @@ async fn poll_delegations(
 	constraints_client: Arc<ConstraintsApiClient>,
 	db_pool: Arc<PgPool>,
 	config: Arc<Config>,
+	bls_manager: BlsManager,
 ) -> Result<()> {
 	info!("Starting delegation polling cycle");
 
@@ -142,7 +150,7 @@ async fn poll_delegations(
 			&db_pool,
 			slot,
 			&config.signing.bls_public_key,
-			&config.delegation.domain_application_gateway,
+			&bls_manager,
 		)
 		.await
 		{
@@ -193,7 +201,7 @@ async fn poll_delegations_for_slot(
 	db_pool: &PgPool,
 	slot: u64,
 	our_bls_pubkey: &blst::min_pk::PublicKey,
-	domain_application_gateway: &str,
+	bls_manager: &BlsManager,
 ) -> Result<usize> {
 	// Get all delegations for this slot from the constraints API
 	let delegations = constraints_client
@@ -218,9 +226,6 @@ async fn poll_delegations_for_slot(
 	debug!("Found {} relevant delegations for slot {} (involving our keys)", relevant_delegations.len(), slot);
 
 	// Verify BLS signatures on delegations before saving
-	let bls_manager = BlsManager::new(domain_application_gateway)
-		.context("Failed to create BLS manager for signature verification")?;
-
 	let mut verified_delegations = Vec::new();
 	let mut invalid_count = 0;
 
@@ -442,9 +447,10 @@ mod tests {
 		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
 
 		// This should handle errors gracefully and return Ok(())
-		let result = poll_delegations(beacon_client, constraints_client, db_pool, Arc::new(config)).await;
+		let result = poll_delegations(beacon_client, constraints_client, db_pool, Arc::new(config), bls_manager).await;
 		assert!(result.is_ok(), "poll_delegations should handle errors gracefully");
 	}
 
@@ -455,6 +461,7 @@ mod tests {
 		let constraints_client = ConstraintsApiClient::new(config.constraints_api.clone()).unwrap();
 		let db_pool = sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap();
 		let (_sk, pk) = create_test_bls_keypair();
+		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
 
 		let slot = 12345u64;
 
@@ -465,7 +472,7 @@ mod tests {
 			&db_pool,
 			slot,
 			&blst_pk,
-			&config.delegation.domain_application_gateway,
+			&bls_manager,
 		)
 		.await;
 		assert!(result.is_err(), "Should fail due to connectivity issues");
@@ -572,6 +579,7 @@ mod tests {
 		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
 
 		let mut handles = Vec::new();
 
@@ -582,7 +590,7 @@ mod tests {
 			let pool = Arc::clone(&db_pool);
 			let conf = Arc::new(config.clone());
 
-			let handle = tokio::spawn(async move { poll_delegations(beacon, constraints, pool, conf).await });
+			let handle = tokio::spawn(async move { poll_delegations(beacon, constraints, pool, conf, bls_manager).await });
 			handles.push(handle);
 		}
 
@@ -631,13 +639,14 @@ mod tests {
 		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
 
 		let start_time = std::time::Instant::now();
 
 		// Run a polling cycle
 		let result = timeout(
 			Duration::from_secs(10),
-			poll_delegations(beacon_client, constraints_client, db_pool, Arc::new(config)),
+			poll_delegations(beacon_client, constraints_client, db_pool, Arc::new(config), bls_manager),
 		)
 		.await;
 

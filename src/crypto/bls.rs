@@ -43,6 +43,7 @@ pub mod domains {
 }
 
 /// BLS signature operations for Gateway
+#[derive(Debug, Clone, Copy)]
 pub struct BlsManager {
 	/// Domain separator for constraint signatures
 	application_gateway_domain: [u8; 4],
