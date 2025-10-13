@@ -137,7 +137,15 @@ async fn poll_delegations(
 
 	// Poll each slot in the range
 	for slot in start_slot..=end_slot {
-		match poll_delegations_for_slot(&constraints_client, &db_pool, slot, &config.signing.bls_public_key).await {
+		match poll_delegations_for_slot(
+			&constraints_client,
+			&db_pool,
+			slot,
+			&config.signing.bls_public_key,
+			&config.delegation.domain_application_gateway,
+		)
+		.await
+		{
 			Ok(count) => {
 				total_delegations_found += count;
 				successful_saves += 1;
@@ -185,6 +193,7 @@ async fn poll_delegations_for_slot(
 	db_pool: &PgPool,
 	slot: u64,
 	our_bls_pubkey: &blst::min_pk::PublicKey,
+	domain_application_gateway: &str,
 ) -> Result<usize> {
 	// Get all delegations for this slot from the constraints API
 	let delegations = constraints_client
@@ -209,8 +218,8 @@ async fn poll_delegations_for_slot(
 	debug!("Found {} relevant delegations for slot {} (involving our keys)", relevant_delegations.len(), slot);
 
 	// Verify BLS signatures on delegations before saving
-	let bls_manager =
-		BlsManager::new("0x00446567").context("Failed to create BLS manager for signature verification")?;
+	let bls_manager = BlsManager::new(domain_application_gateway)
+		.context("Failed to create BLS manager for signature verification")?;
 
 	let mut verified_delegations = Vec::new();
 	let mut invalid_count = 0;
@@ -451,7 +460,14 @@ mod tests {
 
 		// This should fail due to invalid API endpoints and no database connection
 		let blst_pk = blst::min_pk::PublicKey::from_bytes(&pk.0).expect("Valid BLS public key");
-		let result = poll_delegations_for_slot(&constraints_client, &db_pool, slot, &blst_pk).await;
+		let result = poll_delegations_for_slot(
+			&constraints_client,
+			&db_pool,
+			slot,
+			&blst_pk,
+			&config.delegation.domain_application_gateway,
+		)
+		.await;
 		assert!(result.is_err(), "Should fail due to connectivity issues");
 	}
 
@@ -482,8 +498,10 @@ mod tests {
 
 	#[test]
 	fn test_bls_signature_verification_setup() {
-		// Test that BLS manager can be created for signature verification
-		let bls_manager_result = BlsManager::new("0x00446567");
+		let config = create_mock_config();
+
+		// Test that BLS manager can be created for signature verification using configured domain
+		let bls_manager_result = BlsManager::new(&config.delegation.domain_application_gateway);
 		assert!(bls_manager_result.is_ok(), "Should be able to create BLS manager for verification");
 
 		let _bls_manager = bls_manager_result.unwrap();
