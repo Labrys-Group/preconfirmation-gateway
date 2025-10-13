@@ -686,11 +686,12 @@ mod tests {
 		let slot_start_timestamp = genesis_time.saturating_add(slot.saturating_mul(12));
 		assert_eq!(slot_start_timestamp, u64::MAX);
 
-		// Test cleanup duration calculation with extreme values
-		let hours = u32::MAX;
-		let cutoff_duration_secs = (hours as u64).saturating_mul(3600);
-		// Without saturation, this would overflow: u32::MAX * 3600 = 15,461,882,019,000
-		// With saturation, it caps at u64::MAX
+		// Test cleanup duration calculation that WILL overflow
+		// u64::MAX / 3600 ≈ 5,124,095,576,030,430
+		// Use a larger value to force overflow
+		let hours_that_overflow = u64::MAX / 3600 + 1;
+		let cutoff_duration_secs = hours_that_overflow.saturating_mul(3600);
+		// With saturation, this caps at u64::MAX instead of wrapping around
 		assert_eq!(cutoff_duration_secs, u64::MAX);
 	}
 
