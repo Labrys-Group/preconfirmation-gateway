@@ -142,7 +142,7 @@ impl BlsManager {
 	/// - delegate public key (bytes)
 	/// - slot (uint)
 	/// - constraints (array of tuples `(type: uint, payload: bytes)`)
-	/// - receivers (array of 20-byte addresses)
+	/// - receivers (array of 48-byte BLS public keys)
 	///
 	/// # Errors
 	///
