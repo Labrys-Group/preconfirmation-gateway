@@ -60,10 +60,9 @@ jobs:
         run: cargo install cargo-tarpaulin --version 0.33.0 --locked || cargo install cargo-tarpaulin --version 0.33.0
 
       - name: Generate coverage report
-        run: cargo tarpaulin --lib --all-features --out Xml --output-dir coverage --timeout 300
-        timeout-minutes: 8
+        run: cargo tarpaulin --lib --all-features --out Xml --output-dir coverage --verbose
         env:
-          RUST_LOG: info
+          RUST_LOG: debug
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
