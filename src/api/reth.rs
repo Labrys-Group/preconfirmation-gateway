@@ -331,15 +331,12 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_reth_client_with_invalid_endpoint() {
-		let config = RethApiConfig {
-			endpoint: "invalid://endpoint".to_string(),
-			request_timeout_secs: 1,
-			max_retries: 1,
-		};
-		
+		let config =
+			RethApiConfig { endpoint: "invalid://endpoint".to_string(), request_timeout_secs: 1, max_retries: 1 };
+
 		let client = RethApiClient::new(config);
 		assert!(client.is_ok());
-		
+
 		// Test that get_gas_price fails with invalid endpoint
 		let client = client.unwrap();
 		let result = client.get_gas_price().await;
@@ -353,7 +350,7 @@ mod tests {
 			request_timeout_secs: 1,
 			max_retries: 1,
 		};
-		
+
 		let client = RethApiClient::new(config).unwrap();
 		let result = client.get_gas_price().await;
 		assert!(result.is_err());
@@ -366,7 +363,7 @@ mod tests {
 			request_timeout_secs: 5,
 			max_retries: 3,
 		};
-		
+
 		let client = RethApiClient::new(config).unwrap();
 		let result = client.get_gas_price().await;
 		assert!(result.is_err());
@@ -376,7 +373,7 @@ mod tests {
 	async fn test_block_number_parsing() {
 		let config = RethApiConfig::default();
 		let client = RethApiClient::new(config).unwrap();
-		
+
 		// Test with invalid endpoint (should fail gracefully)
 		let result = client.get_block_number().await;
 		assert!(result.is_err());
@@ -384,9 +381,9 @@ mod tests {
 
 	#[test]
 	fn test_u256_serialization() {
-		use u256_serde::{serialize, deserialize};
 		use serde_json;
-		
+		use u256_serde::{deserialize, serialize};
+
 		let value = U256::from(12345u64);
 		let serialized = serialize(&value, serde_json::value::Serializer).unwrap();
 		let deserialized: U256 = deserialize(serialized).unwrap();
@@ -395,9 +392,9 @@ mod tests {
 
 	#[test]
 	fn test_u256_serialization_with_hex_prefix() {
-		use u256_serde::{serialize, deserialize};
 		use serde_json;
-		
+		use u256_serde::{deserialize, serialize};
+
 		let value = U256::from_str_radix("0x1a2b3c", 16).unwrap();
 		let serialized = serialize(&value, serde_json::value::Serializer).unwrap();
 		let deserialized: U256 = deserialize(serialized).unwrap();
@@ -406,10 +403,11 @@ mod tests {
 
 	#[test]
 	fn test_u256_serialization_large_value() {
-		use u256_serde::{serialize, deserialize};
 		use serde_json;
-		
-		let value = U256::from_str_radix("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16).unwrap();
+		use u256_serde::{deserialize, serialize};
+
+		let value =
+			U256::from_str_radix("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16).unwrap();
 		let serialized = serialize(&value, serde_json::value::Serializer).unwrap();
 		let deserialized: U256 = deserialize(serialized).unwrap();
 		assert_eq!(value, deserialized);
@@ -418,20 +416,12 @@ mod tests {
 	#[test]
 	fn test_gas_price_info_edge_cases() {
 		// Test with zero gas price
-		let zero_price = GasPriceInfo {
-			gas_price: U256::from(0u64),
-			block_number: 0,
-			timestamp: 0,
-		};
+		let zero_price = GasPriceInfo { gas_price: U256::from(0u64), block_number: 0, timestamp: 0 };
 		assert_eq!(zero_price.gas_price_as_u64_clamped(), 0);
 		assert_eq!(zero_price.gas_price_as_u64_checked().unwrap(), 0);
 
 		// Test with exactly u64::MAX
-		let max_price = GasPriceInfo {
-			gas_price: U256::from(u64::MAX),
-			block_number: 100,
-			timestamp: 1234567890,
-		};
+		let max_price = GasPriceInfo { gas_price: U256::from(u64::MAX), block_number: 100, timestamp: 1234567890 };
 		assert_eq!(max_price.gas_price_as_u64_clamped(), u64::MAX);
 		assert_eq!(max_price.gas_price_as_u64_checked().unwrap(), u64::MAX);
 	}
@@ -446,11 +436,8 @@ mod tests {
 
 	#[test]
 	fn test_reth_api_config_custom() {
-		let config = RethApiConfig {
-			endpoint: "http://custom:8545".to_string(),
-			request_timeout_secs: 60,
-			max_retries: 5,
-		};
+		let config =
+			RethApiConfig { endpoint: "http://custom:8545".to_string(), request_timeout_secs: 60, max_retries: 5 };
 		assert_eq!(config.endpoint, "http://custom:8545");
 		assert_eq!(config.request_timeout_secs, 60);
 		assert_eq!(config.max_retries, 5);
@@ -458,14 +445,11 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_make_rpc_call_with_invalid_json() {
-		let config = RethApiConfig {
-			endpoint: "http://httpbin.org/post".to_string(),
-			request_timeout_secs: 5,
-			max_retries: 1,
-		};
-		
+		let config =
+			RethApiConfig { endpoint: "http://httpbin.org/post".to_string(), request_timeout_secs: 5, max_retries: 1 };
+
 		let client = RethApiClient::new(config).unwrap();
-		
+
 		// Test with invalid JSON payload
 		let invalid_payload = serde_json::json!({
 			"jsonrpc": "2.0",
@@ -473,7 +457,7 @@ mod tests {
 			"params": [],
 			"id": 1
 		});
-		
+
 		// This should fail because httpbin will return HTML, not JSON-RPC
 		let result = client.make_rpc_call(invalid_payload).await;
 		// The test might pass or fail depending on httpbin's response format
@@ -486,14 +470,11 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_make_rpc_call_with_rpc_error() {
-		let config = RethApiConfig {
-			endpoint: "http://httpbin.org/post".to_string(),
-			request_timeout_secs: 5,
-			max_retries: 1,
-		};
-		
+		let config =
+			RethApiConfig { endpoint: "http://httpbin.org/post".to_string(), request_timeout_secs: 5, max_retries: 1 };
+
 		let client = RethApiClient::new(config).unwrap();
-		
+
 		// Test with payload that would result in RPC error
 		let error_payload = serde_json::json!({
 			"jsonrpc": "2.0",
@@ -501,7 +482,7 @@ mod tests {
 			"params": [],
 			"id": 1
 		});
-		
+
 		// This should fail because httpbin doesn't understand JSON-RPC
 		let result = client.make_rpc_call(error_payload).await;
 		// The test might pass or fail depending on httpbin's response format
@@ -514,17 +495,10 @@ mod tests {
 
 	#[test]
 	fn test_gas_price_info_timestamp() {
-		let now = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap()
-			.as_secs();
-		
-		let gas_price_info = GasPriceInfo {
-			gas_price: U256::from(1000u64),
-			block_number: 12345,
-			timestamp: now,
-		};
-		
+		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+
+		let gas_price_info = GasPriceInfo { gas_price: U256::from(1000u64), block_number: 12345, timestamp: now };
+
 		assert_eq!(gas_price_info.timestamp, now);
 		assert_eq!(gas_price_info.block_number, 12345);
 	}

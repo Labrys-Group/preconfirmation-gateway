@@ -771,7 +771,7 @@ mod tests {
 		// Stats should be 0 when no commitments exist
 		assert_eq!(stats.total_count, 0);
 		assert_eq!(stats.commitment_type_1_count, 0);
-		
+
 		Ok(())
 	}
 
@@ -797,7 +797,7 @@ mod tests {
 		let stats = get_commitment_stats(&pool).await?;
 		assert_eq!(stats.total_count, 3);
 		assert_eq!(stats.commitment_type_1_count, 3); // All are type 1
-		
+
 		Ok(())
 	}
 
@@ -816,9 +816,9 @@ mod tests {
 		let commitment2 = create_test_commitment_with_slot("slot_test_2", 2000);
 		let commitment3 = create_test_commitment_with_slot("slot_test_3", 3000);
 
-		let id1 = save_commitment(&pool, &commitment1).await?;
-		let id2 = save_commitment(&pool, &commitment2).await?;
-		let id3 = save_commitment(&pool, &commitment3).await?;
+		let _id1 = save_commitment(&pool, &commitment1).await?;
+		let _id2 = save_commitment(&pool, &commitment2).await?;
+		let _id3 = save_commitment(&pool, &commitment3).await?;
 
 		// Test slot query
 		let commitments = get_unprocessed_commitments_for_slot(&pool, 2000).await?;
@@ -829,7 +829,7 @@ mod tests {
 		let commitments = get_unprocessed_commitments_for_slot(&pool, 1000).await?;
 		assert_eq!(commitments.len(), 1);
 		assert_eq!(commitments[0].commitment.request_hash, commitment1.commitment.request_hash);
-		
+
 		Ok(())
 	}
 
@@ -846,7 +846,7 @@ mod tests {
 		// Test with non-existent slot
 		let commitments = get_unprocessed_commitments_for_slot(&pool, 9999).await?;
 		assert_eq!(commitments.len(), 0);
-		
+
 		Ok(())
 	}
 
@@ -868,7 +868,7 @@ mod tests {
 		let commitments = get_unprocessed_commitments_for_slot(&pool, 0).await?;
 		// The commitment should not be returned because it has NULL slot_number
 		assert_eq!(commitments.len(), 0);
-		
+
 		Ok(())
 	}
 
@@ -885,7 +885,7 @@ mod tests {
 		// Test with empty list
 		let marked = mark_commitments_as_processed(&pool, &[]).await?;
 		assert_eq!(marked, 0);
-		
+
 		Ok(())
 	}
 
@@ -901,7 +901,7 @@ mod tests {
 
 		// Create a real commitment
 		let commitment = create_test_commitment("mixed_test");
-		let id = save_commitment(&pool, &commitment).await?;
+		let _id = save_commitment(&pool, &commitment).await?;
 
 		// Mix real and fake hashes
 		let hashes = vec![
@@ -911,7 +911,7 @@ mod tests {
 
 		let marked = mark_commitments_as_processed(&pool, &hashes).await?;
 		assert_eq!(marked, 1); // Should mark only the real commitment
-		
+
 		Ok(())
 	}
 
@@ -926,13 +926,14 @@ mod tests {
 		};
 
 		// Test retrieving non-existent commitment
-		let result = get_commitment_by_hash(&pool, "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff").await?;
+		let result =
+			get_commitment_by_hash(&pool, "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff").await?;
 		assert!(result.is_none());
 
 		// Test with invalid hash format
 		let result = get_commitment_by_hash(&pool, "invalid_hash").await?;
 		assert!(result.is_none());
-		
+
 		Ok(())
 	}
 
@@ -947,13 +948,14 @@ mod tests {
 		};
 
 		// Test with non-existent hash
-		let exists = commitment_exists(&pool, "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff").await?;
+		let exists =
+			commitment_exists(&pool, "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff").await?;
 		assert!(!exists);
 
 		// Test with invalid hash format
 		let exists = commitment_exists(&pool, "invalid_hash").await?;
 		assert!(!exists);
-		
+
 		Ok(())
 	}
 
@@ -961,12 +963,12 @@ mod tests {
 	fn test_commitment_type_conversion() {
 		// Test normal conversion
 		let commitment_type = 1u8;
-		let converted = i64::try_from(commitment_type).unwrap();
+		let converted = i64::from(commitment_type);
 		assert_eq!(converted, 1);
 
 		// Test edge case
 		let commitment_type = 255u8;
-		let converted = i64::try_from(commitment_type).unwrap();
+		let converted = i64::from(commitment_type);
 		assert_eq!(converted, 255);
 	}
 
@@ -988,10 +990,10 @@ mod tests {
 	fn test_uuid_generation() {
 		let id1 = Uuid::new_v4();
 		let id2 = Uuid::new_v4();
-		
+
 		// UUIDs should be unique
 		assert_ne!(id1, id2);
-		
+
 		// UUIDs should not be nil
 		assert!(!id1.is_nil());
 		assert!(!id2.is_nil());
@@ -1009,7 +1011,7 @@ mod tests {
 
 		// Create multiple commitments concurrently
 		let mut handles = vec![];
-		
+
 		for i in 0..5 {
 			let pool_clone = pool.clone();
 			let handle = tokio::spawn(async move {
@@ -1055,10 +1057,7 @@ mod tests {
 			slasher: "0x1234567890123456789012345678901234567890".to_string(),
 		};
 
-		let signed_commitment = SignedCommitment {
-			commitment,
-			signature: format!("0x{:0<128}", "1234567890abcdef"),
-		};
+		let signed_commitment = SignedCommitment { commitment, signature: format!("0x{:0<128}", "1234567890abcdef") };
 
 		let id = save_commitment(&pool, &signed_commitment).await?;
 		assert!(!id.is_nil());

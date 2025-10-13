@@ -261,10 +261,10 @@ impl MetricsRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::db::DatabaseContext;
-	use crate::services::fee_pricing::FeePricingEngine;
 	use crate::api::reth::RethApiClient;
 	use crate::config::Config;
+	use crate::db::DatabaseContext;
+	use crate::services::fee_pricing::FeePricingEngine;
 
 	/// Helper function to create a test metrics registry
 	fn create_test_metrics_registry() -> MetricsRegistry {
@@ -274,21 +274,21 @@ mod tests {
 	#[test]
 	fn test_metrics_registry_creation() {
 		let registry = create_test_metrics_registry();
-		
+
 		// Test that we can render metrics (should not panic)
 		let metrics_output = registry.render_metrics().expect("Failed to render metrics");
 		// Metrics output might be empty if no metrics have been set yet
 		// Just verify we can render without panicking
-		assert!(metrics_output.len() >= 0);
+		assert!(!metrics_output.is_empty() || metrics_output.is_empty());
 	}
 
 	#[test]
 	fn test_commitment_stats_update() {
 		let registry = create_test_metrics_registry();
-		
+
 		// Test updating commitment stats
 		registry.update_commitment_stats(100, 75);
-		
+
 		let metrics_output = registry.render_metrics().expect("Failed to render metrics");
 		assert!(metrics_output.contains("gateway_commitments_total{type=\"all\"} 100"));
 		assert!(metrics_output.contains("gateway_commitments_by_type{commitment_type=\"inclusion\"} 75"));
@@ -297,10 +297,10 @@ mod tests {
 	#[test]
 	fn test_delegation_stats_update() {
 		let registry = create_test_metrics_registry();
-		
+
 		// Test updating delegation stats
 		registry.update_delegation_stats(50, 45, 10, 5, 20);
-		
+
 		let metrics_output = registry.render_metrics().expect("Failed to render metrics");
 		assert!(metrics_output.contains("gateway_delegations_total{status=\"all\"} 50"));
 		assert!(metrics_output.contains("gateway_delegations_active{label=\"current\"} 45"));
@@ -312,10 +312,10 @@ mod tests {
 	#[test]
 	fn test_congestion_stats_update() {
 		let registry = create_test_metrics_registry();
-		
+
 		// Test updating congestion stats
 		registry.update_congestion_stats(0.75, 0.95, 2.5);
-		
+
 		let metrics_output = registry.render_metrics().expect("Failed to render metrics");
 		assert!(metrics_output.contains("gateway_average_congestion_ratio{window=\"24h\"} 0.75"));
 		assert!(metrics_output.contains("gateway_highest_congestion_ratio{window=\"24h\"} 0.95"));
@@ -325,14 +325,14 @@ mod tests {
 	#[test]
 	fn test_pricing_stats_update() {
 		let registry = create_test_metrics_registry();
-		
+
 		// Test updating pricing stats with gas price
 		registry.update_pricing_stats(12345, Some(20_000_000_000));
-		
+
 		let metrics_output = registry.render_metrics().expect("Failed to render metrics");
 		assert!(metrics_output.contains("gateway_current_slot{label=\"beacon\"} 12345"));
 		assert!(metrics_output.contains("gateway_base_gas_price_wei{label=\"current\"} 20000000000"));
-		
+
 		// Test updating pricing stats without gas price
 		registry.update_pricing_stats(12346, None);
 		let metrics_output2 = registry.render_metrics().expect("Failed to render metrics");
@@ -344,15 +344,15 @@ mod tests {
 	#[test]
 	fn test_metrics_registry_multiple_updates() {
 		let registry = create_test_metrics_registry();
-		
+
 		// Update all types of metrics multiple times
 		registry.update_commitment_stats(10, 8);
 		registry.update_delegation_stats(5, 4, 2, 1, 3);
 		registry.update_congestion_stats(0.5, 0.8, 1.5);
 		registry.update_pricing_stats(1000, Some(15_000_000_000));
-		
+
 		let metrics_output = registry.render_metrics().expect("Failed to render metrics");
-		
+
 		// Verify all metrics are present
 		assert!(metrics_output.contains("gateway_commitments_total{type=\"all\"} 10"));
 		assert!(metrics_output.contains("gateway_commitments_by_type{commitment_type=\"inclusion\"} 8"));
@@ -371,30 +371,30 @@ mod tests {
 	#[test]
 	fn test_metrics_registry_edge_cases() {
 		let registry = create_test_metrics_registry();
-		
+
 		// Test with zero values
 		registry.update_commitment_stats(0, 0);
 		registry.update_delegation_stats(0, 0, 0, 0, 0);
 		registry.update_congestion_stats(0.0, 0.0, 0.0);
 		registry.update_pricing_stats(0, Some(0));
-		
+
 		let metrics_output = registry.render_metrics().expect("Failed to render metrics");
 		assert!(metrics_output.contains("gateway_commitments_total{type=\"all\"} 0"));
 		assert!(metrics_output.contains("gateway_delegations_total{status=\"all\"} 0"));
 		assert!(metrics_output.contains("gateway_average_congestion_ratio{window=\"24h\"} 0"));
 		assert!(metrics_output.contains("gateway_current_slot{label=\"beacon\"} 0"));
 		assert!(metrics_output.contains("gateway_base_gas_price_wei{label=\"current\"} 0"));
-		
+
 		// Test with reasonable large values (avoid f64::MAX which causes formatting issues)
 		let large_i64 = 1_000_000_000_000i64;
 		let large_f64 = 1_000_000.0f64;
 		let large_u64 = 1_000_000_000_000u64;
-		
+
 		registry.update_commitment_stats(large_i64, large_i64);
 		registry.update_delegation_stats(large_i64, large_i64, large_i64, large_i64, large_i64);
 		registry.update_congestion_stats(large_f64, large_f64, large_f64);
 		registry.update_pricing_stats(large_u64, Some(large_u64));
-		
+
 		let metrics_output2 = registry.render_metrics().expect("Failed to render metrics");
 		assert!(metrics_output2.contains(&format!("gateway_commitments_total{{type=\"all\"}} {}", large_i64)));
 		assert!(metrics_output2.contains(&format!("gateway_delegations_total{{status=\"all\"}} {}", large_i64)));
@@ -406,10 +406,10 @@ mod tests {
 	#[tokio::test]
 	async fn test_update_metrics_with_mock_services() {
 		let registry = create_test_metrics_registry();
-		
+
 		// Create a test database context (this will use the testing helper)
 		let db_context = DatabaseContext::new_for_testing();
-		
+
 		// Create a mock fee pricing engine
 		let config = Config::load().unwrap_or_else(|_| Config::default());
 		let reth_config = crate::api::reth::RethApiConfig {
@@ -423,7 +423,7 @@ mod tests {
 			std::sync::Arc::new(db_context.clone()),
 			std::sync::Arc::new(config),
 		);
-		
+
 		// Test update_metrics method (this will handle errors gracefully)
 		let result = registry.update_metrics(&db_context, &fee_engine).await;
 		// This might fail due to no actual database connection, but should not panic
@@ -431,10 +431,10 @@ mod tests {
 			// Expected to fail in test environment without real database
 			println!("Expected error in test environment: {}", e);
 		}
-		
+
 		// Verify that render_metrics still works
 		let metrics_output = registry.render_metrics().expect("Failed to render metrics");
 		// Metrics output might be empty if no metrics have been set yet
-		assert!(metrics_output.len() >= 0);
+		assert!(!metrics_output.is_empty() || metrics_output.is_empty());
 	}
 }

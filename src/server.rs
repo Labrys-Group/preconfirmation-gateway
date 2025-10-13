@@ -42,30 +42,25 @@ pub fn server_address(config: &config::Config) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::api::beacon::BeaconApiClient;
+	use crate::api::reth::RethApiClient;
 	use crate::config::Config;
 	use crate::db::DatabaseContext;
-	use crate::types::RpcContext;
-	use crate::api::beacon::BeaconApiClient;
 	use crate::services::fee_pricing::FeePricingEngine;
-	use crate::api::reth::RethApiClient;
+	use crate::types::RpcContext;
 
 	/// Helper function to create a test config
 	fn create_test_config() -> Config {
 		Config {
-			server: crate::config::ServerConfig { 
-				host: "127.0.0.1".to_string(), 
-				port: 8080 
-			},
-			database: crate::config::DatabaseConfig { 
-				url: "postgresql://test:test@localhost/test_db".to_string() 
-			},
+			server: crate::config::ServerConfig { host: "127.0.0.1".to_string(), port: 8080 },
+			database: crate::config::DatabaseConfig { url: "postgresql://test:test@localhost/test_db".to_string() },
 			logging: crate::config::LoggingConfig {
 				level: "info".to_string(),
 				enable_method_tracing: false,
 				traced_methods: vec![],
 			},
-			validation: crate::config::ValidationConfig { 
-				slasher_address: "0x1234567890123456789012345678901234567890".to_string() 
+			validation: crate::config::ValidationConfig {
+				slasher_address: "0x1234567890123456789012345678901234567890".to_string(),
 			},
 			beacon_api: crate::config::BeaconApiConfig {
 				primary_endpoint: "https://test.beacon.com".to_string(),
@@ -113,7 +108,7 @@ mod tests {
 		let mut config = create_test_config();
 		config.server.host = "0.0.0.0".to_string();
 		config.server.port = 9090;
-		
+
 		let address = server_address(&config);
 		assert_eq!(address, "0.0.0.0:9090");
 	}
@@ -123,7 +118,7 @@ mod tests {
 		let mut config = create_test_config();
 		config.server.host = "::1".to_string();
 		config.server.port = 8080;
-		
+
 		let address = server_address(&config);
 		assert_eq!(address, "::1:8080");
 	}
@@ -131,7 +126,7 @@ mod tests {
 	#[test]
 	fn test_setup_logging_success() {
 		let config = create_test_config();
-		
+
 		// This should not panic, even if logging is already initialized
 		let result = setup_logging(&config);
 		// In test environment, this might fail due to logging already being initialized
@@ -146,7 +141,7 @@ mod tests {
 		let mut config = create_test_config();
 		config.logging.enable_method_tracing = true;
 		config.logging.traced_methods = vec!["test_method".to_string(), "another_method".to_string()];
-		
+
 		let result = setup_logging(&config);
 		// This should not panic
 		if let Err(e) = result {
@@ -159,7 +154,7 @@ mod tests {
 		let mut config = create_test_config();
 		config.logging.enable_method_tracing = true;
 		config.logging.traced_methods = vec!["invalid method name with spaces".to_string()];
-		
+
 		let result = setup_logging(&config);
 		// This should fail due to invalid method name format
 		assert!(result.is_err());
@@ -168,11 +163,11 @@ mod tests {
 	#[test]
 	fn test_setup_logging_with_different_levels() {
 		let levels = vec!["trace", "debug", "info", "warn", "error"];
-		
+
 		for level in levels {
 			let mut config = create_test_config();
 			config.logging.level = level.to_string();
-			
+
 			let result = setup_logging(&config);
 			// Should not panic for any valid log level
 			if let Err(e) = result {
@@ -184,14 +179,14 @@ mod tests {
 	#[tokio::test]
 	async fn test_run_server_with_mock_context() {
 		let config = create_test_config();
-		
+
 		// Create a test database context
 		let db_context = DatabaseContext::new_for_testing();
-		
+
 		// Create mock services
 		let beacon_config = config.beacon_api.clone();
 		let beacon_client = BeaconApiClient::new(beacon_config).expect("Failed to create beacon client");
-		
+
 		let reth_config = crate::api::reth::RethApiConfig {
 			endpoint: config.reth.endpoint.clone(),
 			request_timeout_secs: config.reth.request_timeout_secs,
@@ -203,14 +198,14 @@ mod tests {
 			std::sync::Arc::new(db_context.clone()),
 			std::sync::Arc::new(config.clone()),
 		);
-		
+
 		let rpc_context = RpcContext::new(
 			db_context,
 			config.clone(),
 			std::sync::Arc::new(fee_engine),
 			std::sync::Arc::new(beacon_client),
 		);
-		
+
 		// Test that we can create the RPC module (this tests the server setup)
 		let module_result = crate::rpc::setup_rpc_methods(rpc_context);
 		assert!(module_result.is_ok(), "Failed to setup RPC methods: {:?}", module_result.err());
@@ -219,18 +214,18 @@ mod tests {
 	#[test]
 	fn test_server_address_edge_cases() {
 		let mut config = create_test_config();
-		
+
 		// Test with empty host
 		config.server.host = "".to_string();
 		let address = server_address(&config);
 		assert_eq!(address, ":8080");
-		
+
 		// Test with port 0
 		config.server.host = "localhost".to_string();
 		config.server.port = 0;
 		let address = server_address(&config);
 		assert_eq!(address, "localhost:0");
-		
+
 		// Test with very large port number
 		config.server.port = 65535;
 		let address = server_address(&config);
@@ -240,12 +235,11 @@ mod tests {
 	#[test]
 	fn test_config_validation_for_server() {
 		let config = create_test_config();
-		
+
 		// Test that server config has reasonable values
 		assert!(!config.server.host.is_empty());
 		assert!(config.server.port > 0);
-		assert!(config.server.port <= 65535);
-		
+
 		// Test that logging config is valid
 		assert!(!config.logging.level.is_empty());
 		assert!(matches!(config.logging.level.as_str(), "trace" | "debug" | "info" | "warn" | "error"));
