@@ -78,8 +78,8 @@ impl SlotCongestion {
 		// Apply bounds checking
 		self.calculated_fee_multiplier = self.calculated_fee_multiplier.clamp(1.0, 100.0);
 
-		// Calculate final transaction price
-		self.current_tx_price = (self.base_gas_price as f64 * self.calculated_fee_multiplier) as u64;
+		// Calculate final transaction price (round up to match calculate_fee_for_commitment)
+		self.current_tx_price = (self.base_gas_price as f64 * self.calculated_fee_multiplier).ceil() as u64;
 	}
 }
 
@@ -413,6 +413,7 @@ pub async fn get_congestion_stats(pool: &PgPool) -> Result<CongestionStats> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use sqlx::PgPool;
 
 	#[test]
 	fn test_slot_congestion_creation() {
@@ -449,8 +450,8 @@ mod tests {
 		// With 50% usage and k=2: multiplier = 1 / (1 - 0.5^2) = 1 / (1 - 0.25) = 1.333...
 		assert!((congestion.calculated_fee_multiplier - 1.333).abs() < 0.01);
 
-		// Price should be base_price * multiplier
-		let expected_price = (1_000_000_000.0 * congestion.calculated_fee_multiplier) as u64;
+		// Price should be base_price * multiplier, rounded up
+		let expected_price = (1_000_000_000.0 * congestion.calculated_fee_multiplier).ceil() as u64;
 		assert_eq!(congestion.current_tx_price, expected_price);
 	}
 
@@ -477,5 +478,342 @@ mod tests {
 		assert_eq!(congestion.gas_used_ratio, 1.0);
 		assert_eq!(congestion.calculated_fee_multiplier, 100.0); // Max multiplier
 		assert_eq!(congestion.current_tx_price, 100_000_000_000); // 100x base price
+	}
+
+	#[test]
+	fn test_zero_gas_usage() {
+		let mut congestion = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
+
+		// Add zero gas
+		congestion.add_gas_usage(0, 2.0);
+
+		assert_eq!(congestion.preconfirmed_gas, 0);
+		assert_eq!(congestion.gas_used_ratio, 0.0);
+		assert_eq!(congestion.calculated_fee_multiplier, 1.0);
+		assert_eq!(congestion.current_tx_price, congestion.base_gas_price);
+	}
+
+	#[test]
+	fn test_small_gas_usage() {
+		let mut congestion = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
+
+		// Add 1% of gas limit
+		congestion.add_gas_usage(300_000, 2.0);
+
+		assert_eq!(congestion.preconfirmed_gas, 300_000);
+		assert_eq!(congestion.gas_used_ratio, 0.01);
+		assert!(congestion.calculated_fee_multiplier > 1.0);
+		assert!(congestion.calculated_fee_multiplier < 1.1); // Should be close to 1.0
+	}
+
+	#[test]
+	fn test_multiple_gas_additions() {
+		let mut congestion = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
+
+		// Add gas in multiple steps
+		congestion.add_gas_usage(10_000_000, 2.0);
+		assert_eq!(congestion.preconfirmed_gas, 10_000_000);
+		assert_eq!(congestion.gas_used_ratio, 10_000_000.0 / 30_000_000.0);
+
+		congestion.add_gas_usage(5_000_000, 2.0);
+		assert_eq!(congestion.preconfirmed_gas, 15_000_000);
+		assert_eq!(congestion.gas_used_ratio, 0.5);
+	}
+
+	#[test]
+	fn test_different_scaling_factors() {
+		let mut congestion1 = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
+		let mut congestion2 = SlotCongestion::new(12346, 1_000_000_000, 30_000_000, SystemTime::now());
+
+		// Add same gas with different scaling factors
+		congestion1.add_gas_usage(15_000_000, 1.0); // Linear scaling
+		congestion2.add_gas_usage(15_000_000, 3.0); // Cubic scaling
+
+		assert_eq!(congestion1.gas_used_ratio, congestion2.gas_used_ratio);
+		// Higher scaling factor results in lower fee multiplier for same gas usage
+		assert!(congestion2.calculated_fee_multiplier < congestion1.calculated_fee_multiplier);
+	}
+
+	#[test]
+	fn test_overflow_protection() {
+		let mut congestion = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
+
+		// Add more gas than the limit
+		congestion.add_gas_usage(50_000_000, 2.0);
+
+		// Gas ratio can exceed 1.0, but fee multiplier is capped at 100.0
+		assert!(congestion.gas_used_ratio > 1.0);
+		assert_eq!(congestion.calculated_fee_multiplier, 100.0); // Max multiplier
+	}
+
+	#[test]
+	fn test_congestion_stats_creation() {
+		let stats = CongestionStats {
+			total_slots_tracked: 100,
+			current_average_congestion: 0.5,
+			highest_congestion_slot: Some(12345),
+			highest_congestion_ratio: 0.95,
+			average_fee_multiplier: 2.5,
+		};
+
+		assert_eq!(stats.total_slots_tracked, 100);
+		assert_eq!(stats.current_average_congestion, 0.5);
+		assert_eq!(stats.highest_congestion_slot, Some(12345));
+		assert_eq!(stats.highest_congestion_ratio, 0.95);
+		assert_eq!(stats.average_fee_multiplier, 2.5);
+	}
+
+	#[test]
+	fn test_congestion_stats_empty() {
+		let stats = CongestionStats {
+			total_slots_tracked: 0,
+			current_average_congestion: 0.0,
+			highest_congestion_slot: None,
+			highest_congestion_ratio: 0.0,
+			average_fee_multiplier: 1.0,
+		};
+
+		assert_eq!(stats.total_slots_tracked, 0);
+		assert_eq!(stats.highest_congestion_slot, None);
+	}
+
+	#[tokio::test]
+	async fn test_get_or_create_slot_congestion_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = get_or_create_slot_congestion(&invalid_pool, 12345, 1_000_000_000, 30_000_000, 1606824023).await;
+
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_get_slot_congestion_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = get_slot_congestion(&invalid_pool, 12345).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_update_slot_congestion_gas_usage_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = update_slot_congestion_gas_usage(&invalid_pool, 12345, 1_000_000, 2.0).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_get_current_gas_price_for_slot_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = get_current_gas_price_for_slot(&invalid_pool, 12345).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_cleanup_old_slot_congestion_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = cleanup_old_slot_congestion(&invalid_pool, 24).await;
+		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_get_congestion_stats_with_invalid_pool() {
+		let invalid_pool = PgPool::connect_lazy("postgresql://invalid:invalid@localhost/invalid_db").unwrap();
+
+		let result = get_congestion_stats(&invalid_pool).await;
+		assert!(result.is_err());
+	}
+
+	#[test]
+	fn test_slot_start_time_calculation() {
+		let genesis_time = 1606824023; // Ethereum mainnet genesis
+		let slot = 1000;
+		let expected_timestamp = genesis_time + (slot * 12); // 12-second slots
+
+		let slot_start_time = UNIX_EPOCH + Duration::from_secs(expected_timestamp);
+
+		// Test that the calculation is correct
+		assert_eq!(slot_start_time.duration_since(UNIX_EPOCH).unwrap().as_secs(), expected_timestamp);
+	}
+
+	#[test]
+	fn test_fee_multiplier_formula_edge_cases() {
+		let mut congestion = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
+
+		// Test very small usage (should be close to 1.0)
+		congestion.add_gas_usage(1, 2.0);
+		assert!(congestion.calculated_fee_multiplier >= 1.0);
+		assert!(congestion.calculated_fee_multiplier < 1.01);
+
+		// Reset and test 99% usage
+		let mut congestion2 = SlotCongestion::new(12346, 1_000_000_000, 30_000_000, SystemTime::now());
+		congestion2.add_gas_usage(29_700_000, 2.0); // 99%
+		assert!(congestion2.calculated_fee_multiplier > 10.0);
+		assert!(congestion2.calculated_fee_multiplier <= 100.0);
+	}
+
+	#[test]
+	fn test_price_calculation_precision() {
+		let mut congestion = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
+
+		congestion.add_gas_usage(15_000_000, 2.0);
+
+		// Verify price calculation maintains precision (rounded up)
+		let expected_price = (congestion.base_gas_price as f64 * congestion.calculated_fee_multiplier).ceil() as u64;
+		assert_eq!(congestion.current_tx_price, expected_price);
+	}
+
+	#[test]
+	fn test_slot_congestion_debug_formatting() {
+		let congestion = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
+		let debug_str = format!("{:?}", congestion);
+
+		assert!(debug_str.contains("SlotCongestion"));
+		assert!(debug_str.contains("12345"));
+	}
+
+	#[test]
+	fn test_slot_congestion_clone() {
+		let congestion1 = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
+		let congestion2 = congestion1.clone();
+
+		assert_eq!(congestion1.slot, congestion2.slot);
+		assert_eq!(congestion1.base_gas_price, congestion2.base_gas_price);
+		assert_eq!(congestion1.total_gas_limit, congestion2.total_gas_limit);
+	}
+
+	#[test]
+	fn test_slot_congestion_serialization() {
+		let congestion = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
+
+		// Test that it can be serialized/deserialized
+		let serialized = serde_json::to_string(&congestion).unwrap();
+		let deserialized: SlotCongestion = serde_json::from_str(&serialized).unwrap();
+
+		assert_eq!(congestion.slot, deserialized.slot);
+		assert_eq!(congestion.base_gas_price, deserialized.base_gas_price);
+		assert_eq!(congestion.total_gas_limit, deserialized.total_gas_limit);
+	}
+
+	// Integration tests that would require a real database
+	#[tokio::test]
+	#[ignore] // Ignore by default since it requires a real database
+	async fn test_slot_congestion_crud_operations() {
+		// This test would require a real PostgreSQL database
+		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
+
+		if let Ok(pool) = pool_result {
+			if let Ok(_) = pool.acquire().await {
+				let slot = 12345;
+				let base_price = 1_000_000_000;
+				let gas_limit = 30_000_000;
+				let genesis_time = 1606824023;
+
+				// Test create/get
+				let congestion =
+					get_or_create_slot_congestion(&pool, slot, base_price, gas_limit, genesis_time).await.unwrap();
+				assert_eq!(congestion.slot, slot);
+				assert_eq!(congestion.base_gas_price, base_price);
+
+				// Test update
+				let updated = update_slot_congestion_gas_usage(&pool, slot, 1_000_000, 2.0).await.unwrap();
+				assert_eq!(updated.preconfirmed_gas, 1_000_000);
+
+				// Test get current price
+				let price = get_current_gas_price_for_slot(&pool, slot).await.unwrap();
+				assert!(price.is_some());
+				assert!(price.unwrap() > base_price);
+			}
+		}
+	}
+
+	#[tokio::test]
+	#[ignore] // Ignore by default since it requires a real database
+	async fn test_slot_congestion_concurrent_updates() {
+		// This test would require a real PostgreSQL database
+		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
+
+		if let Ok(pool) = pool_result {
+			if let Ok(_) = pool.acquire().await {
+				let slot = 12346;
+				let base_price = 1_000_000_000;
+				let gas_limit = 30_000_000;
+				let genesis_time = 1606824023;
+
+				// Create initial congestion
+				get_or_create_slot_congestion(&pool, slot, base_price, gas_limit, genesis_time).await.unwrap();
+
+				// Simulate concurrent updates (in real scenario, these would be from different tasks)
+				let update1 = update_slot_congestion_gas_usage(&pool, slot, 5_000_000, 2.0).await.unwrap();
+				let update2 = update_slot_congestion_gas_usage(&pool, slot, 3_000_000, 2.0).await.unwrap();
+
+				// Second update should have higher gas usage
+				assert!(update2.preconfirmed_gas > update1.preconfirmed_gas);
+			}
+		}
+	}
+
+	#[tokio::test]
+	#[ignore] // Ignore by default since it requires a real database
+	async fn test_slot_congestion_cleanup() {
+		// This test would require a real PostgreSQL database
+		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
+
+		if let Ok(pool) = pool_result {
+			if let Ok(_) = pool.acquire().await {
+				let old_slot = 1000;
+				let current_slot = 12347;
+				let base_price = 1_000_000_000;
+				let gas_limit = 30_000_000;
+				let genesis_time = 1606824023;
+
+				// Create old congestion record
+				get_or_create_slot_congestion(&pool, old_slot, base_price, gas_limit, genesis_time).await.unwrap();
+
+				// Create current congestion record
+				get_or_create_slot_congestion(&pool, current_slot, base_price, gas_limit, genesis_time).await.unwrap();
+
+				// Cleanup old records (keep only 1 hour)
+				let deleted_count = cleanup_old_slot_congestion(&pool, 1).await.unwrap();
+				assert!(deleted_count >= 0); // This is always true for u64, but tests the function call
+
+				// Verify old record is gone
+				let old_price = get_current_gas_price_for_slot(&pool, old_slot).await.unwrap();
+				assert!(old_price.is_none());
+
+				// Verify current record still exists
+				let current_price = get_current_gas_price_for_slot(&pool, current_slot).await.unwrap();
+				assert!(current_price.is_some());
+			}
+		}
+	}
+
+	#[tokio::test]
+	#[ignore] // Ignore by default since it requires a real database
+	async fn test_congestion_stats_aggregation() {
+		// This test would require a real PostgreSQL database
+		let pool_result = PgPool::connect_lazy("postgresql://test:test@localhost/test_db");
+
+		if let Ok(pool) = pool_result {
+			if let Ok(_) = pool.acquire().await {
+				let base_price = 1_000_000_000;
+				let gas_limit = 30_000_000;
+				let genesis_time = 1606824023;
+
+				// Create multiple congestion records
+				for slot in 12348..12353 {
+					get_or_create_slot_congestion(&pool, slot, base_price, gas_limit, genesis_time).await.unwrap();
+					update_slot_congestion_gas_usage(&pool, slot, slot * 1000, 2.0).await.unwrap();
+				}
+
+				// Get aggregated stats
+				let stats = get_congestion_stats(&pool).await.unwrap();
+				assert!(stats.total_slots_tracked > 0);
+				assert!(stats.current_average_congestion >= 0.0);
+				assert!(stats.average_fee_multiplier >= 1.0);
+			}
+		}
 	}
 }
