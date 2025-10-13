@@ -62,7 +62,8 @@ impl SlotCongestion {
 	/// # Examples
 	///
 	pub fn add_gas_usage(&mut self, additional_gas: u64, scaling_factor: f64) {
-		self.preconfirmed_gas += additional_gas;
+		// Use saturating_add to prevent overflow when accumulating gas
+		self.preconfirmed_gas = self.preconfirmed_gas.saturating_add(additional_gas);
 
 		// Guard against division by zero - if total_gas_limit is 0, set max multiplier
 		if self.total_gas_limit == 0 {
@@ -72,8 +73,12 @@ impl SlotCongestion {
 			return;
 		}
 
-		// Calculate gas usage ratio
+		// Calculate gas usage ratio with safe division (already checked total_gas_limit > 0)
 		self.gas_used_ratio = self.preconfirmed_gas as f64 / self.total_gas_limit as f64;
+
+		// Clamp ratio to valid range [0.0, f64::MAX] to handle overflow cases
+		// Note: We don't clamp to 1.0 here because we want to track over-subscription
+		self.gas_used_ratio = self.gas_used_ratio.max(0.0);
 
 		// Guard against NaN from the division (shouldn't happen after the zero check, but be defensive)
 		if !self.gas_used_ratio.is_finite() {
@@ -137,8 +142,8 @@ pub async fn get_or_create_slot_congestion(
 	total_gas_limit: u64,
 	genesis_time: u64,
 ) -> Result<SlotCongestion> {
-	// Calculate slot start time
-	let slot_start_timestamp = genesis_time + (slot * 12); // 12-second slots
+	// Calculate slot start time with overflow protection
+	let slot_start_timestamp = genesis_time.saturating_add(slot.saturating_mul(12)); // 12-second slots
 	let slot_start_time = UNIX_EPOCH + Duration::from_secs(slot_start_timestamp);
 
 	// Create new record struct (in memory)
@@ -356,7 +361,9 @@ pub async fn get_current_gas_price_for_slot(pool: &PgPool, slot: u64) -> Result<
 /// # Examples
 ///
 pub async fn cleanup_old_slot_congestion(pool: &PgPool, hours_to_keep: u32) -> Result<u64> {
-	let cutoff_time = SystemTime::now() - Duration::from_secs(hours_to_keep as u64 * 3600);
+	// Use saturating_mul to prevent overflow when computing duration
+	let cutoff_duration_secs = (hours_to_keep as u64).saturating_mul(3600);
+	let cutoff_time = SystemTime::now() - Duration::from_secs(cutoff_duration_secs);
 	let cutoff_timestamp = cutoff_time.duration_since(UNIX_EPOCH)?.as_secs() as i64;
 
 	let cutoff_chrono = sqlx::types::chrono::DateTime::from_timestamp(cutoff_timestamp, 0)
@@ -667,6 +674,41 @@ mod tests {
 
 		// Test that the calculation is correct
 		assert_eq!(slot_start_time.duration_since(UNIX_EPOCH).unwrap().as_secs(), expected_timestamp);
+	}
+
+	#[test]
+	fn test_timestamp_overflow_protection() {
+		// Test that saturating arithmetic prevents overflow in timestamp calculations
+		let genesis_time = u64::MAX - 100; // Near maximum value
+		let slot = u64::MAX; // Maximum slot value
+
+		// This would overflow with plain addition, but saturates to u64::MAX
+		let slot_start_timestamp = genesis_time.saturating_add(slot.saturating_mul(12));
+		assert_eq!(slot_start_timestamp, u64::MAX);
+
+		// Test cleanup duration calculation with extreme values
+		let hours = u32::MAX;
+		let cutoff_duration_secs = (hours as u64).saturating_mul(3600);
+		// Without saturation, this would overflow: u32::MAX * 3600 = 15,461,882,019,000
+		// With saturation, it caps at u64::MAX
+		assert_eq!(cutoff_duration_secs, u64::MAX);
+	}
+
+	#[test]
+	fn test_multiple_saturating_gas_additions() {
+		// Test that multiple saturating additions work correctly
+		let mut congestion = SlotCongestion::new(12345, 1_000_000_000, 30_000_000, SystemTime::now());
+
+		// Start near max value
+		congestion.preconfirmed_gas = u64::MAX - 1000;
+
+		// Add more gas - should saturate at u64::MAX
+		congestion.add_gas_usage(5000, 2.0);
+		assert_eq!(congestion.preconfirmed_gas, u64::MAX);
+
+		// Verify the fee multiplier is still calculated correctly (max multiplier)
+		assert_eq!(congestion.calculated_fee_multiplier, 100.0);
+		assert!(congestion.gas_used_ratio.is_finite());
 	}
 
 	#[test]

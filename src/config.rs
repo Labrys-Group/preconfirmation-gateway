@@ -565,6 +565,7 @@ impl Default for FeeConfig {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use serial_test::serial;
 	use std::env;
 	use std::fs;
 	use tempfile::TempDir;
@@ -794,6 +795,7 @@ cache_ttl_secs = 60
 	}
 
 	#[test]
+	#[serial]
 	fn test_environment_variable_substitution() {
 		// Save original environment
 		let original_beacon = env::var("BEACON_API_ENDPOINT").ok();
@@ -927,6 +929,7 @@ cache_ttl_secs = 60
 	}
 
 	#[test]
+	#[serial]
 	fn test_signing_config_load_missing_env_vars() {
 		// Save original environment
 		let original_committer = env::var("COMMITTER_PRIVATE_KEY").ok();
@@ -956,6 +959,7 @@ cache_ttl_secs = 60
 	}
 
 	#[test]
+	#[serial]
 	fn test_signing_config_load_invalid_ecdsa_key() {
 		// Save original environment
 		let original_committer = env::var("COMMITTER_PRIVATE_KEY").ok();
@@ -985,6 +989,7 @@ cache_ttl_secs = 60
 	}
 
 	#[test]
+	#[serial]
 	fn test_signing_config_load_invalid_bls_key() {
 		// Save original environment
 		let original_committer = env::var("COMMITTER_PRIVATE_KEY").ok();
