@@ -267,7 +267,8 @@ async fn process_constraints_for_slot(
 		// that need to be converted to constraints for this slot/delegation
 		// For now, we'll implement the framework and constraint creation logic
 
-		if let Err(e) = process_delegation_constraints(constraints_client, bls_manager, db_pool, &delegation, config, slot).await
+		if let Err(e) =
+			process_delegation_constraints(constraints_client, bls_manager, db_pool, &delegation, config, slot).await
 		{
 			warn!("Failed to process constraints for delegation in slot {}: {}", slot, e);
 		}
