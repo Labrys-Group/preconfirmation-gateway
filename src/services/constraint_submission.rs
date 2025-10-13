@@ -631,11 +631,21 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_process_pending_constraints_no_delegations() {
+		// Skip test without database
+		if std::env::var("DATABASE_URL").is_err() {
+			return;
+		}
+
 		// Test the processing loop when no delegations are found
 		let config = crate::testing::mocks::create_test_config();
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let bls_manager = Arc::new(create_mock_bls_manager());
-		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+
+		let db_pool = Arc::new(
+			sqlx::PgPool::connect(&std::env::var("DATABASE_URL").unwrap())
+				.await
+				.expect("Failed to connect to test database"),
+		);
 
 		// This should not panic even though the database operations will fail
 		let result = process_pending_constraints(constraints_client, bls_manager, db_pool, Arc::new(config)).await;
