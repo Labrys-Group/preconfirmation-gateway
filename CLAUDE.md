@@ -129,8 +129,6 @@ The system specifically supports Hooli chain (chain_id: 560048) with inclusion c
 ### Payload Processing
 Supports multiple payload formats with robust slot extraction:
 - JSON parsing (preferred)
-- RLP encoding (fallback)
-- Raw bytes (little-endian u64)
 
 ## Testing Architecture
 
