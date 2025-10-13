@@ -502,8 +502,8 @@ mod tests {
 		assert!(result.unwrap_err().contains("Failed to extract slot"));
 	}
 
-	#[test]
-	fn test_validate_slasher_address_whitelisted() {
+	#[tokio::test]
+	async fn test_validate_slasher_address_whitelisted() {
 		// Test that whitelisted addresses are accepted
 		let context = create_test_context();
 		let mut config = context.config.clone();
@@ -532,8 +532,8 @@ mod tests {
 		assert!(result.is_ok());
 	}
 
-	#[test]
-	fn test_validate_slasher_address_not_whitelisted() {
+	#[tokio::test]
+	async fn test_validate_slasher_address_not_whitelisted() {
 		// Test that non-whitelisted addresses are rejected
 		let context = create_test_context();
 		let mut config = context.config.clone();
@@ -551,8 +551,8 @@ mod tests {
 		assert!(result.unwrap_err().contains("not in the configured whitelist"));
 	}
 
-	#[test]
-	fn test_validate_slasher_address_normalization() {
+	#[tokio::test]
+	async fn test_validate_slasher_address_normalization() {
 		// Test that address normalization works correctly
 		let context = create_test_context();
 		let mut config = context.config.clone();
