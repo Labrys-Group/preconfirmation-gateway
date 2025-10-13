@@ -36,7 +36,7 @@ pub async fn save_delegation(pool: &PgPool, signed_delegation: &SignedDelegation
 		id,
 		&message.proposer.0[..], // Convert BlsPublicKey to &[u8]
 		&message.delegate.0[..], // Convert BlsPublicKey to &[u8]
-		message.committer,
+		&message.committer,
 		message.slot as i64,
 		&signed_delegation.signature.0[..], // Convert BlsSignature to &[u8]
 		true                                // is_active
@@ -389,7 +389,7 @@ pub async fn save_delegations_batch(pool: &PgPool, delegations: &[SignedDelegati
 			id,
 			&message.proposer.0[..],
 			&message.delegate.0[..],
-			message.committer,
+			&message.committer,
 			message.slot as i64,
 			&delegation.signature.0[..],
 			true
