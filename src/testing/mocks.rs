@@ -227,10 +227,10 @@ impl MockConstraintsApiClient {
 		// Store the submitted constraints for verification
 		self.submitted_constraints.lock().unwrap().push(constraints.clone());
 
-		// Return a mock response
-		let responses = self.submission_responses.read().await;
-		if let Some(response) = responses.first() {
-			Ok(response.clone())
+		// Return a mock response (consume from queue in FIFO order)
+		let mut responses = self.submission_responses.write().await;
+		if !responses.is_empty() {
+			Ok(responses.remove(0))
 		} else {
 			// Default mock response (200 OK)
 			Ok(ConstraintSubmissionResponse { status: 200 })
