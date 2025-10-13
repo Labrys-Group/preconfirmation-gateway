@@ -63,7 +63,25 @@ impl SlotCongestion {
 	///
 	pub fn add_gas_usage(&mut self, additional_gas: u64, scaling_factor: f64) {
 		self.preconfirmed_gas += additional_gas;
+
+		// Guard against division by zero - if total_gas_limit is 0, set max multiplier
+		if self.total_gas_limit == 0 {
+			self.gas_used_ratio = 0.0;
+			self.calculated_fee_multiplier = 100.0;
+			self.current_tx_price = self.base_gas_price.saturating_mul(100);
+			return;
+		}
+
+		// Calculate gas usage ratio
 		self.gas_used_ratio = self.preconfirmed_gas as f64 / self.total_gas_limit as f64;
+
+		// Guard against NaN from the division (shouldn't happen after the zero check, but be defensive)
+		if !self.gas_used_ratio.is_finite() {
+			self.gas_used_ratio = 0.0;
+			self.calculated_fee_multiplier = 100.0;
+			self.current_tx_price = self.base_gas_price.saturating_mul(100);
+			return;
+		}
 
 		// Calculate fee multiplier using the congestion formula
 		// multiplier = 1 / (1 - (gas_ratio)^k)
@@ -75,11 +93,24 @@ impl SlotCongestion {
 			self.calculated_fee_multiplier = 1.0 / (1.0 - ratio_powered);
 		}
 
-		// Apply bounds checking
-		self.calculated_fee_multiplier = self.calculated_fee_multiplier.clamp(1.0, 100.0);
+		// Validate fee multiplier is finite before clamping
+		if !self.calculated_fee_multiplier.is_finite() {
+			self.calculated_fee_multiplier = 100.0;
+		} else {
+			// Apply bounds checking
+			self.calculated_fee_multiplier = self.calculated_fee_multiplier.clamp(1.0, 100.0);
+		}
 
 		// Calculate final transaction price (round up to match calculate_fee_for_commitment)
-		self.current_tx_price = (self.base_gas_price as f64 * self.calculated_fee_multiplier).ceil() as u64;
+		let scaled_price = self.base_gas_price as f64 * self.calculated_fee_multiplier;
+
+		// Ensure the scaled price is finite before casting to u64
+		if !scaled_price.is_finite() || scaled_price < 0.0 {
+			// Fallback to max allowed price to avoid undercharging
+			self.current_tx_price = self.base_gas_price.saturating_mul(100);
+		} else {
+			self.current_tx_price = scaled_price.ceil() as u64;
+		}
 	}
 }
 
@@ -695,6 +726,24 @@ mod tests {
 		assert_eq!(congestion.slot, deserialized.slot);
 		assert_eq!(congestion.base_gas_price, deserialized.base_gas_price);
 		assert_eq!(congestion.total_gas_limit, deserialized.total_gas_limit);
+	}
+
+	#[test]
+	fn test_zero_gas_limit_handling() {
+		// Test that zero gas limit is handled gracefully without NaN
+		let mut congestion = SlotCongestion::new(12345, 1_000_000_000, 0, SystemTime::now());
+
+		// Add gas usage with zero limit
+		congestion.add_gas_usage(10_000_000, 2.0);
+
+		// Should set gas_used_ratio to 0.0, multiplier to max (100.0), and price to max
+		assert_eq!(congestion.gas_used_ratio, 0.0);
+		assert_eq!(congestion.calculated_fee_multiplier, 100.0);
+		assert_eq!(congestion.current_tx_price, 100_000_000_000); // base * 100
+
+		// All values should be finite
+		assert!(congestion.gas_used_ratio.is_finite());
+		assert!(congestion.calculated_fee_multiplier.is_finite());
 	}
 
 	// Integration tests that would require a real database
