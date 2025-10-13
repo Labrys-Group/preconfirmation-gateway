@@ -27,6 +27,42 @@ The system requires PostgreSQL with migrations. Database migrations are automati
 - `cargo test test_slots_handler_service_catalog` - Run specific test
 - `cargo test --package preconfirmation-gateway --lib -- crypto::tests` - Test crypto module
 
+### Code Coverage with Tarpaulin
+The project uses [cargo-tarpaulin](https://github.com/xd009642/tarpaulin) for code coverage analysis.
+
+**Installation** (one-time setup):
+```bash
+cargo install cargo-tarpaulin --version 0.33.0 --locked
+```
+
+**Running Coverage Locally**:
+```bash
+# Set up database (required for database tests)
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/preconfirmation_gateway
+sqlx migrate run
+
+# Generate HTML report (easiest to read)
+cargo tarpaulin --all-targets --all-features --out Html --output-dir coverage
+
+# Open the report
+open coverage/tarpaulin-report.html  # macOS
+
+# Generate XML report (Cobertura format, used in CI)
+cargo tarpaulin --all-targets --all-features --out Xml --output-dir coverage
+
+# Multiple formats at once
+cargo tarpaulin --all-targets --all-features --out Html --out Xml --output-dir coverage
+```
+
+**Using Docker for PostgreSQL**:
+```bash
+docker-compose up -d postgres
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/preconfirmation_gateway
+sqlx migrate run
+```
+
+**Coverage Reports**: The HTML report shows line-by-line coverage with color coding (green = covered, red = not covered). The CI pipeline automatically generates detailed coverage reports on every push and PR.
+
 ## High-Level Architecture
 
 ### Delegation-First Security Model
