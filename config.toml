@@ -43,7 +43,15 @@ genesis_time = 1606824023  # Ethereum mainnet genesis time
 relay_endpoint = "http://localhost:3501"
 request_timeout_secs = 30
 max_retries = 3
+# Authorized builder BLS public keys (48 bytes each, hex-encoded with or without 0x prefix)
+# Empty list means constraints are publicly accessible to all builders
+# Non-empty list restricts access only to the specified builder public keys
 authorized_builders = []
+# Example with builder keys:
+# authorized_builders = [
+#     "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+#     "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+# ]
 
 [delegation]
 # Delegation management configuration

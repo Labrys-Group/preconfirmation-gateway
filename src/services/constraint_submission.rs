@@ -11,7 +11,7 @@ use crate::config::Config;
 use crate::crypto::bls::BlsManager;
 use crate::db::delegation_ops::get_delegations_for_slot;
 use crate::types::beacon::BeaconTiming;
-use crate::types::delegation::{BlsSignature, Constraint, ConstraintsMessage, SignedConstraints};
+use crate::types::delegation::{BlsPublicKey, BlsSignature, Constraint, ConstraintsMessage, SignedConstraints};
 
 /// Service that handles timing-critical constraint submission to relays
 pub struct ConstraintSubmissionService {
@@ -158,6 +158,32 @@ impl ConstraintSubmissionService {
 	}
 }
 
+/// Parse authorized builder BLS public keys from configuration strings.
+///
+/// Takes a slice of hex-encoded BLS public key strings (with or without "0x" prefix)
+/// and converts them into `BlsPublicKey` objects. Each key must be exactly 48 bytes
+/// (96 hex characters) when decoded.
+///
+/// # Errors
+///
+/// Returns an error if any key string cannot be decoded as valid hex or is not
+/// exactly 48 bytes in length.
+///
+/// # Examples
+///
+fn parse_authorized_builders(builder_keys: &[String]) -> Result<Vec<BlsPublicKey>> {
+	builder_keys
+		.iter()
+		.map(|key_str| {
+			let bytes = crate::crypto::parse_hex_bytes(key_str, 48)
+				.with_context(|| format!("Failed to parse builder public key: {}", key_str))?;
+			let mut key_array = [0u8; 48];
+			key_array.copy_from_slice(&bytes);
+			Ok(BlsPublicKey(key_array))
+		})
+		.collect()
+}
+
 /// Process pending constraint submissions for the current slot and a short lookahead.
 ///
 /// Attempts to process constraint submissions for each slot from the current slot up to
@@ -287,13 +313,17 @@ async fn process_delegation_constraints(
 		return Ok(());
 	}
 
+	// Parse authorized builders from config
+	let receivers = parse_authorized_builders(&config.constraints_api.authorized_builders)
+		.context("Failed to parse authorized builder public keys from config")?;
+
 	// Create constraints message
 	let constraints_message = ConstraintsMessage::new(
 		delegation.message.proposer,
 		delegation.message.delegate,
 		slot,
 		constraints,
-		vec![], // receivers - empty for now
+		receivers,
 	);
 
 	// Sign the constraints message with our BLS key
@@ -378,13 +408,17 @@ async fn submit_constraint(
 	// Create constraint from payload
 	let constraint = Constraint::from_inclusion_commitment(payload);
 
+	// Parse authorized builders from config
+	let receivers = parse_authorized_builders(&config.constraints_api.authorized_builders)
+		.context("Failed to parse authorized builder public keys from config")?;
+
 	// Create constraints message
 	let constraints_message = ConstraintsMessage::new(
 		delegation.message.proposer,
 		delegation.message.delegate,
 		slot,
 		vec![constraint],
-		vec![], // receivers - empty for now
+		receivers,
 	);
 
 	// Sign the constraints message
