@@ -53,6 +53,89 @@ jobs:
         env:
           RUST_LOG: info
 
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-index-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-target-
+
+      - name: Install tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Generate coverage report
+        run: cargo tarpaulin --lib --all-features --out Xml --output-dir coverage
+        env:
+          RUST_LOG: info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/cobertura.xml
+          fail_ci_if_error: false
+
+      - name: Generate coverage summary
+        id: coverage
+        run: |
+          # Extract coverage percentage from XML
+          COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' coverage/cobertura.xml | head -1 | awk '{printf "%.2f", $1 * 100}')
+          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+
+          # Create markdown summary
+          cat > coverage/summary.md << EOF
+          ## Test Coverage Report
+
+          **Coverage:** $COVERAGE%
+
+          $(cargo tarpaulin --lib --all-features --print-summary 2>/dev/null || echo "Run cargo tarpaulin locally for detailed coverage information")
+          EOF
+
+      - name: Comment PR with coverage
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const coverage = '${{ steps.coverage.outputs.percentage }}';
+            const summary = fs.readFileSync('coverage/summary.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
