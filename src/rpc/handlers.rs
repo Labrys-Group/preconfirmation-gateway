@@ -184,6 +184,22 @@ pub async fn commitment_request_handler(
 
 	info!("Extracted slot {} from commitment payload", slot);
 
+	// EARLY DUPLICATE DETECTION: Generate hash and check for duplicates BEFORE expensive operations
+	// This fails fast before delegation verification and signing
+	let request_hash = generate_request_hash(&request).map_err(|e| {
+		error!("Failed to generate request hash: {}", e);
+		jsonrpsee::types::error::ErrorCode::InternalError
+	})?;
+
+	// Check if commitment already exists - fail fast before expensive delegation verification
+	if context.database.commitment_exists(&request_hash).await.map_err(|e| {
+		error!("Database error checking commitment existence: {}", e);
+		jsonrpsee::types::error::ErrorCode::InternalError
+	})? {
+		warn!("Duplicate commitment request rejected early: {}", request_hash);
+		return Err(jsonrpsee::types::error::ErrorCode::InvalidRequest.into());
+	}
+
 	// DELEGATION-FIRST SECURITY: Verify delegation authority BEFORE any signing
 	// This returns the validated committer address from the delegation
 	let committer_address = verify_delegation_authority(&context, slot, &request.slasher).await.map_err(|e| {
@@ -196,21 +212,6 @@ pub async fn commitment_request_handler(
 		error!("No signing key found: {}", e);
 		jsonrpsee::types::error::ErrorCode::InvalidRequest
 	})?;
-
-	// Generate request hash
-	let request_hash = generate_request_hash(&request).map_err(|e| {
-		error!("Failed to generate request hash: {}", e);
-		jsonrpsee::types::error::ErrorCode::InternalError
-	})?;
-
-	// Check if commitment already exists to prevent duplicates
-	if context.database.commitment_exists(&request_hash).await.map_err(|e| {
-		error!("Database error checking commitment existence: {}", e);
-		jsonrpsee::types::error::ErrorCode::InternalError
-	})? {
-		warn!("Duplicate commitment request: {}", request_hash);
-		return Err(jsonrpsee::types::error::ErrorCode::InvalidRequest.into());
-	}
 
 	// Create commitment with real request hash
 	let commitment = Commitment {
@@ -228,11 +229,18 @@ pub async fn commitment_request_handler(
 
 	let signed_commitment = SignedCommitment { commitment, signature };
 
-	// Save to database
-	context.database.save_commitment(&signed_commitment).await.map_err(|e| {
+	// Save to database with atomic duplicate detection via ON CONFLICT
+	let save_result = context.database.save_commitment(&signed_commitment).await.map_err(|e| {
 		error!("Failed to save commitment to database: {}", e);
 		jsonrpsee::types::error::ErrorCode::InternalError
 	})?;
+
+	// If ON CONFLICT triggered (returns None), this means a duplicate slipped through
+	// This is a defensive check - should not happen with our early duplicate detection
+	if save_result.is_none() {
+		warn!("Duplicate commitment detected at database level (race condition): {}", request_hash);
+		return Err(jsonrpsee::types::error::ErrorCode::InvalidRequest.into());
+	}
 
 	// Track gas usage for congestion-based fee pricing
 	// Calculate fee to get gas estimation, then apply it to slot congestion

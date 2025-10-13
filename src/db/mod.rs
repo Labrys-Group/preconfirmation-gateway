@@ -136,15 +136,17 @@ impl DatabaseContext {
 		&self.pool
 	}
 
-	/// Save a signed commitment in the database.
+	/// Save a signed commitment in the database with atomic duplicate detection.
 	///
 	/// # Returns
 	///
-	/// The `Uuid` assigned to the saved commitment.
+	/// - `Ok(Some(Uuid))` if a new commitment was inserted
+	/// - `Ok(None)` if a commitment with the same request_hash already exists (idempotent behavior)
+	/// - `Err(...)` for database errors
 	///
 	/// # Examples
 	///
-	pub async fn save_commitment(&self, signed_commitment: &crate::types::SignedCommitment) -> Result<uuid::Uuid> {
+	pub async fn save_commitment(&self, signed_commitment: &crate::types::SignedCommitment) -> Result<Option<uuid::Uuid>> {
 		operations::save_commitment(&self.pool, signed_commitment).await
 	}
 
@@ -592,7 +594,8 @@ mod tests {
 			assert!(result.is_ok());
 
 			let saved_id = result.unwrap();
-			assert!(!saved_id.is_nil());
+			assert!(saved_id.is_some());
+			assert!(!saved_id.unwrap().is_nil());
 
 			// Test retrieval
 			let retrieved = context.get_commitment_by_hash(&commitment.commitment.request_hash).await;

@@ -14,13 +14,17 @@ use crate::types::{Commitment, PayloadParser, SignedCommitment};
 ///
 /// Extracts the slot number from the commitment payload when present and stores it in the row.
 ///
+/// Uses ON CONFLICT to handle duplicate request_hash values atomically, preventing race conditions.
+///
 /// # Returns
 ///
-/// `Uuid` of the newly inserted commitment row.
+/// - `Ok(Some(Uuid))` if a new commitment was inserted
+/// - `Ok(None)` if a commitment with the same request_hash already exists (idempotent behavior)
+/// - `Err(...)` for database errors
 ///
 /// # Examples
 ///
-pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment) -> Result<Uuid> {
+pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment) -> Result<Option<Uuid>> {
 	let id = Uuid::new_v4();
 	let commitment = &signed_commitment.commitment;
 
@@ -65,6 +69,7 @@ pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment
 			slot_number
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (request_hash) DO NOTHING
 		RETURNING id
 		"#,
 		id,
@@ -75,11 +80,11 @@ pub async fn save_commitment(pool: &PgPool, signed_commitment: &SignedCommitment
 		&signed_commitment.signature,
 		slot_number
 	)
-	.fetch_one(pool)
+	.fetch_optional(pool)
 	.await
 	.context("Failed to insert commitment into database")?;
 
-	Ok(row.id)
+	Ok(row.map(|r| r.id))
 }
 
 /// Look up a signed commitment by its request hash.
@@ -333,7 +338,8 @@ mod tests {
 
 		// Save commitment
 		let id = save_commitment(&pool, &signed_commitment).await?;
-		assert!(!id.is_nil());
+		assert!(id.is_some());
+		assert!(!id.unwrap().is_nil());
 
 		// Retrieve commitment
 		let retrieved = get_commitment_by_hash(&pool, &signed_commitment.commitment.request_hash).await?.unwrap();
@@ -748,11 +754,12 @@ mod tests {
 
 		// Save first time
 		let id1 = save_commitment(&pool, &commitment).await?;
-		assert!(!id1.is_nil());
+		assert!(id1.is_some());
+		assert!(!id1.unwrap().is_nil());
 
-		// Try to save again with same request hash (should fail due to unique constraint)
-		let result = save_commitment(&pool, &commitment).await;
-		assert!(result.is_err()); // Should fail due to unique constraint on request_hash
+		// Try to save again with same request hash (should return None due to ON CONFLICT)
+		let id2 = save_commitment(&pool, &commitment).await?;
+		assert!(id2.is_none(), "Second save should return None due to ON CONFLICT DO NOTHING");
 
 		Ok(())
 	}
@@ -1075,11 +1082,71 @@ mod tests {
 		let signed_commitment = SignedCommitment { commitment, signature: format!("0x{:0<130}", "1234567890abcdef") };
 
 		let id = save_commitment(&pool, &signed_commitment).await?;
-		assert!(!id.is_nil());
+		assert!(id.is_some());
+		assert!(!id.unwrap().is_nil());
 
 		// Verify it can be retrieved
 		let retrieved = get_commitment_by_hash(&pool, &signed_commitment.commitment.request_hash).await?.unwrap();
 		assert_eq!(retrieved.commitment.payload.len(), 10000);
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_concurrent_duplicate_commitment_handling() -> Result<()> {
+		let pool = match setup_test_pool().await {
+			Ok(p) => p,
+			Err(_) => {
+				eprintln!("Skipping test: DATABASE_URL not set");
+				return Ok(());
+			}
+		};
+
+		// Create a single commitment that will be saved concurrently by multiple tasks
+		let commitment = create_test_commitment("concurrent_duplicate_test");
+
+		// Spawn 5 concurrent tasks trying to save the same commitment
+		let mut handles = vec![];
+
+		for i in 0..5 {
+			let pool_clone = pool.clone();
+			let commitment_clone = commitment.clone();
+			let handle = tokio::spawn(async move {
+				let result = save_commitment(&pool_clone, &commitment_clone).await;
+				(i, result)
+			});
+			handles.push(handle);
+		}
+
+		// Collect results from all tasks
+		let mut success_count = 0;
+		let mut none_count = 0;
+
+		for handle in handles {
+			let (task_id, result) = handle.await.unwrap();
+			match result {
+				Ok(Some(_)) => {
+					success_count += 1;
+					eprintln!("Task {} successfully inserted commitment", task_id);
+				}
+				Ok(None) => {
+					none_count += 1;
+					eprintln!("Task {} received None (ON CONFLICT triggered)", task_id);
+				}
+				Err(e) => {
+					panic!("Task {} failed with error: {}", task_id, e);
+				}
+			}
+		}
+
+		// Exactly one task should have succeeded in inserting
+		assert_eq!(success_count, 1, "Exactly one task should successfully insert the commitment");
+
+		// The other 4 tasks should have received None due to ON CONFLICT
+		assert_eq!(none_count, 4, "Four tasks should receive None due to ON CONFLICT");
+
+		// Verify the commitment exists in the database
+		assert!(commitment_exists(&pool, &commitment.commitment.request_hash).await?);
 
 		Ok(())
 	}
