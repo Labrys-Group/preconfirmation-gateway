@@ -10,7 +10,7 @@ pub mod bls;
 
 use anyhow::{Context, Result};
 use ethabi::{Token, encode};
-use secp256k1::{Message, PublicKey, Secp256k1, SecretKey, ecdsa::Signature};
+use secp256k1::{Message, PublicKey, Secp256k1, SecretKey, ecdsa::RecoverableSignature, ecdsa::RecoveryId};
 use tiny_keccak::{Hasher, Keccak};
 
 use crate::types::{Commitment, CommitmentRequest};
@@ -98,11 +98,12 @@ pub fn abi_encode_commitment(commitment: &Commitment) -> Result<Vec<u8>> {
 /// Signs a Commitment using ECDSA (secp256k1) according to the Gateway specification.
 ///
 /// The signed message is the Keccak-256 hash of the ABI-encoded commitment. The returned
-/// signature is the 64-byte compact form (r || s) encoded as a 0x-prefixed hex string.
+/// signature is the 65-byte recoverable format (r || s || v) encoded as a 0x-prefixed hex string.
+/// The recovery ID (v) is required for standard Ethereum signature verification.
 ///
 /// # Returns
 ///
-/// Ok with the signature as a `0x`-prefixed hex string containing 64 bytes (r||s) when signing succeeds,
+/// Ok with the signature as a `0x`-prefixed hex string containing 65 bytes (r||s||v) when signing succeeds,
 /// or an `Err` if ABI encoding, hashing, message construction, or signing fails.
 ///
 /// # Examples
@@ -117,19 +118,27 @@ pub fn sign_commitment(commitment: &Commitment, private_key: &SecretKey) -> Resu
 	// 3. Create secp256k1 message
 	let message = Message::from_slice(&message_hash).context("Failed to create message from hash")?;
 
-	// 4. Sign with ECDSA - simple!
+	// 4. Sign with recoverable ECDSA signature (includes recovery ID)
 	let secp = Secp256k1::new();
-	let signature = secp.sign_ecdsa(&message, private_key);
+	let recoverable_sig = secp.sign_ecdsa_recoverable(&message, private_key);
 
-	// 5. Serialize as compact 64-byte (r || s) and return as hex
-	let signature_bytes = signature.serialize_compact(); // 64 bytes (r + s)
+	// 5. Serialize as 65-byte recoverable format (r || s || v)
+	let (recovery_id, signature_bytes) = recoverable_sig.serialize_compact();
+
+	// Ethereum uses v = 27 or 28 (not 0 or 1)
+	let v = recovery_id.to_i32() as u8 + 27;
+
+	// Combine into 65-byte signature
+	let mut full_signature = signature_bytes.to_vec();
+	full_signature.push(v);
 
 	// Return as hex string with 0x prefix
-	Ok(format!("0x{}", hex::encode(signature_bytes)))
+	Ok(format!("0x{}", hex::encode(full_signature)))
 }
 
 /// Verifies an ECDSA signature for a commitment using the provided public key.
 ///
+/// Accepts 65-byte recoverable signatures (r || s || v) where v is the recovery ID.
 /// Returns `true` if the signature is valid for the commitment and public key, `false` otherwise.
 ///
 /// # Examples
@@ -148,9 +157,23 @@ pub fn verify_commitment_signature(
 	// 3. Create secp256k1 message
 	let message = Message::from_slice(&message_hash).context("Failed to create message from hash")?;
 
-	// 4. Parse signature (64 bytes: r + s)
-	let signature_bytes = parse_hex_bytes(signature_hex, 64)?;
-	let signature = Signature::from_compact(&signature_bytes).context("Failed to parse signature")?;
+	// 4. Parse 65-byte recoverable signature (r || s || v)
+	let signature_bytes = parse_hex_bytes(signature_hex, 65)?;
+
+	// Extract recovery ID (v parameter) - Ethereum uses 27/28, secp256k1 uses 0/1
+	let v = signature_bytes[64];
+	let recovery_id = if v >= 27 {
+		RecoveryId::from_i32((v - 27) as i32).context("Invalid recovery ID")?
+	} else {
+		RecoveryId::from_i32(v as i32).context("Invalid recovery ID")?
+	};
+
+	// Parse recoverable signature
+	let recoverable_sig = RecoverableSignature::from_compact(&signature_bytes[..64], recovery_id)
+		.context("Failed to parse recoverable signature")?;
+
+	// Convert to standard signature for verification
+	let signature = recoverable_sig.to_standard();
 
 	// 5. Verify signature
 	let secp = Secp256k1::new();
@@ -272,7 +295,7 @@ mod tests {
 		// Sign commitment
 		let signature = sign_commitment(&commitment, &secret_key).unwrap();
 		assert!(signature.starts_with("0x"));
-		assert_eq!(signature.len(), 130); // 0x + 128 hex chars (64 bytes)
+		assert_eq!(signature.len(), 132); // 0x + 130 hex chars (65 bytes: r||s||v)
 
 		// Verify signature
 		let is_valid = verify_commitment_signature(&commitment, &signature, &public_key).unwrap();

@@ -309,8 +309,8 @@ mod tests {
 
 		SignedCommitment {
 			commitment,
-			// ECDSA signature is 0x + 128 hex chars (64 bytes) per migration 002
-			signature: format!("0x{:0<128}", "1234567890abcdef"),
+			// ECDSA recoverable signature is 0x + 130 hex chars (65 bytes: r||s||v)
+			signature: format!("0x{:0<130}", "1234567890abcdef"),
 		}
 	}
 
@@ -653,12 +653,12 @@ mod tests {
 			slasher: "0x1234567890123456789012345678901234567890".to_string(),
 		};
 
-		let signature = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string();
+		let signature = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12".to_string();
 
 		let signed_commitment = SignedCommitment { commitment, signature };
 
 		assert_eq!(signed_commitment.commitment.commitment_type, 1);
-		assert_eq!(signed_commitment.signature.len(), 130); // 0x + 128 hex chars
+		assert_eq!(signed_commitment.signature.len(), 132); // 0x + 130 hex chars (65 bytes: r||s||v)
 	}
 
 	#[test]
@@ -704,12 +704,12 @@ mod tests {
 
 	#[test]
 	fn test_signature_format() {
-		let valid_signature = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
-		assert_eq!(valid_signature.len(), 130); // 0x + 128 hex chars
+		let valid_signature = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12";
+		assert_eq!(valid_signature.len(), 132); // 0x + 130 hex chars (65 bytes: r||s||v)
 		assert!(valid_signature.starts_with("0x"));
 
 		let invalid_signature = "0x1234567890abcdef"; // Too short
-		assert_ne!(invalid_signature.len(), 130);
+		assert_ne!(invalid_signature.len(), 132);
 	}
 
 	#[tokio::test]
@@ -1072,7 +1072,7 @@ mod tests {
 			slasher: "0x1234567890123456789012345678901234567890".to_string(),
 		};
 
-		let signed_commitment = SignedCommitment { commitment, signature: format!("0x{:0<128}", "1234567890abcdef") };
+		let signed_commitment = SignedCommitment { commitment, signature: format!("0x{:0<130}", "1234567890abcdef") };
 
 		let id = save_commitment(&pool, &signed_commitment).await?;
 		assert!(!id.is_nil());
