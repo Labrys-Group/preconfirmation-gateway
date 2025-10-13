@@ -17,6 +17,20 @@ jobs:
     permissions:
       pull-requests: write
       contents: read
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,9 +73,18 @@ jobs:
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin --version 0.33.0 --locked || cargo install cargo-tarpaulin --version 0.33.0
 
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres
+
+      - name: Run database migrations
+        run: sqlx migrate run
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
       - name: Generate coverage report
         run: cargo tarpaulin --lib --all-features --out Xml --output-dir coverage --verbose
         env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
           RUST_LOG: debug
 
       - name: Upload coverage to Codecov
