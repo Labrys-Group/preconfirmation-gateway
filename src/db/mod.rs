@@ -406,13 +406,14 @@ mod tests {
 	use crate::config::Config;
 	use crate::types::delegation::{BlsPublicKey, BlsSignature, DelegationMessage, SignedDelegation};
 	use crate::types::{Commitment, CommitmentRequest, SignedCommitment};
+	use serial_test::serial;
 	use std::env;
 
 	/// Helper function to create a test configuration
 	fn create_test_config() -> Config {
-		let database_url = std::env::var("TEST_DATABASE_URL")
+		let database_url = std::env::var("DATABASE_URL")
 			.context("Test database env is required")
-			.expect("TEST_DATABASE_URL must be set for tests");
+			.expect("DATABASE_URL must be set for tests");
 
 		Config {
 			server: Default::default(),
@@ -511,6 +512,7 @@ mod tests {
 	}
 
 	#[test]
+	#[serial]
 	fn test_environment_variable_precedence() {
 		// Test that DATABASE_URL environment variable takes precedence over config
 		let original_env = env::var("DATABASE_URL").ok();

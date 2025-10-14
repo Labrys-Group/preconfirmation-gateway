@@ -42,6 +42,38 @@ pub struct BeaconState {
 	pub epoch: u64,
 }
 
+/// Validator status information from Beacon API
+#[derive(Debug, Clone)]
+pub struct ValidatorInfo {
+	/// Whether the validator is active (status is active_ongoing, active_exiting, or active_slashed)
+	pub is_active: bool,
+	/// Whether the validator has been slashed
+	pub is_slashed: bool,
+	/// Validator index in beacon state
+	pub validator_index: u64,
+}
+
+/// Response from Beacon API for validator status query
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorResponse {
+	pub data: ValidatorData,
+}
+
+/// Validator data from Beacon API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorData {
+	pub index: String,
+	pub status: String,
+	pub validator: ValidatorDetails,
+}
+
+/// Validator details from Beacon API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorDetails {
+	pub pubkey: String,
+	pub slashed: bool,
+}
+
 /// Helper functions for beacon chain operations
 impl ValidatorDuty {
 	/// Parses this duty's BLS public key from a hex string and returns it as a 48-byte `BlsPublicKey`.

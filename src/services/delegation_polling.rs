@@ -11,6 +11,7 @@ use crate::api::constraints::ConstraintsApiClient;
 use crate::config::Config;
 use crate::crypto::bls::BlsManager;
 use crate::db::delegation_ops::save_delegations_batch;
+use crate::services::validator_status_cache::ValidatorStatusCache;
 use crate::types::beacon::{BeaconTiming, timing};
 use crate::types::delegation::SignedDelegation;
 
@@ -21,6 +22,7 @@ pub struct DelegationPollingService {
 	db_pool: Arc<PgPool>,
 	config: Arc<Config>,
 	bls_manager: BlsManager,
+	validator_status_cache: ValidatorStatusCache,
 	scheduler: JobScheduler,
 }
 
@@ -38,7 +40,11 @@ impl DelegationPollingService {
 		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway)
 			.context("Failed to create BLS manager for delegation signature verification")?;
 
-		Ok(Self { beacon_client, constraints_client, db_pool, config, bls_manager, scheduler })
+		// Initialize validator status cache with configured TTL
+		let cache_ttl = Duration::from_secs(config.delegation.cache_ttl_secs);
+		let validator_status_cache = ValidatorStatusCache::new(cache_ttl, Arc::clone(&beacon_client));
+
+		Ok(Self { beacon_client, constraints_client, db_pool, config, bls_manager, validator_status_cache, scheduler })
 	}
 
 	/// Start the delegation polling service with scheduled tasks
@@ -51,15 +57,19 @@ impl DelegationPollingService {
 		let db_pool = Arc::clone(&self.db_pool);
 		let config = Arc::clone(&self.config);
 		let bls_manager = self.bls_manager; // Copy the BlsManager
+		let validator_cache = self.validator_status_cache.clone();
 
 		let delegation_job = Job::new_async("0/30 * * * * *", move |_uuid, _l| {
 			let beacon_client = Arc::clone(&beacon_client);
 			let constraints_client = Arc::clone(&constraints_client);
 			let db_pool = Arc::clone(&db_pool);
 			let config = Arc::clone(&config);
+			let validator_cache = validator_cache.clone();
 
 			Box::pin(async move {
-				if let Err(e) = poll_delegations(beacon_client, constraints_client, db_pool, config, bls_manager).await
+				if let Err(e) =
+					poll_delegations(beacon_client, constraints_client, db_pool, config, bls_manager, validator_cache)
+						.await
 				{
 					error!("Delegation polling failed: {}", e);
 				}
@@ -72,12 +82,14 @@ impl DelegationPollingService {
 		// Schedule cleanup of expired delegations every 5 minutes
 		let db_pool_cleanup = Arc::clone(&self.db_pool);
 		let config_for_cleanup = Arc::clone(&self.config);
+		let validator_cache_cleanup = self.validator_status_cache.clone();
 		let cleanup_job = Job::new_async("0 */5 * * * *", move |_uuid, _l| {
 			let db_pool = Arc::clone(&db_pool_cleanup);
 			let config = Arc::clone(&config_for_cleanup);
+			let cache = validator_cache_cleanup.clone();
 
 			Box::pin(async move {
-				if let Err(e) = cleanup_expired_delegations(db_pool, config).await {
+				if let Err(e) = cleanup_expired_delegations(db_pool, config, &cache).await {
 					error!("Delegation cleanup failed: {}", e);
 				}
 			})
@@ -109,6 +121,7 @@ impl DelegationPollingService {
 			Arc::clone(&self.db_pool),
 			Arc::clone(&self.config),
 			self.bls_manager,
+			self.validator_status_cache.clone(),
 		)
 		.await
 	}
@@ -121,6 +134,7 @@ async fn poll_delegations(
 	db_pool: Arc<PgPool>,
 	config: Arc<Config>,
 	bls_manager: BlsManager,
+	validator_cache: ValidatorStatusCache,
 ) -> Result<()> {
 	info!("Starting delegation polling cycle");
 
@@ -152,6 +166,7 @@ async fn poll_delegations(
 			slot,
 			&config.signing.bls_public_key,
 			&bls_manager,
+			&validator_cache,
 		)
 		.await
 		{
@@ -196,6 +211,66 @@ async fn poll_delegations(
 	Ok(())
 }
 
+/// Filter delegations to only those with eligible validators (active and not slashed)
+///
+/// # Returns
+///
+/// Tuple of (eligible_delegations, ineligible_count)
+async fn filter_eligible_delegations(
+	verified_delegations: Vec<SignedDelegation>,
+	validator_cache: &ValidatorStatusCache,
+	slot: u64,
+) -> (Vec<SignedDelegation>, usize) {
+	let mut eligible_delegations = Vec::new();
+	let mut ineligible_count = 0;
+
+	for delegation in verified_delegations {
+		// Check proposer validator status
+		match validator_cache.get_status(&delegation.message.proposer).await {
+			Ok(status) => {
+				// Reject if slashed OR inactive (following spec: is_active AND not is_slashed)
+				if status.is_slashed {
+					warn!(
+						"Rejecting delegation for slot {} - proposer 0x{} has been slashed",
+						slot,
+						hex::encode(delegation.message.proposer.0)
+					);
+					ineligible_count += 1;
+				} else if !status.is_active {
+					warn!(
+						"Rejecting delegation for slot {} - proposer 0x{} is not active (validator_index: {})",
+						slot,
+						hex::encode(delegation.message.proposer.0),
+						status.validator_index
+					);
+					ineligible_count += 1;
+				} else {
+					// Validator is active and not slashed - delegation is eligible
+					debug!(
+						"Validator {} (index {}) is eligible for delegation on slot {}",
+						hex::encode(&delegation.message.proposer.0[..8]),
+						status.validator_index,
+						slot
+					);
+					eligible_delegations.push(delegation);
+				}
+			}
+			Err(e) => {
+				// Fail closed: reject delegation if we cannot verify validator status
+				warn!(
+					"Rejecting delegation for slot {} - failed to fetch validator status for proposer 0x{}: {}",
+					slot,
+					hex::encode(delegation.message.proposer.0),
+					e
+				);
+				ineligible_count += 1;
+			}
+		}
+	}
+
+	(eligible_delegations, ineligible_count)
+}
+
 /// Poll delegations for a specific slot
 async fn poll_delegations_for_slot(
 	constraints_client: &ConstraintsApiClient,
@@ -203,6 +278,7 @@ async fn poll_delegations_for_slot(
 	slot: u64,
 	our_bls_pubkey: &blst::min_pk::PublicKey,
 	bls_manager: &BlsManager,
+	validator_cache: &ValidatorStatusCache,
 ) -> Result<usize> {
 	// Get all delegations for this slot from the constraints API
 	let delegations = constraints_client
@@ -262,8 +338,23 @@ async fn poll_delegations_for_slot(
 
 	debug!("Verified {} delegations with valid BLS signatures for slot {}", verified_delegations.len(), slot);
 
+	// Filter to only eligible validators (active and not slashed)
+	let (eligible_delegations, ineligible_count) =
+		filter_eligible_delegations(verified_delegations, validator_cache, slot).await;
+
+	if ineligible_count > 0 {
+		warn!("Rejected {} delegations for slot {} due to validator ineligibility", ineligible_count, slot);
+	}
+
+	if eligible_delegations.is_empty() {
+		debug!("No eligible delegations to save for slot {} after validator status checks", slot);
+		return Ok(0);
+	}
+
+	debug!("Validated {} eligible delegations for slot {}", eligible_delegations.len(), slot);
+
 	// Save the delegations to the database with signature verification
-	let saved_ids = save_delegations_batch(db_pool, &verified_delegations, bls_manager)
+	let saved_ids = save_delegations_batch(db_pool, &eligible_delegations, bls_manager)
 		.await
 		.with_context(|| format!("Failed to save delegations for slot {}", slot))?;
 
@@ -272,8 +363,12 @@ async fn poll_delegations_for_slot(
 	Ok(saved_count)
 }
 
-/// Clean up expired delegations from the database
-async fn cleanup_expired_delegations(db_pool: Arc<PgPool>, config: Arc<Config>) -> Result<()> {
+/// Clean up expired delegations from the database and check validator status
+async fn cleanup_expired_delegations(
+	db_pool: Arc<PgPool>,
+	config: Arc<Config>,
+	validator_cache: &ValidatorStatusCache,
+) -> Result<()> {
 	debug!("Starting expired delegation cleanup");
 
 	// Get current slot using the actual configured genesis time
@@ -281,12 +376,84 @@ async fn cleanup_expired_delegations(db_pool: Arc<PgPool>, config: Arc<Config>) 
 	let current_slot = BeaconTiming::current_slot_estimate(genesis_time);
 
 	// Deactivate delegations for slots that have passed
-	let deactivated = crate::db::delegation_ops::deactivate_expired_delegations(&db_pool, current_slot).await?;
+	let expired_count = crate::db::delegation_ops::deactivate_expired_delegations(&db_pool, current_slot).await?;
 
-	if deactivated > 0 {
-		info!("Deactivated {} expired delegations for slots < {}", deactivated, current_slot);
+	if expired_count > 0 {
+		info!("Deactivated {} expired delegations for slots < {}", expired_count, current_slot);
 	} else {
 		debug!("No expired delegations to clean up");
+	}
+
+	// Check validator status for all active delegations and deactivate if slashed/inactive
+	let check_query = "SELECT id, proposer_pubkey FROM delegations WHERE is_active = true";
+	let active_delegations: Vec<(uuid::Uuid, Vec<u8>)> = sqlx::query_as(check_query).fetch_all(&*db_pool).await?;
+
+	if active_delegations.is_empty() {
+		debug!("No active delegations to check for validator status");
+		return Ok(());
+	}
+
+	debug!("Checking validator status for {} active delegations", active_delegations.len());
+
+	let mut slashed_count = 0;
+	let mut inactive_count = 0;
+
+	for (delegation_id, proposer_bytes) in active_delegations {
+		// Convert Vec<u8> to BlsPublicKey
+		if proposer_bytes.len() != 48 {
+			warn!(
+				"Invalid proposer public key length for delegation {}: {} bytes",
+				delegation_id,
+				proposer_bytes.len()
+			);
+			continue;
+		}
+
+		let mut proposer_array = [0u8; 48];
+		proposer_array.copy_from_slice(&proposer_bytes);
+		let proposer_pubkey = crate::types::delegation::BlsPublicKey(proposer_array);
+
+		// Check validator status
+		match validator_cache.get_status(&proposer_pubkey).await {
+			Ok(status) => {
+				let should_deactivate = status.is_slashed || !status.is_active;
+
+				if should_deactivate {
+					// Deactivate this delegation
+					let deactivate_query = "UPDATE delegations SET is_active = false WHERE id = $1";
+					sqlx::query(deactivate_query).bind(delegation_id).execute(&*db_pool).await?;
+
+					if status.is_slashed {
+						warn!(
+							"Deactivated delegation {} - proposer 0x{} has been slashed",
+							delegation_id,
+							hex::encode(&proposer_array[..8])
+						);
+						slashed_count += 1;
+					} else {
+						warn!(
+							"Deactivated delegation {} - proposer 0x{} is no longer active",
+							delegation_id,
+							hex::encode(&proposer_array[..8])
+						);
+						inactive_count += 1;
+					}
+				}
+			}
+			Err(e) => {
+				// Log but don't deactivate - we don't want to deactivate on temporary API failures
+				warn!("Failed to check validator status for delegation {}: {}", delegation_id, e);
+			}
+		}
+	}
+
+	if slashed_count > 0 || inactive_count > 0 {
+		info!(
+			"Deactivated {} delegations due to validator status ({} slashed, {} inactive)",
+			slashed_count + inactive_count,
+			slashed_count,
+			inactive_count
+		);
 	}
 
 	Ok(())
@@ -449,9 +616,18 @@ mod tests {
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
+		let validator_cache = ValidatorStatusCache::new(Duration::from_secs(30), Arc::clone(&beacon_client));
 
 		// This should handle errors gracefully and return Ok(())
-		let result = poll_delegations(beacon_client, constraints_client, db_pool, Arc::new(config), bls_manager).await;
+		let result = poll_delegations(
+			beacon_client,
+			constraints_client,
+			db_pool,
+			Arc::new(config),
+			bls_manager,
+			validator_cache,
+		)
+		.await;
 		assert!(result.is_ok(), "poll_delegations should handle errors gracefully");
 	}
 
@@ -459,16 +635,20 @@ mod tests {
 	async fn test_poll_delegations_for_slot_error_handling() {
 		// Test error handling for single slot polling
 		let config = create_mock_config();
+		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
 		let constraints_client = ConstraintsApiClient::new(config.constraints_api.clone()).unwrap();
 		let db_pool = sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap();
 		let (_sk, pk) = create_test_bls_keypair();
 		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
+		let validator_cache = ValidatorStatusCache::new(Duration::from_secs(30), Arc::clone(&beacon_client));
 
 		let slot = 12345u64;
 
 		// This should fail due to invalid API endpoints and no database connection
 		let blst_pk = blst::min_pk::PublicKey::from_bytes(&pk.0).expect("Valid BLS public key");
-		let result = poll_delegations_for_slot(&constraints_client, &db_pool, slot, &blst_pk, &bls_manager).await;
+		let result =
+			poll_delegations_for_slot(&constraints_client, &db_pool, slot, &blst_pk, &bls_manager, &validator_cache)
+				.await;
 		assert!(result.is_err(), "Should fail due to connectivity issues");
 	}
 
@@ -476,10 +656,12 @@ mod tests {
 	async fn test_cleanup_expired_delegations_error_handling() {
 		// Test error handling for delegation cleanup
 		let config = create_mock_config();
+		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
+		let validator_cache = ValidatorStatusCache::new(Duration::from_secs(30), Arc::clone(&beacon_client));
 
 		// This should handle database errors gracefully
-		let result = cleanup_expired_delegations(db_pool, Arc::new(config)).await;
+		let result = cleanup_expired_delegations(db_pool, Arc::new(config), &validator_cache).await;
 		assert!(result.is_err(), "Should fail due to no database connection");
 	}
 
@@ -574,6 +756,7 @@ mod tests {
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
+		let validator_cache = ValidatorStatusCache::new(Duration::from_secs(30), Arc::clone(&beacon_client));
 
 		let mut handles = Vec::new();
 
@@ -583,9 +766,12 @@ mod tests {
 			let constraints = Arc::clone(&constraints_client);
 			let pool = Arc::clone(&db_pool);
 			let conf = Arc::new(config.clone());
+			let cache = validator_cache.clone();
 
 			let handle =
-				tokio::spawn(async move { poll_delegations(beacon, constraints, pool, conf, bls_manager).await });
+				tokio::spawn(
+					async move { poll_delegations(beacon, constraints, pool, conf, bls_manager, cache).await },
+				);
 			handles.push(handle);
 		}
 
@@ -635,13 +821,21 @@ mod tests {
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
+		let validator_cache = ValidatorStatusCache::new(Duration::from_secs(30), Arc::clone(&beacon_client));
 
 		let start_time = std::time::Instant::now();
 
 		// Run a polling cycle
 		let result = timeout(
 			Duration::from_secs(10),
-			poll_delegations(beacon_client, constraints_client, db_pool, Arc::new(config), bls_manager),
+			poll_delegations(
+				beacon_client,
+				constraints_client,
+				db_pool,
+				Arc::new(config),
+				bls_manager,
+				validator_cache,
+			),
 		)
 		.await;
 
@@ -707,5 +901,112 @@ mod tests {
 
 		// Service should still be running and stoppable despite errors
 		service.stop().await.expect("Failed to stop service after errors");
+	}
+
+	/// Helper function to create a properly signed delegation for testing
+	fn create_properly_signed_delegation(
+		slot: u64,
+		proposer_sk: &blst::min_pk::SecretKey,
+		delegate_pk: crate::types::delegation::BlsPublicKey,
+		committer: &str,
+	) -> SignedDelegation {
+		use ethabi::{Token, encode};
+
+		// Get proposer public key from secret key
+		let proposer_blst_pk = proposer_sk.sk_to_pk();
+		let proposer_pk_bytes = proposer_blst_pk.to_bytes();
+		let mut proposer_pk_array = [0u8; 48];
+		proposer_pk_array.copy_from_slice(&proposer_pk_bytes);
+		let proposer_pk = crate::types::delegation::BlsPublicKey(proposer_pk_array);
+
+		// Create delegation message
+		let message =
+			DelegationMessage { proposer: proposer_pk, delegate: delegate_pk, committer: committer.to_string(), slot };
+
+		// ABI encode the delegation message
+		let committer_hex = committer.strip_prefix("0x").unwrap_or(committer);
+		let committer_bytes = hex::decode(committer_hex).expect("Valid hex");
+		let committer_address = ethabi::Address::from_slice(&committer_bytes);
+
+		let tokens = vec![
+			Token::Bytes(message.proposer.0.to_vec()),
+			Token::Bytes(message.delegate.0.to_vec()),
+			Token::Address(committer_address),
+			Token::Uint(message.slot.into()),
+		];
+		let encoded = encode(&tokens);
+
+		// Calculate signing root with delegation domain
+		let mut combined = Vec::new();
+		combined.extend_from_slice(&crate::crypto::bls::domains::DELEGATION_DOMAIN_SEPARATOR);
+		combined.extend_from_slice(&encoded);
+		let signing_root = crate::crypto::keccak256(&combined);
+
+		// Sign with proposer's secret key
+		let signature = proposer_sk.sign(&signing_root, crate::crypto::bls::domains::BLS_POP_DST, &[]);
+		let signature_bytes = signature.to_bytes();
+		let mut sig_array = [0u8; 96];
+		sig_array.copy_from_slice(&signature_bytes);
+
+		SignedDelegation { message, signature: BlsSignature(sig_array) }
+	}
+
+	#[tokio::test]
+	async fn test_properly_signed_delegation_can_be_saved() {
+		// This test verifies that properly signed delegations can be saved to the database
+		// This is important because save_delegations_batch now validates BLS signatures
+
+		// Skip test if no database available
+		if std::env::var("DATABASE_URL").is_err() {
+			return;
+		}
+
+		let config = create_mock_config();
+		let db_pool = Arc::new(
+			sqlx::PgPool::connect(&std::env::var("DATABASE_URL").unwrap())
+				.await
+				.expect("Failed to connect to test database"),
+		);
+
+		// Create a delegation for a FUTURE slot
+		let genesis_time = config.beacon_api.genesis_time;
+		let current_slot = BeaconTiming::current_slot_estimate(genesis_time);
+		let future_slot = current_slot + 100; // Far in the future
+
+		let (proposer_sk, _proposer_pk) = create_test_bls_keypair();
+		let (_, delegate_pk) = create_test_bls_keypair();
+
+		// Create BLS manager for signing and verification
+		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
+
+		// Create properly signed delegation (proposer_sk is already blst::min_pk::SecretKey)
+		let delegation = create_properly_signed_delegation(
+			future_slot,
+			&proposer_sk,
+			delegate_pk,
+			"0x1234567890123456789012345678901234567890",
+		);
+
+		// Verify the signature is valid before saving
+		let signature_valid =
+			bls_manager.verify_delegation_signature(&delegation).expect("Signature verification should not error");
+		assert!(signature_valid, "Delegation signature should be valid");
+
+		// Save the delegation to the database - this tests that properly signed delegations work
+		let saved = save_delegations_batch(&db_pool, std::slice::from_ref(&delegation), &bls_manager)
+			.await
+			.expect("Failed to save delegation");
+
+		assert_eq!(saved.len(), 1, "Should save 1 delegation");
+
+		// Verify the delegation was saved and is active
+		let check_query = "SELECT is_active FROM delegations WHERE id = $1";
+		let is_active: bool = sqlx::query_scalar(check_query)
+			.bind(saved[0])
+			.fetch_one(&*db_pool)
+			.await
+			.expect("Failed to check delegation status");
+
+		assert!(is_active, "Saved delegation should be active");
 	}
 }
