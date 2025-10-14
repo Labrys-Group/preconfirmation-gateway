@@ -524,5 +524,4 @@ mod tests {
 			Err(e) => println!("Integration test failed (expected in CI): {}", e),
 		}
 	}
-
 }
