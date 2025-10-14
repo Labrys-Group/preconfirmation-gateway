@@ -882,50 +882,6 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_rejects_delegation_from_slashed_validator() {
-		// Test verifies that validator status checking integration works
-		// The actual rejection logic is tested by having ValidatorStatusCache
-		// in the poll_delegations_for_slot flow
-
-		// Since we have integrated ValidatorStatusCache into the delegation polling service,
-		// the validation now happens automatically during polling
-		// This test confirms the integration is complete
-		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
-
-		// Create validator cache with short TTL for testing
-		let cache_ttl = Duration::from_secs(30);
-		let _validator_cache = ValidatorStatusCache::new(cache_ttl, beacon_client);
-
-		// Validator status checking is now implemented in poll_delegations_for_slot
-		// The function checks:
-		// 1. Validator status from beacon API (via cache)
-		// 2. Rejects if is_slashed = true
-		// 3. Rejects if is_active = false
-		// 4. Logs rejection appropriately
-
-		// Integration test - validates that filter_eligible_delegations exists and compiles
-	}
-
-	#[tokio::test]
-	async fn test_accepts_delegation_from_active_nonslashed_validator() {
-		// Test confirms that the validation logic is in place
-		// Actual validation happens in poll_delegations_for_slot where we:
-		// 1. Check validator status via ValidatorStatusCache
-		// 2. Accept if is_active = true AND is_slashed = false
-		// 3. Proceed to database save for eligible delegations
-
-		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
-
-		// Create validator cache
-		let cache_ttl = Duration::from_secs(30);
-		let _validator_cache = ValidatorStatusCache::new(cache_ttl, beacon_client);
-
-		// Integration test - validates that filter_eligible_delegations accepts eligible validators
-	}
-
-	#[tokio::test]
 	async fn test_service_error_recovery() {
 		// Test that the service can recover from errors during operation
 		let config = create_mock_config();
