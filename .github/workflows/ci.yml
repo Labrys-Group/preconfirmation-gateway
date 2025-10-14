@@ -1,0 +1,311 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-index-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-target-
+
+      - name: Cache tarpaulin
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tarpaulin
+          key: ${{ runner.os }}-cargo-tarpaulin-0.33.0
+          restore-keys: |
+            ${{ runner.os }}-cargo-tarpaulin-
+
+      - name: Install tarpaulin
+        run: |
+          if ! command -v cargo-tarpaulin &> /dev/null; then
+            cargo install cargo-tarpaulin --version 0.33.0 --locked
+          else
+            echo "cargo-tarpaulin already installed, skipping"
+          fi
+
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres
+
+      - name: Run database migrations
+        run: sqlx migrate run
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
+      - name: Generate coverage report
+        run: cargo tarpaulin --all-targets --all-features --out Xml --output-dir coverage --verbose
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          RUST_LOG: debug
+
+      - name: Generate coverage summary
+        id: coverage
+        run: |
+          # Extract coverage percentage from XML
+          COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' coverage/cobertura.xml | head -1 | awk '{printf "%.2f", $1 * 100}')
+          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+
+          # Parse XML for detailed file coverage
+          python3 << 'PYTHON_SCRIPT'
+          import xml.etree.ElementTree as ET
+          import sys
+
+          tree = ET.parse('coverage/cobertura.xml')
+          root = tree.getroot()
+
+          print("## 📊 Test Coverage Report\n")
+          print(f"**Overall Coverage:** {float(root.attrib['line-rate']) * 100:.2f}%\n")
+
+          # Collect all files with their coverage
+          files = []
+          for pkg in root.findall('.//package'):
+              for cls in pkg.findall('.//class'):
+                  filename = cls.attrib['filename']
+                  line_rate = float(cls.attrib['line-rate'])
+
+                  # Get lines info
+                  lines = cls.findall('.//line')
+                  covered = sum(1 for line in lines if int(line.attrib['hits']) > 0)
+                  total = len(lines)
+
+                  # Find uncovered lines
+                  uncovered = [line.attrib['number'] for line in lines if int(line.attrib['hits']) == 0]
+
+                  if total > 0:
+                      files.append({
+                          'name': filename,
+                          'coverage': line_rate * 100,
+                          'covered': covered,
+                          'total': total,
+                          'uncovered': uncovered
+                      })
+
+          # Sort by coverage percentage (lowest first to highlight areas needing attention)
+          files.sort(key=lambda x: x['coverage'])
+
+          print("### 📁 Coverage by File\n")
+          print("| File | Coverage | Lines | Uncovered Lines |")
+          print("|------|----------|-------|-----------------|")
+
+          for f in files:
+              name = f['name'].replace('src/', '')
+              cov = f['coverage']
+              emoji = '🔴' if cov < 50 else '🟡' if cov < 80 else '🟢'
+              uncovered_str = ', '.join(f['uncovered'][:10])  # Show first 10 uncovered lines
+              if len(f['uncovered']) > 10:
+                  uncovered_str += f" ... (+{len(f['uncovered']) - 10} more)"
+              if not uncovered_str:
+                  uncovered_str = "All covered ✅"
+              print(f"| {emoji} `{name}` | {cov:.1f}% | {f['covered']}/{f['total']} | {uncovered_str} |")
+
+          # Summary stats
+          total_files = len(files)
+          high_coverage = sum(1 for f in files if f['coverage'] >= 80)
+          medium_coverage = sum(1 for f in files if 50 <= f['coverage'] < 80)
+          low_coverage = sum(1 for f in files if f['coverage'] < 50)
+
+          print(f"\n### 📈 Summary\n")
+          print(f"- 🟢 **High coverage (≥80%):** {high_coverage} files")
+          print(f"- 🟡 **Medium coverage (50-79%):** {medium_coverage} files")
+          print(f"- 🔴 **Low coverage (<50%):** {low_coverage} files")
+          print(f"- 📦 **Total files:** {total_files}")
+
+          PYTHON_SCRIPT
+
+          python3 << 'PYTHON_SCRIPT' > coverage/summary.md
+          import xml.etree.ElementTree as ET
+          import sys
+
+          tree = ET.parse('coverage/cobertura.xml')
+          root = tree.getroot()
+
+          print("## 📊 Test Coverage Report\n")
+          print(f"**Overall Coverage:** {float(root.attrib['line-rate']) * 100:.2f}%\n")
+
+          files = []
+          for pkg in root.findall('.//package'):
+              for cls in pkg.findall('.//class'):
+                  filename = cls.attrib['filename']
+                  line_rate = float(cls.attrib['line-rate'])
+
+                  lines = cls.findall('.//line')
+                  covered = sum(1 for line in lines if int(line.attrib['hits']) > 0)
+                  total = len(lines)
+
+                  uncovered = [line.attrib['number'] for line in lines if int(line.attrib['hits']) == 0]
+
+                  if total > 0:
+                      files.append({
+                          'name': filename,
+                          'coverage': line_rate * 100,
+                          'covered': covered,
+                          'total': total,
+                          'uncovered': uncovered
+                      })
+
+          files.sort(key=lambda x: x['coverage'])
+
+          print("### 📁 Coverage by File\n")
+          print("| File | Coverage | Lines | Uncovered Lines |")
+          print("|------|----------|-------|-----------------|")
+
+          for f in files:
+              name = f['name'].replace('src/', '')
+              cov = f['coverage']
+              emoji = '🔴' if cov < 50 else '🟡' if cov < 80 else '🟢'
+              uncovered_str = ', '.join(f['uncovered'][:10])
+              if len(f['uncovered']) > 10:
+                  uncovered_str += f" ... (+{len(f['uncovered']) - 10} more)"
+              if not uncovered_str:
+                  uncovered_str = "All covered ✅"
+              print(f"| {emoji} `{name}` | {cov:.1f}% | {f['covered']}/{f['total']} | {uncovered_str} |")
+
+          total_files = len(files)
+          high_coverage = sum(1 for f in files if f['coverage'] >= 80)
+          medium_coverage = sum(1 for f in files if 50 <= f['coverage'] < 80)
+          low_coverage = sum(1 for f in files if f['coverage'] < 50)
+
+          print(f"\n### 📈 Summary\n")
+          print(f"- 🟢 **High coverage (≥80%):** {high_coverage} files")
+          print(f"- 🟡 **Medium coverage (50-79%):** {medium_coverage} files")
+          print(f"- 🔴 **Low coverage (<50%):** {low_coverage} files")
+          print(f"- 📦 **Total files:** {total_files}")
+
+          PYTHON_SCRIPT
+
+      - name: Comment PR with coverage
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const coverage = '${{ steps.coverage.outputs.percentage }}';
+            const summary = fs.readFileSync('coverage/summary.md', 'utf8');
+
+            // Find existing coverage comment
+            const comments = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            const botComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('📊 Test Coverage Report')
+            );
+
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: summary
+              });
+            } else {
+              // Create new comment if none exists
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: summary
+              });
+            }
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    env:
+      SQLX_OFFLINE: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-index-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-target-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings

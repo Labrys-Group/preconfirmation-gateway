@@ -19,7 +19,67 @@ enable_method_tracing = true      # Enable detailed tracing for specific RPC met
 # List of RPC methods to trace in detail
 traced_methods = [
     "commitmentRequest",
-    "commitmentResult", 
+    "commitmentResult",
     "slots",
     "fee"
 ]
+
+[validation]
+# Validation configuration
+# Whitelist of allowed slasher contract addresses
+# REQUIRED: Must contain at least one address for security
+# Only commitment requests with slasher addresses in this list will be accepted
+slasher_whitelist = [
+    "0x0000000000000000000000000000000000000000"
+]
+
+[beacon_api]
+# Beacon API configuration for validator duties and timing
+# IMPORTANT: The primary_endpoint MUST be configured with a valid beacon API endpoint
+# Set via BEACON_API_ENDPOINT environment variable or update this value directly
+# Example: https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY
+primary_endpoint = "${BEACON_API_ENDPOINT}"  # REQUIRED - will fail on startup if not set
+fallback_endpoints = []
+request_timeout_secs = 30
+genesis_time = 1606824023  # Ethereum mainnet genesis time
+
+[constraints_api]
+# Constraints API configuration for relay communication
+relay_endpoint = "http://localhost:3501"
+request_timeout_secs = 30
+max_retries = 3
+# Authorized builder BLS public keys (48 bytes each, hex-encoded with or without 0x prefix)
+# Empty list means constraints are publicly accessible to all builders
+# Non-empty list restricts access only to the specified builder public keys
+authorized_builders = []
+# Example with builder keys:
+# authorized_builders = [
+#     "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+#     "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+# ]
+
+[delegation]
+# Delegation management configuration
+lookahead_epochs = 2
+polling_interval_secs = 12
+cache_ttl_secs = 3600
+domain_application_gateway = "0x00000001"
+
+[reth]
+# Reth node configuration for gas price oracle
+endpoint = "http://localhost:8545"  # Reth node RPC endpoint
+request_timeout_secs = 10
+max_retries = 3
+
+[reth.fee_config]
+# Dynamic fee calculation parameters
+scaling_factor = 2.0          # Exponential scaling factor (k) in pricing formula
+default_gas_limit = 30000000  # Default gas limit for calculations (30M gas)
+min_fee_multiplier = 1.0      # Minimum fee multiplier (prevents zero fees)
+max_fee_multiplier = 100.0    # Maximum fee multiplier (caps extreme pricing)
+cache_ttl_secs = 60          # Fee cache TTL in seconds
+
+# Signing configuration
+# IMPORTANT: The ECDSA private key is loaded from the COMMITTER_PRIVATE_KEY environment variable
+# This is not stored in this config file for security reasons.
+# Set COMMITTER_PRIVATE_KEY=<your_private_key_hex> in your environment or .env file

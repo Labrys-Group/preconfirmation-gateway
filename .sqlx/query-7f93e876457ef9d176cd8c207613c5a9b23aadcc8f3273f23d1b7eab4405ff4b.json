@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tUPDATE delegations\n\t\tSET is_active = false\n\t\tWHERE slot_number < $1 AND is_active = true\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7f93e876457ef9d176cd8c207613c5a9b23aadcc8f3273f23d1b7eab4405ff4b"
+}

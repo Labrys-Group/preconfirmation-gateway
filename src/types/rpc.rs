@@ -1,9 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+// Import shared hex serde utilities
+use crate::types::hex_serde as hex_bytes;
+
 /// Request for a new SignedCommitment
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitmentRequest {
 	pub commitment_type: u64,
+	#[serde(with = "hex_bytes")]
 	pub payload: Vec<u8>,
 	pub slasher: String, // address as hex string
 }
@@ -12,6 +16,7 @@ pub struct CommitmentRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Commitment {
 	pub commitment_type: u64,
+	#[serde(with = "hex_bytes")]
 	pub payload: Vec<u8>,
 	pub request_hash: String, // bytes32 as hex string
 	pub slasher: String,      // address as hex string
@@ -41,6 +46,7 @@ pub struct SlotInfo {
 /// Fee information for a commitment request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FeeInfo {
-	pub fee_payload: Vec<u8>, // opaque fee payload
+	#[serde(with = "hex_bytes")]
+	pub payload: Vec<u8>, // opaque fee payload
 	pub commitment_type: u64,
 }

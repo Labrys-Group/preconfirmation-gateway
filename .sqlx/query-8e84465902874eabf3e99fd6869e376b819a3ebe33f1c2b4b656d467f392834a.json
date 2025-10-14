@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tSELECT\n\t\t\trequest_hash,\n\t\t\tcommitment_type,\n\t\t\tpayload,\n\t\t\tslasher,\n\t\t\tsignature,\n\t\t\tcreated_at\n\t\tFROM commitments\n\t\tWHERE request_hash = $1\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "request_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "commitment_type",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "payload",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "slasher",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "signature",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "8e84465902874eabf3e99fd6869e376b819a3ebe33f1c2b4b656d467f392834a"
+}

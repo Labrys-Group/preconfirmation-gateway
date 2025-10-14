@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tSELECT\n\t\t\tproposer_pubkey,\n\t\t\tdelegate_pubkey,\n\t\t\tcommitter_address,\n\t\t\tslot_number,\n\t\t\tsignature\n\t\tFROM delegations\n\t\tWHERE slot_number = $1 AND is_active = true\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "proposer_pubkey",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 1,
+        "name": "delegate_pubkey",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 2,
+        "name": "committer_address",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "slot_number",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "signature",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "999b27c26676004acf31eed4f79d1a5a5709a8afcb5fc129178f4bfaaf9fbe80"
+}

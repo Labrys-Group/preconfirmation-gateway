@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE slot_congestion SET\n            preconfirmed_gas = $2,\n            gas_used_ratio = $3,\n            calculated_fee_multiplier = $4,\n            current_tx_price = $5,\n            last_updated = NOW()\n        WHERE slot = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Float8",
+        "Float8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f45d135a390bda1ad5cb8a72ca77e279892429ca58b5f0ad2a5ccb8729374915"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT slot, gas_used_ratio\n            FROM slot_congestion\n            WHERE slot_start_time > NOW() - INTERVAL '24 hours'\n            ORDER BY gas_used_ratio DESC\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "slot",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "gas_used_ratio",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "5d7af0d8b9ee44029b4765651a398ecfb3216fca4ad474994f148732fdc16ecd"
+}

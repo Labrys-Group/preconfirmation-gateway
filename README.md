@@ -9,6 +9,54 @@ A Rust-based preconfirmation gateway that enables Ethereum validators to issue c
 - Rust (latest stable version)
 - Cargo
 - Taskfile
+- PostgreSQL 15+ (for database operations)
+
+### Database Setup
+
+The gateway requires PostgreSQL for storing commitments, delegations, and slot metadata.
+
+#### Option 1: Using Docker (Recommended)
+
+```bash
+# Start PostgreSQL using docker-compose
+docker-compose up -d postgres
+
+# Set database URL
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/preconfirmation_gateway
+```
+
+#### Option 2: Local PostgreSQL Installation
+
+```bash
+# Install PostgreSQL (macOS example)
+brew install postgresql@15
+
+# Start PostgreSQL
+brew services start postgresql@15
+
+# Create database
+createdb preconfirmation_gateway
+
+# Set database URL
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/preconfirmation_gateway
+```
+
+#### Running Database Migrations
+
+The gateway uses SQLx for database migrations. Migrations are automatically run on startup, but you can also run them manually:
+
+```bash
+# Install sqlx-cli (one-time setup)
+cargo install sqlx-cli --no-default-features --features postgres
+
+# Run migrations
+sqlx migrate run
+
+# Check migration status
+sqlx migrate info
+```
+
+**Note**: The `DATABASE_URL` environment variable must be set before running the gateway or migrations. You can also configure it in `config.toml`.
 
 ### Building
 

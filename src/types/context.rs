@@ -1,30 +1,54 @@
-use super::database::DatabaseContext;
+use crate::api::beacon::BeaconApiClient;
+use crate::services::fee_pricing::FeePricingEngine;
+use crate::{config::Config, db::DatabaseContext};
+use std::sync::Arc;
 
 /// RPC context that provides access to shared resources for all RPC handlers
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct RpcContext {
 	/// Database context for PostgreSQL operations
 	pub database: DatabaseContext,
+	/// Configuration for validation and other settings
+	pub config: Config,
+	/// Fee pricing engine for dynamic fee calculation
+	pub fee_engine: Arc<FeePricingEngine>,
+	/// Beacon API client for validator duty verification
+	pub beacon_client: Arc<BeaconApiClient>,
 }
 
 impl RpcContext {
-	/// Create a new RPC context with the given database context
-	pub fn new(database: DatabaseContext) -> Self {
-		Self { database }
+	/// Creates a new RpcContext composed of the provided database context, configuration, fee pricing engine, and Beacon API client.
+	///
+	/// # Examples
+	///
+	pub fn new(
+		database: DatabaseContext,
+		config: Config,
+		fee_engine: Arc<FeePricingEngine>,
+		beacon_client: Arc<BeaconApiClient>,
+	) -> Self {
+		Self { database, config, fee_engine, beacon_client }
 	}
 
-	/// Convenience method for database operations
-	/// This delegates to the underlying DatabaseContext's with_client method
-	pub async fn with_database<F, Fut, R>(&self, f: F) -> anyhow::Result<R>
-	where
-		F: FnOnce(deadpool_postgres::Client) -> Fut,
-		Fut: std::future::Future<Output = anyhow::Result<R>>,
-	{
-		self.database.with_client(f).await
+	/// Accesses the RpcContext's database context.
+	///
+	/// Provides a shared reference to the underlying DatabaseContext held by this RpcContext.
+	///
+	/// # Examples
+	///
+	pub fn database(&self) -> &DatabaseContext {
+		&self.database
 	}
 
-	/// Get a database client from the connection pool
-	pub async fn database_client(&self) -> anyhow::Result<deadpool_postgres::Client> {
-		self.database.client().await
+	/// Returns a reference to the internal Beacon API client.
+	///
+	/// # Returns
+	///
+	/// A reference to the `Arc<BeaconApiClient>` stored in the context.
+	///
+	/// # Examples
+	///
+	pub fn beacon_client(&self) -> &Arc<BeaconApiClient> {
+		&self.beacon_client
 	}
 }

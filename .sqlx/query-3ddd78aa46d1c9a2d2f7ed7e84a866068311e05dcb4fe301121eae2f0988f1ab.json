@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id, slot, preconfirmed_gas, total_gas_limit,\n            gas_used_ratio, base_gas_price, calculated_fee_multiplier, current_tx_price,\n            slot_start_time, last_updated, created_at\n        FROM slot_congestion\n        WHERE slot = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "slot",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "preconfirmed_gas",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "total_gas_limit",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "gas_used_ratio",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 5,
+        "name": "base_gas_price",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "calculated_fee_multiplier",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 7,
+        "name": "current_tx_price",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "slot_start_time",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 9,
+        "name": "last_updated",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "3ddd78aa46d1c9a2d2f7ed7e84a866068311e05dcb4fe301121eae2f0988f1ab"
+}

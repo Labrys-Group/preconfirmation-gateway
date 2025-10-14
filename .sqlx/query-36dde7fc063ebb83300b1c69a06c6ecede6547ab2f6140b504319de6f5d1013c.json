@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n\t\tSELECT EXISTS(\n\t\t\tSELECT 1 FROM delegations\n\t\t\tWHERE slot_number = $1 AND LOWER(committer_address) = LOWER($2) AND is_active = true\n\t\t) as exists\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "36dde7fc063ebb83300b1c69a06c6ecede6547ab2f6140b504319de6f5d1013c"
+}
