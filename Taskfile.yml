@@ -23,8 +23,32 @@ tasks:
 
   test:
     cmds:
-      - cargo test
+      - task: db:reset
+      - cargo test --lib
+
+  test:integration:
+    cmds:
+      - task: db:reset
+      - cargo test --lib -- --ignored
+
+  coverage:
+    cmds:
+      - cargo tarpaulin
 
   lint:
     cmds:
       - cargo clippy
+
+  install:
+    cmds:
+      - cargo fetch
+
+  db:migrate:
+    desc: "Run sql migration files against database"
+    cmds:
+      - cargo sqlx migrate run
+
+  db:reset:
+    desc: "Wipes and migrates the database"
+    cmds:
+      - cargo sqlx database reset -yf
