@@ -385,7 +385,7 @@ async fn cleanup_expired_delegations(
 	}
 
 	// Check validator status for all active delegations and deactivate if slashed/inactive
-	let check_query = "SELECT delegation_id, proposer_pubkey FROM delegations WHERE is_active = true";
+	let check_query = "SELECT id, proposer_pubkey FROM delegations WHERE is_active = true";
 	let active_delegations: Vec<(uuid::Uuid, Vec<u8>)> = sqlx::query_as(check_query).fetch_all(&*db_pool).await?;
 
 	if active_delegations.is_empty() {
@@ -420,7 +420,7 @@ async fn cleanup_expired_delegations(
 
 				if should_deactivate {
 					// Deactivate this delegation
-					let deactivate_query = "UPDATE delegations SET is_active = false WHERE delegation_id = $1";
+					let deactivate_query = "UPDATE delegations SET is_active = false WHERE id = $1";
 					sqlx::query(deactivate_query).bind(delegation_id).execute(&*db_pool).await?;
 
 					if status.is_slashed {
