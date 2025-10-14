@@ -618,9 +618,9 @@ mod tests {
 
 	/// Helper function to create a test config with custom values
 	fn create_test_config() -> Config {
-		let database_url = std::env::var("TEST_DATABASE_URL")
+		let database_url = std::env::var("DATABASE_URL")
 			.context("Test database env is required")
-			.expect("TEST_DATABASE_URL must be set for tests");
+			.expect("DATABASE_URL must be set for tests");
 		Config {
 			server: ServerConfig { host: "127.0.0.1".to_string(), port: 8080 },
 			database: DatabaseConfig { url: database_url },
