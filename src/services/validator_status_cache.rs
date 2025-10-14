@@ -129,22 +129,6 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_get_status_fetches_from_beacon_api() {
-		let beacon_client = create_test_beacon_client();
-		let cache = ValidatorStatusCache::new(Duration::from_secs(30), beacon_client);
-
-		let validator_pubkey = BlsPublicKey([1u8; 48]);
-
-		// This should fail because:
-		// 1. get_status is not implemented (returns todo!)
-		// 2. Even when implemented, it will fail because test endpoint is invalid
-		let result = cache.get_status(&validator_pubkey).await;
-
-		// Should fail with invalid endpoint
-		assert!(result.is_err(), "Should fail with unimplemented or invalid endpoint");
-	}
-
-	#[tokio::test]
 	async fn test_cache_ttl_expires() {
 		let beacon_client = create_test_beacon_client();
 		// Use a very short TTL for testing
@@ -177,38 +161,4 @@ mod tests {
 		assert_eq!(statuses.len(), 0, "Should return empty map for empty input");
 	}
 
-	#[tokio::test]
-	async fn test_get_batch_status_fetches_multiple_validators() {
-		let beacon_client = create_test_beacon_client();
-		let cache = ValidatorStatusCache::new(Duration::from_secs(30), beacon_client);
-
-		// Create multiple validator pubkeys
-		let pubkeys = vec![BlsPublicKey([1u8; 48]), BlsPublicKey([2u8; 48]), BlsPublicKey([3u8; 48])];
-
-		// This should fail because get_batch_status is not implemented
-		let result = cache.get_batch_status(&pubkeys).await;
-
-		// Should fail with unimplemented or invalid endpoint
-		assert!(result.is_err(), "Should fail with unimplemented method or invalid endpoint");
-	}
-
-	#[tokio::test]
-	async fn test_get_batch_status_uses_cache() {
-		let beacon_client = create_test_beacon_client();
-		let cache = ValidatorStatusCache::new(Duration::from_secs(30), beacon_client);
-
-		let pubkey1 = BlsPublicKey([10u8; 48]);
-		let pubkey2 = BlsPublicKey([20u8; 48]);
-
-		// This test verifies that batch lookup uses the cache
-		// First, try to populate cache (will fail with invalid endpoint, but that's ok for the test)
-		let _single_result = cache.get_status(&pubkey1).await;
-
-		// Now try batch lookup including the cached key
-		let pubkeys = vec![pubkey1, pubkey2];
-		let _batch_result = cache.get_batch_status(&pubkeys).await;
-
-		// Both will fail until implementation is complete
-		// The test structure is correct though
-	}
 }

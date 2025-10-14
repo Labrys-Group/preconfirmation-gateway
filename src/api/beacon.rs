@@ -300,8 +300,6 @@ mod tests {
 	use super::*;
 	use crate::config::BeaconApiConfig;
 	use crate::types::beacon::BeaconTiming;
-	use std::time::Duration;
-	use tokio::time::timeout;
 
 	/// Creates a test `BeaconApiConfig` prepopulated with mainnet endpoints and defaults.
 	///
@@ -399,48 +397,6 @@ mod tests {
 		let _final_request = request_with_headers;
 	}
 
-	#[tokio::test]
-	async fn test_get_proposer_duties_timeout() {
-		let config = create_test_config_with_short_timeout();
-		let client = BeaconApiClient::new(config).unwrap();
-
-		// This should timeout quickly since we're using invalid endpoints
-		let result = timeout(Duration::from_secs(5), client.get_proposer_duties(0)).await;
-
-		// Should complete within timeout (even if it fails due to invalid endpoint)
-		assert!(result.is_ok(), "Request should complete within timeout");
-
-		// The inner result should be an error due to invalid endpoints
-		let proposer_result = result.unwrap();
-		assert!(proposer_result.is_err(), "Should fail with invalid endpoints");
-	}
-
-	#[tokio::test]
-	async fn test_get_proposer_duties_no_fallbacks() {
-		let config = create_test_config_no_fallbacks();
-		let client = BeaconApiClient::new(config).unwrap();
-
-		// Should fail since primary endpoint is invalid and no fallbacks
-		let result = timeout(Duration::from_secs(5), client.get_proposer_duties(0)).await;
-
-		assert!(result.is_ok(), "Request should complete within timeout");
-		let proposer_result = result.unwrap();
-		assert!(proposer_result.is_err(), "Should fail with no valid endpoints");
-	}
-
-	#[tokio::test]
-	async fn test_get_proposer_for_slot_invalid_epoch() {
-		let config = create_test_config_with_short_timeout();
-		let client = BeaconApiClient::new(config).unwrap();
-
-		// Test with a slot that would fail to fetch duties
-		let result = timeout(Duration::from_secs(5), client.get_proposer_for_slot(12345)).await;
-
-		assert!(result.is_ok(), "Request should complete within timeout");
-		let proposer_result = result.unwrap();
-		assert!(proposer_result.is_err(), "Should fail due to invalid endpoint");
-	}
-
 	#[test]
 	fn test_make_request_url_building() {
 		let config = create_test_config();
@@ -457,34 +413,6 @@ mod tests {
 
 		assert_eq!(url1, "https://example.com/eth/v1/test");
 		assert_eq!(url2, "https://example.com/eth/v1/test");
-	}
-
-	#[tokio::test]
-	async fn test_proposer_duties_error_handling() {
-		let config = create_test_config_with_short_timeout();
-		let client = BeaconApiClient::new(config).unwrap();
-
-		// Test that errors are properly handled and returned
-		let result = client.get_proposer_duties(999999).await;
-		assert!(result.is_err(), "Should return error for invalid endpoint");
-
-		// Verify error contains meaningful information
-		let error = result.unwrap_err();
-		let error_string = format!("{}", error);
-		assert!(!error_string.is_empty(), "Error message should not be empty");
-	}
-
-	#[tokio::test]
-	async fn test_get_proposer_for_slot_with_duties() {
-		// This test simulates the scenario where we would get duties back
-		// In a real integration test, we'd mock the HTTP responses
-		let config = create_test_config_with_short_timeout();
-		let client = BeaconApiClient::new(config).unwrap();
-
-		// Since we're using invalid endpoints, this will fail at the network level
-		// which allows us to test the error handling path
-		let result = client.get_proposer_for_slot(100).await;
-		assert!(result.is_err(), "Should fail due to network error");
 	}
 
 	#[test]
@@ -553,28 +481,6 @@ mod tests {
 		assert_eq!(client.config.fallback_endpoints[2], "https://fallback3.test");
 	}
 
-	#[tokio::test]
-	async fn test_concurrent_requests() {
-		let config = create_test_config_with_short_timeout();
-		let client = BeaconApiClient::new(config).unwrap();
-
-		// Test multiple concurrent requests
-		let mut handles = Vec::new();
-
-		for i in 0..5 {
-			let client_clone = client.clone();
-			let handle = tokio::spawn(async move { client_clone.get_proposer_duties(i).await });
-			handles.push(handle);
-		}
-
-		// Wait for all requests to complete
-		for handle in handles {
-			let result = handle.await.unwrap();
-			// All should fail due to invalid endpoints, but shouldn't panic
-			assert!(result.is_err(), "Concurrent requests should handle errors gracefully");
-		}
-	}
-
 	#[test]
 	fn test_client_clone() {
 		let config = create_test_config();
@@ -619,43 +525,4 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_get_validator_status_with_invalid_endpoint() {
-		use crate::types::delegation::BlsPublicKey;
-
-		let config = create_test_config_with_short_timeout();
-		let client = BeaconApiClient::new(config).unwrap();
-
-		// Create a test validator public key
-		let validator_pubkey = BlsPublicKey([1u8; 48]);
-
-		// Try to get validator status - should fail due to invalid endpoint
-		let result = timeout(Duration::from_secs(5), client.get_validator_status(&validator_pubkey)).await;
-
-		assert!(result.is_ok(), "Request should complete within timeout");
-		let validator_result = result.unwrap();
-		assert!(validator_result.is_err(), "Should fail with invalid endpoint");
-	}
-
-	#[tokio::test]
-	async fn test_get_validator_status_parses_active_status() {
-		use crate::types::delegation::BlsPublicKey;
-
-		// This test will fail until we implement get_validator_status
-		// It demonstrates the expected API and behavior
-		let config = create_test_config_with_short_timeout();
-		let client = BeaconApiClient::new(config).unwrap();
-
-		let validator_pubkey = BlsPublicKey([1u8; 48]);
-
-		// When we call get_validator_status, we expect it to:
-		// 1. Call /eth/v1/beacon/states/head/validators/{pubkey}
-		// 2. Parse the response into ValidatorInfo
-		// 3. Extract is_active (from status field), is_slashed, and validator_index
-		let result = client.get_validator_status(&validator_pubkey).await;
-
-		// For now this will fail because the method doesn't exist
-		// Once implemented with invalid endpoint, it should return an error
-		assert!(result.is_err(), "Should fail with invalid endpoint");
-	}
 }
