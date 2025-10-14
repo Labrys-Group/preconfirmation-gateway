@@ -31,3 +31,5 @@ node_modules/
 
 # Test keys (secrets should not be committed)
 test-keys.sh
+
+*.profraw

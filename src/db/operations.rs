@@ -269,6 +269,7 @@ pub async fn mark_commitments_as_processed(pool: &PgPool, request_hashes: &[Stri
 mod tests {
 	use super::*;
 	use crate::types::{Commitment, SignedCommitment};
+	use serial_test::serial;
 	use sqlx::{PgPool, postgres::PgPoolOptions};
 
 	/// Creates a PostgreSQL connection pool configured for use by tests.
@@ -325,6 +326,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_save_and_retrieve_commitment() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -354,6 +356,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_commitment_exists() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -378,6 +381,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_get_commitment_stats() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -414,6 +418,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_get_unprocessed_commitments_for_slot() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -441,6 +446,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_mark_commitments_as_processed() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -474,6 +480,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_mark_empty_array() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -491,6 +498,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_get_nonexistent_commitment() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -719,6 +727,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_mark_nonexistent_commitments() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -741,6 +750,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_duplicate_commitment_handling() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -765,6 +775,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_get_stats_with_no_commitments() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -785,6 +796,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_get_stats_with_multiple_commitments() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -821,6 +833,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_get_commitments_by_slot() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -853,6 +866,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_get_commitments_by_slot_empty() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -870,6 +884,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_get_commitments_by_slot_with_nulls() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -892,6 +907,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_mark_commitments_as_processed_with_empty_list() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -909,6 +925,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_mark_commitments_as_processed_with_mixed_hashes() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -935,6 +952,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_commitment_retrieval_edge_cases() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -957,6 +975,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_commitment_existence_edge_cases() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -1019,6 +1038,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_concurrent_commitment_saves() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -1057,6 +1077,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_large_payload_handling() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,
@@ -1093,6 +1114,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial]
 	async fn test_concurrent_duplicate_commitment_handling() -> Result<()> {
 		let pool = match setup_test_pool().await {
 			Ok(p) => p,

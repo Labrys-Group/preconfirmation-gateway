@@ -33,7 +33,8 @@ tasks:
 
   coverage:
     cmds:
-      - cargo tarpaulin
+      - task: db:reset
+      - cargo tarpaulin --lib
 
   lint:
     cmds:

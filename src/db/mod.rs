@@ -410,9 +410,13 @@ mod tests {
 
 	/// Helper function to create a test configuration
 	fn create_test_config() -> Config {
+		let database_url = std::env::var("TEST_DATABASE_URL")
+			.context("Test database env is required")
+			.expect("TEST_DATABASE_URL must be set for tests");
+
 		Config {
 			server: Default::default(),
-			database: crate::config::DatabaseConfig { url: "postgresql://test:test@localhost/test_db".to_string() },
+			database: crate::config::DatabaseConfig { url: database_url },
 			logging: Default::default(),
 			validation: Default::default(),
 			beacon_api: Default::default(),
@@ -438,10 +442,7 @@ mod tests {
 			slasher: request.slasher,
 		};
 
-		SignedCommitment {
-			commitment,
-			signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
-		}
+		SignedCommitment { commitment, signature: format!("0x{:0<130}", "1234567890abcdef") }
 	}
 
 	/// Helper function to create a test SignedDelegation
@@ -491,12 +492,6 @@ mod tests {
 		// Test slot congestion operations
 		let result = context.get_or_create_slot_congestion(12345, 1000000000, 30000000, 1606824023).await;
 		assert!(result.is_err()); // Expected to fail with test database
-	}
-
-	#[test]
-	fn test_config_database_url() {
-		let config = create_test_config();
-		assert_eq!(config.database_url(), "postgresql://test:test@localhost/test_db");
 	}
 
 	#[tokio::test]
@@ -594,7 +589,7 @@ mod tests {
 			// Test commitment operations
 			let commitment = create_test_commitment();
 			let result = context.save_commitment(&commitment).await;
-			assert!(result.is_ok());
+			assert!(result.is_ok(), "Failed to save commitment: {:?}", result.as_ref().unwrap_err());
 
 			let saved_id = result.unwrap();
 			assert!(saved_id.is_some());

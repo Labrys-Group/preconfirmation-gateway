@@ -618,9 +618,12 @@ mod tests {
 
 	/// Helper function to create a test config with custom values
 	fn create_test_config() -> Config {
+		let database_url = std::env::var("TEST_DATABASE_URL")
+			.context("Test database env is required")
+			.expect("TEST_DATABASE_URL must be set for tests");
 		Config {
 			server: ServerConfig { host: "127.0.0.1".to_string(), port: 8080 },
-			database: DatabaseConfig { url: "postgresql://test:test@localhost/test_db".to_string() },
+			database: DatabaseConfig { url: database_url },
 			logging: LoggingConfig {
 				level: "info".to_string(),
 				enable_method_tracing: true,
@@ -826,12 +829,6 @@ cache_ttl_secs = 60
 		assert_eq!(config.logging.level, "debug");
 		assert!(!config.logging.enable_method_tracing);
 		assert_eq!(config.logging.traced_methods, vec!["custom_method"]);
-	}
-
-	#[test]
-	fn test_config_database_url() {
-		let config = create_test_config();
-		assert_eq!(config.database_url(), "postgresql://test:test@localhost/test_db");
 	}
 
 	#[test]
