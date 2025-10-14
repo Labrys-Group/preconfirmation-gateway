@@ -2,7 +2,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// BLS Public Key representation (48 bytes)
 /// Custom serialization to handle byte arrays properly
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlsPublicKey(pub [u8; 48]);
 
 /// BLS Signature representation (96 bytes)

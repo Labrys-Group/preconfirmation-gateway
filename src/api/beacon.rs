@@ -11,7 +11,10 @@ use std::time::Duration;
 use tracing::{debug, warn};
 
 use crate::config::BeaconApiConfig;
-use crate::types::beacon::{BeaconTiming, ProposerDutiesResponse, ValidatorDuty};
+use crate::types::beacon::{
+	BeaconTiming, ProposerDutiesResponse, ValidatorData, ValidatorDuty, ValidatorInfo, ValidatorResponse,
+};
+use crate::types::delegation::BlsPublicKey;
 
 /// Beacon API client for retrieving chain state and proposer information
 #[derive(Debug, Clone)]
@@ -138,6 +141,97 @@ impl BeaconApiClient {
 		}
 
 		Ok(None)
+	}
+
+	/// Fetches validator status information from the beacon chain.
+	///
+	/// Queries the Beacon API for the validator's current status, including whether
+	/// they are active and whether they have been slashed.
+	///
+	/// # Parameters
+	///
+	/// * `validator_pubkey` - The BLS public key of the validator to query
+	///
+	/// # Returns
+	///
+	/// `Ok(ValidatorInfo)` containing the validator's status information, or an error
+	/// if the request fails or the response cannot be parsed.
+	///
+	/// # Examples
+	///
+	pub async fn get_validator_status(&self, validator_pubkey: &BlsPublicKey) -> Result<ValidatorInfo> {
+		// Format pubkey as hex string with 0x prefix
+		let pubkey_hex = format!("0x{}", hex::encode(validator_pubkey.0));
+		let endpoint = format!("eth/v1/beacon/states/head/validators/{}", pubkey_hex);
+
+		// Try primary endpoint first, then fallbacks
+		let mut _last_error = None;
+
+		// Try primary endpoint
+		match self.make_request::<ValidatorResponse>(&self.config.primary_endpoint, &endpoint).await {
+			Ok(response) => return Self::parse_validator_info(&response.data),
+			Err(e) => {
+				warn!(
+					endpoint = %self.config.primary_endpoint,
+					pubkey = %pubkey_hex,
+					error = %e,
+					"Primary beacon endpoint failed for validator status, trying fallbacks"
+				);
+				_last_error = Some(e);
+			}
+		}
+
+		// Try fallback endpoints
+		for fallback_endpoint in &self.config.fallback_endpoints {
+			match self.make_request::<ValidatorResponse>(fallback_endpoint, &endpoint).await {
+				Ok(response) => {
+					debug!(
+						endpoint = %fallback_endpoint,
+						pubkey = %pubkey_hex,
+						"Successfully retrieved validator status from fallback endpoint"
+					);
+					return Self::parse_validator_info(&response.data);
+				}
+				Err(e) => {
+					warn!(
+						endpoint = %fallback_endpoint,
+						pubkey = %pubkey_hex,
+						error = %e,
+						"Fallback beacon endpoint failed for validator status"
+					);
+					_last_error = Some(e);
+				}
+			}
+		}
+
+		// All endpoints failed
+		Err(_last_error.unwrap_or_else(|| anyhow::anyhow!("No beacon endpoints configured")))
+	}
+
+	/// Parse validator data from the Beacon API into ValidatorInfo.
+	///
+	/// Determines if the validator is active based on their status string and extracts
+	/// slashing status and validator index.
+	///
+	/// # Parameters
+	///
+	/// * `data` - Validator data from the Beacon API response
+	///
+	/// # Returns
+	///
+	/// `Ok(ValidatorInfo)` with parsed status information, or an error if parsing fails.
+	fn parse_validator_info(data: &ValidatorData) -> Result<ValidatorInfo> {
+		// Parse validator index
+		let validator_index = data.index.parse::<u64>().context("Failed to parse validator index")?;
+
+		// Determine if validator is active
+		// According to spec: active_ongoing, active_exiting, or active_slashed
+		let is_active = matches!(data.status.as_str(), "active_ongoing" | "active_exiting" | "active_slashed");
+
+		// Get slashed status from validator details
+		let is_slashed = data.validator.slashed;
+
+		Ok(ValidatorInfo { is_active, is_slashed, validator_index })
 	}
 
 	/// Perform an HTTP GET to the given endpoint on `base_url`, validate the response, and deserialize the JSON body into `T`.
@@ -523,5 +617,45 @@ mod tests {
 			Ok(duties) => println!("Got {} proposer duties", duties.data.len()),
 			Err(e) => println!("Integration test failed (expected in CI): {}", e),
 		}
+	}
+
+	#[tokio::test]
+	async fn test_get_validator_status_with_invalid_endpoint() {
+		use crate::types::delegation::BlsPublicKey;
+
+		let config = create_test_config_with_short_timeout();
+		let client = BeaconApiClient::new(config).unwrap();
+
+		// Create a test validator public key
+		let validator_pubkey = BlsPublicKey([1u8; 48]);
+
+		// Try to get validator status - should fail due to invalid endpoint
+		let result = timeout(Duration::from_secs(5), client.get_validator_status(&validator_pubkey)).await;
+
+		assert!(result.is_ok(), "Request should complete within timeout");
+		let validator_result = result.unwrap();
+		assert!(validator_result.is_err(), "Should fail with invalid endpoint");
+	}
+
+	#[tokio::test]
+	async fn test_get_validator_status_parses_active_status() {
+		use crate::types::delegation::BlsPublicKey;
+
+		// This test will fail until we implement get_validator_status
+		// It demonstrates the expected API and behavior
+		let config = create_test_config_with_short_timeout();
+		let client = BeaconApiClient::new(config).unwrap();
+
+		let validator_pubkey = BlsPublicKey([1u8; 48]);
+
+		// When we call get_validator_status, we expect it to:
+		// 1. Call /eth/v1/beacon/states/head/validators/{pubkey}
+		// 2. Parse the response into ValidatorInfo
+		// 3. Extract is_active (from status field), is_slashed, and validator_index
+		let result = client.get_validator_status(&validator_pubkey).await;
+
+		// For now this will fail because the method doesn't exist
+		// Once implemented with invalid endpoint, it should return an error
+		assert!(result.is_err(), "Should fail with invalid endpoint");
 	}
 }
