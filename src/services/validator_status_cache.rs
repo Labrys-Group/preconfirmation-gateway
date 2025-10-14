@@ -136,7 +136,6 @@ mod tests {
 
 		let validator_pubkey = BlsPublicKey([2u8; 48]);
 
-		// This will fail until get_status is implemented
 		let _result = cache.get_status(&validator_pubkey).await;
 
 		// Wait for TTL to expire
