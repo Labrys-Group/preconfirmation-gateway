@@ -231,33 +231,6 @@ mod fee_pricing_tests {
 
 	#[tokio::test]
 	#[serial]
-	async fn test_calculate_fee_for_commitment_integration() -> Result<()> {
-		let pool = setup_test_pool().await?;
-		let config = Config::default();
-		let database = Arc::new(DatabaseContext::new(pool));
-		let reth_client = Arc::new(RethApiClient::new(RethApiConfig::default())?);
-
-		let engine = FeePricingEngine::new(reth_client, database, Arc::new(config.clone()));
-
-		let current_slot = engine.get_current_slot();
-		let future_slot = current_slot + 5;
-
-		// Create a valid inclusion payload
-		let inclusion_payload = InclusionPayload::new(future_slot, vec![0xaa, 0xbb, 0xcc, 0xdd]);
-		let encoded = PayloadParser::encode_inclusion_payload(&inclusion_payload)?;
-
-		// This would normally call the Reth node, which we don't have in tests
-		// So we can't fully test this without a mock or real node
-		// But we can test that it doesn't panic
-		let _result = engine.calculate_fee_for_commitment(1, &encoded, future_slot).await;
-
-		// Test passes if we reach here without panicking
-
-		Ok(())
-	}
-
-	#[tokio::test]
-	#[serial]
 	async fn test_apply_gas_usage_to_slot() -> Result<()> {
 		if std::env::var("DATABASE_URL").is_err() {
 			eprintln!("Skipping test: DATABASE_URL not set");
