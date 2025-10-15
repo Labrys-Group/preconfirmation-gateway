@@ -17,7 +17,10 @@ mod fee_pricing_tests {
 	use std::sync::Arc;
 
 	async fn setup_test_pool() -> Result<PgPool> {
-		let database_url = std::env::var("DATABASE_URL").unwrap();
+		let database_url = match std::env::var("DATABASE_URL") {
+			Ok(url) => url,
+			Err(_) => return Err(anyhow::anyhow!("DATABASE_URL not set")),
+		};
 
 		Ok(PgPool::connect(&database_url).await?)
 	}
@@ -229,9 +232,6 @@ mod fee_pricing_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_calculate_fee_for_commitment_integration() -> Result<()> {
-		// Skip if no database
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let config = Config::default();
 		let database = Arc::new(DatabaseContext::new(pool));
@@ -259,7 +259,6 @@ mod fee_pricing_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_apply_gas_usage_to_slot() -> Result<()> {
-		// Skip if no database
 		if std::env::var("DATABASE_URL").is_err() {
 			eprintln!("Skipping test: DATABASE_URL not set");
 			return Ok(());
@@ -294,7 +293,6 @@ mod fee_pricing_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_get_pricing_stats() -> Result<()> {
-		// Skip if no database
 		if std::env::var("DATABASE_URL").is_err() {
 			eprintln!("Skipping test: DATABASE_URL not set");
 			return Ok(());
