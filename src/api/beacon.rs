@@ -524,4 +524,770 @@ mod tests {
 			Err(e) => println!("Integration test failed (expected in CI): {}", e),
 		}
 	}
+
+	// ========================================
+	// Tests for parse_validator_info
+	// ========================================
+
+	#[test]
+	fn test_parse_validator_info_active_ongoing() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "123456".to_string(),
+			status: "active_ongoing".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok(), "Should successfully parse active_ongoing validator");
+
+		let info = result.unwrap();
+		assert!(info.is_active, "Validator should be active");
+		assert!(!info.is_slashed, "Validator should not be slashed");
+		assert_eq!(info.validator_index, 123456);
+	}
+
+	#[test]
+	fn test_parse_validator_info_active_exiting() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "789".to_string(),
+			status: "active_exiting".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok());
+
+		let info = result.unwrap();
+		assert!(info.is_active, "Validator with active_exiting should be considered active");
+		assert!(!info.is_slashed);
+		assert_eq!(info.validator_index, 789);
+	}
+
+	#[test]
+	fn test_parse_validator_info_active_slashed() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "999".to_string(),
+			status: "active_slashed".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: true,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok());
+
+		let info = result.unwrap();
+		assert!(info.is_active, "Validator with active_slashed should be considered active");
+		assert!(info.is_slashed, "Validator should be marked as slashed");
+		assert_eq!(info.validator_index, 999);
+	}
+
+	#[test]
+	fn test_parse_validator_info_inactive_pending() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "1000".to_string(),
+			status: "pending_initialized".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok());
+
+		let info = result.unwrap();
+		assert!(!info.is_active, "Pending validator should not be active");
+		assert!(!info.is_slashed);
+		assert_eq!(info.validator_index, 1000);
+	}
+
+	#[test]
+	fn test_parse_validator_info_inactive_exited() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "2000".to_string(),
+			status: "exited_unslashed".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok());
+
+		let info = result.unwrap();
+		assert!(!info.is_active, "Exited validator should not be active");
+		assert!(!info.is_slashed);
+		assert_eq!(info.validator_index, 2000);
+	}
+
+	#[test]
+	fn test_parse_validator_info_exited_slashed() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "3000".to_string(),
+			status: "exited_slashed".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: true,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok());
+
+		let info = result.unwrap();
+		assert!(!info.is_active, "Exited slashed validator should not be active");
+		assert!(info.is_slashed, "Validator should be marked as slashed");
+		assert_eq!(info.validator_index, 3000);
+	}
+
+	#[test]
+	fn test_parse_validator_info_withdrawal_possible() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "4000".to_string(),
+			status: "withdrawal_possible".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok());
+
+		let info = result.unwrap();
+		assert!(!info.is_active, "Validator in withdrawal_possible should not be active");
+		assert!(!info.is_slashed);
+		assert_eq!(info.validator_index, 4000);
+	}
+
+	#[test]
+	fn test_parse_validator_info_invalid_index() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "not_a_number".to_string(),
+			status: "active_ongoing".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_err(), "Should fail to parse invalid validator index");
+
+		let error_msg = format!("{}", result.unwrap_err());
+		assert!(error_msg.contains("Failed to parse validator index"), "Error should mention validator index parsing");
+	}
+
+	#[test]
+	fn test_parse_validator_info_zero_index() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "0".to_string(),
+			status: "active_ongoing".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok(), "Should accept validator index 0");
+
+		let info = result.unwrap();
+		assert_eq!(info.validator_index, 0);
+	}
+
+	#[test]
+	fn test_parse_validator_info_large_index() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "18446744073709551615".to_string(), // u64::MAX
+			status: "active_ongoing".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok(), "Should accept max u64 validator index");
+
+		let info = result.unwrap();
+		assert_eq!(info.validator_index, u64::MAX);
+	}
+
+	#[test]
+	fn test_parse_validator_info_negative_index() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "-1".to_string(),
+			status: "active_ongoing".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_err(), "Should reject negative validator index");
+	}
+
+	// ========================================
+	// Tests for get_proposer_for_slot
+	// ========================================
+	// Note: These are integration-style tests that require network access
+	// In production, we would use a mock HTTP server (e.g., wiremock)
+
+	#[tokio::test]
+	#[ignore = "Requires network access to beacon API"]
+	async fn test_get_proposer_for_slot_found() {
+		let config = create_test_config();
+		let client = BeaconApiClient::new(config).unwrap();
+
+		// Use a recent slot number
+		let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+		let genesis_time = 1606824023u64; // Ethereum mainnet genesis
+		let current_slot = (current_time - genesis_time) / 12;
+
+		// This test requires actual network connectivity
+		match client.get_proposer_for_slot(current_slot).await {
+			Ok(Some(duty)) => {
+				// Verify the duty is for the correct slot
+				let duty_slot = duty.parse_slot().unwrap();
+				assert_eq!(duty_slot, current_slot);
+			}
+			Ok(None) => {
+				// This is also valid - there might not be a duty for this specific slot
+				println!("No duty found for slot {}", current_slot);
+			}
+			Err(e) => {
+				println!("Network error (expected in test environment): {}", e);
+			}
+		}
+	}
+
+	#[tokio::test]
+	#[ignore = "Requires network access to beacon API"]
+	async fn test_get_proposer_for_slot_not_found() {
+		let config = create_test_config();
+		let client = BeaconApiClient::new(config).unwrap();
+
+		// Use a future slot that's very unlikely to have a proposer duty yet
+		let far_future_slot = 99999999999u64;
+
+		match client.get_proposer_for_slot(far_future_slot).await {
+			Ok(result) => {
+				// Should either be None or fail to fetch
+				println!("Result for far future slot: {:?}", result.is_some());
+			}
+			Err(e) => {
+				// Network errors are expected in test environments
+				println!("Network error (expected): {}", e);
+			}
+		}
+	}
+
+	#[test]
+	fn test_epoch_to_slot_conversions() {
+		// Test the epoch-to-slot conversion logic used by get_proposer_for_slot
+
+		// Slot 0-31 should be in epoch 0
+		assert_eq!(BeaconTiming::slot_to_epoch(0), 0);
+		assert_eq!(BeaconTiming::slot_to_epoch(31), 0);
+
+		// Slot 32-63 should be in epoch 1
+		assert_eq!(BeaconTiming::slot_to_epoch(32), 1);
+		assert_eq!(BeaconTiming::slot_to_epoch(63), 1);
+
+		// Slot 64 should be in epoch 2
+		assert_eq!(BeaconTiming::slot_to_epoch(64), 2);
+
+		// Test large slot numbers
+		let large_slot = 10000000u64;
+		let epoch = BeaconTiming::slot_to_epoch(large_slot);
+		assert_eq!(epoch, large_slot / 32);
+	}
+
+	#[test]
+	fn test_validator_duty_slot_parsing() {
+		use crate::types::beacon::ValidatorDuty;
+
+		// Test valid slot parsing
+		let duty = ValidatorDuty {
+			validator_index: "123".to_string(),
+			pubkey: "0xabcd".to_string(),
+			slot: "12345".to_string(),
+		};
+
+		let parsed_slot = duty.parse_slot();
+		assert!(parsed_slot.is_ok());
+		assert_eq!(parsed_slot.unwrap(), 12345);
+
+		// Test invalid slot parsing
+		let invalid_duty = ValidatorDuty {
+			validator_index: "123".to_string(),
+			pubkey: "0xabcd".to_string(),
+			slot: "not_a_number".to_string(),
+		};
+
+		let result = invalid_duty.parse_slot();
+		assert!(result.is_err(), "Should fail to parse invalid slot number");
+	}
+
+	// ========================================
+	// Tests for URL building and request handling
+	// ========================================
+
+	#[test]
+	fn test_url_building_with_trailing_slash() {
+		// Test that URL building handles both with and without trailing slashes correctly
+		let base_with_slash = "https://example.com/";
+		let base_without_slash = "https://example.com";
+		let endpoint = "eth/v1/test";
+
+		// Both should produce the same result
+		let url1 = if base_with_slash.ends_with('/') {
+			format!("{}{}", base_with_slash, endpoint)
+		} else {
+			format!("{}/{}", base_with_slash, endpoint)
+		};
+
+		let url2 = if base_without_slash.ends_with('/') {
+			format!("{}{}", base_without_slash, endpoint)
+		} else {
+			format!("{}/{}", base_without_slash, endpoint)
+		};
+
+		assert_eq!(url1, "https://example.com/eth/v1/test");
+		assert_eq!(url2, "https://example.com/eth/v1/test");
+	}
+
+	#[test]
+	fn test_proposer_duties_endpoint_formatting() {
+		// Test that the endpoint is correctly formatted for different epochs
+		let epoch = 12345u64;
+		let endpoint = format!("eth/v1/validator/duties/proposer/{}", epoch);
+		assert_eq!(endpoint, "eth/v1/validator/duties/proposer/12345");
+
+		// Test with epoch 0
+		let epoch_zero = 0u64;
+		let endpoint_zero = format!("eth/v1/validator/duties/proposer/{}", epoch_zero);
+		assert_eq!(endpoint_zero, "eth/v1/validator/duties/proposer/0");
+	}
+
+	#[test]
+	fn test_validator_status_endpoint_formatting() {
+		use crate::types::delegation::BlsPublicKey;
+
+		// Create a test BLS public key
+		let pubkey = BlsPublicKey([0x42; 48]);
+		let pubkey_hex = format!("0x{}", hex::encode(pubkey.0));
+
+		let endpoint = format!("eth/v1/beacon/states/head/validators/{}", pubkey_hex);
+		assert!(endpoint.starts_with("eth/v1/beacon/states/head/validators/0x"));
+		assert!(endpoint.contains("42424242")); // Should contain the hex representation
+	}
+
+	// ========================================
+	// Edge case tests
+	// ========================================
+
+	#[test]
+	fn test_client_debug_impl() {
+		// Verify that BeaconApiClient implements Debug properly
+		let config = create_test_config();
+		let client = BeaconApiClient::new(config).unwrap();
+
+		let debug_str = format!("{:?}", client);
+		assert!(debug_str.contains("BeaconApiClient"));
+	}
+
+	#[test]
+	fn test_config_with_multiple_fallbacks() {
+		let config = BeaconApiConfig {
+			primary_endpoint: "https://primary.test".to_string(),
+			fallback_endpoints: vec![
+				"https://fallback1.test".to_string(),
+				"https://fallback2.test".to_string(),
+				"https://fallback3.test".to_string(),
+				"https://fallback4.test".to_string(),
+				"https://fallback5.test".to_string(),
+			],
+			request_timeout_secs: 5,
+			genesis_time: 1606824023,
+		};
+
+		let client = BeaconApiClient::new(config).unwrap();
+		assert_eq!(client.config.fallback_endpoints.len(), 5);
+	}
+
+	#[test]
+	fn test_config_with_large_timeout() {
+		let config = BeaconApiConfig {
+			primary_endpoint: "https://test.example.com".to_string(),
+			fallback_endpoints: vec![],
+			request_timeout_secs: 300, // 5 minutes
+			genesis_time: 1606824023,
+		};
+
+		let client = BeaconApiClient::new(config);
+		assert!(client.is_ok());
+		assert_eq!(client.unwrap().config.request_timeout_secs, 300);
+	}
+
+	#[test]
+	fn test_genesis_time_variations() {
+		// Test with different genesis times
+		let configs = vec![
+			1606824023u64, // Ethereum mainnet
+			1695902400u64, // Holesky testnet
+			0u64,          // Edge case: genesis at Unix epoch
+		];
+
+		for genesis in configs {
+			let config = BeaconApiConfig {
+				primary_endpoint: "https://test.example.com".to_string(),
+				fallback_endpoints: vec![],
+				request_timeout_secs: 10,
+				genesis_time: genesis,
+			};
+
+			let client = BeaconApiClient::new(config);
+			assert!(client.is_ok(), "Should accept genesis time {}", genesis);
+		}
+	}
+
+	// ========================================
+	// Additional edge case and error handling tests
+	// ========================================
+
+	#[test]
+	fn test_validator_duty_pubkey_parsing_with_prefix() {
+		use crate::types::beacon::ValidatorDuty;
+
+		let duty = ValidatorDuty {
+			validator_index: "100".to_string(),
+			pubkey: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+			slot: "200".to_string(),
+		};
+
+		let result = duty.parse_pubkey();
+		assert!(result.is_ok(), "Should parse pubkey with 0x prefix");
+		assert_eq!(result.unwrap().0.len(), 48);
+	}
+
+	#[test]
+	fn test_validator_duty_pubkey_parsing_without_prefix() {
+		use crate::types::beacon::ValidatorDuty;
+
+		let duty = ValidatorDuty {
+			validator_index: "100".to_string(),
+			pubkey: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+			slot: "200".to_string(),
+		};
+
+		let result = duty.parse_pubkey();
+		assert!(result.is_ok(), "Should parse pubkey without 0x prefix");
+		assert_eq!(result.unwrap().0.len(), 48);
+	}
+
+	#[test]
+	fn test_validator_duty_pubkey_parsing_invalid_length() {
+		use crate::types::beacon::ValidatorDuty;
+
+		// Too short pubkey
+		let duty = ValidatorDuty {
+			validator_index: "100".to_string(),
+			pubkey: "0x1234".to_string(),
+			slot: "200".to_string(),
+		};
+
+		let result = duty.parse_pubkey();
+		assert!(result.is_err(), "Should reject pubkey with invalid length");
+	}
+
+	#[test]
+	fn test_validator_duty_pubkey_parsing_invalid_hex() {
+		use crate::types::beacon::ValidatorDuty;
+
+		// Invalid hex characters
+		let duty = ValidatorDuty {
+			validator_index: "100".to_string(),
+			pubkey: "0xZZZZ567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+			slot: "200".to_string(),
+		};
+
+		let result = duty.parse_pubkey();
+		assert!(result.is_err(), "Should reject pubkey with invalid hex characters");
+	}
+
+	#[test]
+	fn test_validator_duty_index_parsing() {
+		use crate::types::beacon::ValidatorDuty;
+
+		let duty = ValidatorDuty {
+			validator_index: "987654".to_string(),
+			pubkey: "0xabcd".to_string(),
+			slot: "100".to_string(),
+		};
+
+		let result = duty.parse_validator_index();
+		assert!(result.is_ok());
+		assert_eq!(result.unwrap(), 987654);
+	}
+
+	#[test]
+	fn test_validator_duty_index_parsing_invalid() {
+		use crate::types::beacon::ValidatorDuty;
+
+		let duty = ValidatorDuty {
+			validator_index: "invalid_index".to_string(),
+			pubkey: "0xabcd".to_string(),
+			slot: "100".to_string(),
+		};
+
+		let result = duty.parse_validator_index();
+		assert!(result.is_err(), "Should fail to parse invalid validator index");
+	}
+
+	#[test]
+	fn test_validator_duty_index_parsing_zero() {
+		use crate::types::beacon::ValidatorDuty;
+
+		let duty = ValidatorDuty {
+			validator_index: "0".to_string(),
+			pubkey: "0xabcd".to_string(),
+			slot: "100".to_string(),
+		};
+
+		let result = duty.parse_validator_index();
+		assert!(result.is_ok());
+		assert_eq!(result.unwrap(), 0);
+	}
+
+	#[test]
+	fn test_parse_validator_info_empty_status() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "100".to_string(),
+			status: "".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok());
+		let info = result.unwrap();
+		// Empty status should be treated as inactive
+		assert!(!info.is_active);
+	}
+
+	#[test]
+	fn test_parse_validator_info_unknown_status() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "100".to_string(),
+			status: "unknown_status_type".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok());
+		let info = result.unwrap();
+		// Unknown status should be treated as inactive
+		assert!(!info.is_active);
+	}
+
+	#[test]
+	fn test_parse_validator_info_case_sensitivity() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		// Test that status matching is case-sensitive (as per spec)
+		let data = ValidatorData {
+			index: "100".to_string(),
+			status: "ACTIVE_ONGOING".to_string(), // Uppercase should not match
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok());
+		let info = result.unwrap();
+		// Uppercase should not be recognized as active
+		assert!(!info.is_active);
+	}
+
+	#[test]
+	fn test_parse_validator_info_pending_queued() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "5000".to_string(),
+			status: "pending_queued".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok());
+		let info = result.unwrap();
+		assert!(!info.is_active);
+		assert!(!info.is_slashed);
+	}
+
+	#[test]
+	fn test_parse_validator_info_withdrawal_done() {
+		use crate::types::beacon::{ValidatorData, ValidatorDetails};
+
+		let data = ValidatorData {
+			index: "6000".to_string(),
+			status: "withdrawal_done".to_string(),
+			validator: ValidatorDetails {
+				pubkey: "0xabcd".to_string(),
+				slashed: false,
+			},
+		};
+
+		let result = BeaconApiClient::parse_validator_info(&data);
+		assert!(result.is_ok());
+		let info = result.unwrap();
+		assert!(!info.is_active);
+		assert!(!info.is_slashed);
+	}
+
+	#[test]
+	fn test_proposer_duties_response_structure() {
+		use crate::types::beacon::{ProposerDutiesResponse, ValidatorDuty};
+
+		// Test that we can create and serialize/deserialize the response structure
+		let response = ProposerDutiesResponse {
+			execution_optimistic: false,
+			finalized: true,
+			data: vec![
+				ValidatorDuty {
+					validator_index: "1".to_string(),
+					pubkey: "0xabcd".to_string(),
+					slot: "100".to_string(),
+				},
+				ValidatorDuty {
+					validator_index: "2".to_string(),
+					pubkey: "0xdef0".to_string(),
+					slot: "101".to_string(),
+				},
+			],
+		};
+
+		assert_eq!(response.data.len(), 2);
+		assert!(!response.execution_optimistic);
+		assert!(response.finalized);
+	}
+
+	#[test]
+	fn test_empty_proposer_duties_response() {
+		use crate::types::beacon::ProposerDutiesResponse;
+
+		// Test handling of empty duties list
+		let response = ProposerDutiesResponse {
+			execution_optimistic: false,
+			finalized: true,
+			data: vec![],
+		};
+
+		assert_eq!(response.data.len(), 0);
+	}
+
+	#[test]
+	fn test_client_creation_preserves_endpoint_urls() {
+		// Verify that client creation preserves the exact endpoint URLs
+		let primary = "https://primary.example.com/api/v1";
+		let fallback1 = "https://fallback1.example.com";
+		let fallback2 = "https://fallback2.example.com/custom/path";
+
+		let config = BeaconApiConfig {
+			primary_endpoint: primary.to_string(),
+			fallback_endpoints: vec![fallback1.to_string(), fallback2.to_string()],
+			request_timeout_secs: 10,
+			genesis_time: 1606824023,
+		};
+
+		let client = BeaconApiClient::new(config).unwrap();
+
+		assert_eq!(client.config.primary_endpoint, primary);
+		assert_eq!(client.config.fallback_endpoints[0], fallback1);
+		assert_eq!(client.config.fallback_endpoints[1], fallback2);
+	}
+
+	#[test]
+	fn test_bls_pubkey_hex_encoding() {
+		use crate::types::delegation::BlsPublicKey;
+
+		// Test that BLS public key is correctly hex-encoded for API requests
+		let pubkey = BlsPublicKey([0xAB; 48]);
+		let hex_encoded = hex::encode(pubkey.0);
+
+		assert_eq!(hex_encoded.len(), 96); // 48 bytes = 96 hex characters
+		assert!(hex_encoded.chars().all(|c| c.is_ascii_hexdigit()));
+		assert!(hex_encoded.to_lowercase().contains("ab"));
+	}
+
+	#[test]
+	fn test_slot_number_edge_cases() {
+		// Test slot number parsing with edge cases
+		use crate::types::beacon::ValidatorDuty;
+
+		// Test slot 0
+		let duty_zero = ValidatorDuty {
+			validator_index: "0".to_string(),
+			pubkey: "0xabcd".to_string(),
+			slot: "0".to_string(),
+		};
+		assert_eq!(duty_zero.parse_slot().unwrap(), 0);
+
+		// Test very large slot number
+		let duty_large = ValidatorDuty {
+			validator_index: "0".to_string(),
+			pubkey: "0xabcd".to_string(),
+			slot: "18446744073709551615".to_string(), // u64::MAX
+		};
+		assert_eq!(duty_large.parse_slot().unwrap(), u64::MAX);
+	}
 }
