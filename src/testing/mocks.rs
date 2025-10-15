@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 
-use crate::api::beacon::BeaconApiClient;
 use crate::api::constraints::{ConstraintSubmissionResponse, ConstraintsApiClient};
 use crate::config::Config;
 use crate::types::beacon::ProposerDutiesResponse;
