@@ -20,12 +20,9 @@ mod integration_tests {
 
 	/// Setup a real database connection pool for integration tests
 	async fn setup_test_pool() -> Result<PgPool> {
-		let database_url = std::env::var("DATABASE_URL")
-			.unwrap_or_else(|_| "postgresql://postgres:postgres@localhost:5432/preconfirmation_gateway".to_string());
+		let database_url = std::env::var("DATABASE_URL")?;
 
-		let pool = PgPool::connect(&database_url).await?;
-
-		Ok(pool)
+		Ok(PgPool::connect(&database_url).await?)
 	}
 
 	/// Helper to create a properly signed delegation for testing
@@ -78,67 +75,7 @@ mod integration_tests {
 
 	#[tokio::test]
 	#[serial]
-	async fn test_commitment_request_handler_full_flow() -> Result<()> {
-		// Skip test if no database available
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
-		let pool = setup_test_pool().await?;
-		let config = create_test_config();
-
-		// Create a future slot for the commitment
-		let genesis_time = config.beacon_api.genesis_time;
-		let current_slot = BeaconTiming::current_slot_estimate(genesis_time);
-		let future_slot = current_slot + 10;
-
-		// Create test keys
-		let (proposer_sk, _proposer_pk) = create_test_bls_keypair();
-		let (_delegate_sk, delegate_pk) = create_test_bls_keypair();
-
-		// Get the gateway's BLS public key (for delegation)
-		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway)?;
-
-		// Create a properly signed delegation
-		let delegation = create_properly_signed_delegation(
-			future_slot,
-			&proposer_sk,
-			delegate_pk,
-			&config.signing.committer_address,
-		);
-
-		// Save the delegation to the database
-		crate::db::delegation_ops::save_delegations_batch(&pool, std::slice::from_ref(&delegation), &bls_manager)
-			.await?;
-
-		// Create commitment request
-		let _request =
-			TestFixtures::create_inclusion_commitment_request(future_slot, &config.signing.committer_address);
-
-		// Create RPC context
-		let database = DatabaseContext::new(pool.clone());
-		let reth_config = crate::api::reth::RethApiConfig::default();
-		let reth_client = Arc::new(crate::api::reth::RethApiClient::new(reth_config)?);
-		let database_arc = Arc::new(database.clone());
-		let config_arc = Arc::new(config.clone());
-		let fee_engine = Arc::new(crate::services::fee_pricing::FeePricingEngine::new(
-			reth_client,
-			database_arc,
-			config_arc.clone(),
-		));
-		let beacon_client = Arc::new(crate::api::beacon::BeaconApiClient::new(config.beacon_api.clone())?);
-		let _context = Arc::new(RpcContext::new(database, config, fee_engine, beacon_client));
-
-		// This test would require full integration with beacon chain mocking
-		// For now, we've validated the setup works
-
-		Ok(())
-	}
-
-	#[tokio::test]
-	#[serial]
 	async fn test_commitment_result_handler_found() -> Result<()> {
-		// Skip test if no database available
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let database = DatabaseContext::new(pool.clone());
 
@@ -175,9 +112,6 @@ mod integration_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_commitment_result_handler_not_found() -> Result<()> {
-		// Skip test if no database available
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let database = DatabaseContext::new(pool.clone());
 
@@ -211,9 +145,6 @@ mod integration_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_fee_handler_with_valid_request() -> Result<()> {
-		// Skip test if no database available
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let _pool = setup_test_pool().await?;
 		let config = create_test_config();
 
@@ -281,9 +212,6 @@ mod integration_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_duplicate_commitment_detection() -> Result<()> {
-		// Skip test if no database available
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let database = DatabaseContext::new(pool.clone());
 
@@ -419,9 +347,6 @@ mod integration_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_concurrent_commitment_requests() -> Result<()> {
-		// Skip test if no database available
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let database = DatabaseContext::new(pool.clone());
 

@@ -9,8 +9,7 @@ mod slot_congestion_db_tests {
 	use std::time::SystemTime;
 
 	async fn setup_test_pool() -> Result<PgPool> {
-		let database_url = std::env::var("DATABASE_URL")
-			.unwrap_or_else(|_| "postgresql://postgres:postgres@localhost:5432/preconfirmation_gateway".to_string());
+		let database_url = std::env::var("DATABASE_URL")?;
 
 		Ok(PgPool::connect(&database_url).await?)
 	}
@@ -18,8 +17,6 @@ mod slot_congestion_db_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_get_or_create_slot_congestion() -> Result<()> {
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let slot = 888777666; // Unique slot
 		let base_gas_price = 1_000_000_000;
@@ -46,8 +43,6 @@ mod slot_congestion_db_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_update_slot_congestion_gas_usage() -> Result<()> {
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let slot = 777666555; // Unique slot
 		let base_gas_price = 1_000_000_000;
@@ -78,8 +73,6 @@ mod slot_congestion_db_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_get_slot_congestion_existing() -> Result<()> {
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let slot = 666555444; // Unique slot
 		let base_gas_price = 1_000_000_000;
@@ -104,8 +97,6 @@ mod slot_congestion_db_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_get_slot_congestion_not_found() -> Result<()> {
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let non_existent_slot = 999999999999; // Very unlikely to exist
 
@@ -120,8 +111,6 @@ mod slot_congestion_db_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_get_congestion_stats() -> Result<()> {
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 
 		// Get stats (should not error even if empty)
@@ -138,8 +127,6 @@ mod slot_congestion_db_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_get_congestion_stats_with_data() -> Result<()> {
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let genesis_time = 1606824023;
 
@@ -168,8 +155,6 @@ mod slot_congestion_db_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_concurrent_gas_usage_updates() -> Result<()> {
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let slot = 444333222; // Unique slot
 		let base_gas_price = 1_000_000_000;
@@ -206,8 +191,6 @@ mod slot_congestion_db_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_update_nonexistent_slot_error() -> Result<()> {
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let non_existent_slot = 111222333444; // Very unlikely to exist
 
@@ -284,8 +267,6 @@ mod slot_congestion_db_tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_slot_congestion_with_realistic_gas_prices() -> Result<()> {
-		let _ = std::env::var("DATABASE_URL").unwrap();
-
 		let pool = setup_test_pool().await?;
 		let slot = 333222111; // Unique slot
 
