@@ -162,7 +162,8 @@ mod service_tests {
 		let db_context = db::DatabaseContext::new_for_testing();
 
 		let beacon_config = config.beacon_api.clone();
-		let beacon_client = api::beacon::BeaconApiClient::with_default_client(beacon_config).expect("Failed to create beacon client");
+		let beacon_client =
+			api::beacon::BeaconApiClient::with_default_client(beacon_config).expect("Failed to create beacon client");
 
 		let constraints_config = config.constraints_api.clone();
 		let constraints_client = api::constraints::ConstraintsApiClient::new(constraints_config)
@@ -233,7 +234,8 @@ mod rpc_context_tests {
 		);
 
 		let beacon_config = config.beacon_api.clone();
-		let beacon_client = api::beacon::BeaconApiClient::with_default_client(beacon_config).expect("Failed to create beacon client");
+		let beacon_client =
+			api::beacon::BeaconApiClient::with_default_client(beacon_config).expect("Failed to create beacon client");
 
 		let rpc_context = types::RpcContext::new(db_context, config, Arc::new(fee_engine), Arc::new(beacon_client));
 
@@ -314,8 +316,8 @@ mod integration_tests {
 		);
 
 		// Test beacon client creation
-		let beacon_client =
-			api::beacon::BeaconApiClient::with_default_client(config.beacon_api.clone()).expect("Failed to create beacon client");
+		let beacon_client = api::beacon::BeaconApiClient::with_default_client(config.beacon_api.clone())
+			.expect("Failed to create beacon client");
 
 		// Test RPC context creation
 		let rpc_context =

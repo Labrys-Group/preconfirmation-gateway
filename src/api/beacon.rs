@@ -62,7 +62,8 @@ impl HttpClient for ReqwestClient {
 			.with_context(|| format!("Failed to send request to {}", url))?;
 
 		let status = response.status().as_u16();
-		let body = response.bytes().await.with_context(|| format!("Failed to read response body from {}", url))?.to_vec();
+		let body =
+			response.bytes().await.with_context(|| format!("Failed to read response body from {}", url))?.to_vec();
 
 		Ok(HttpResponse { status, body })
 	}
@@ -320,7 +321,8 @@ impl<H: HttpClient> BeaconApiClient<H> {
 
 		debug!(url = %url, "Making beacon API request");
 
-		let response = self.http_client.get(&url).await.with_context(|| format!("Failed to send request to {}", url))?;
+		let response =
+			self.http_client.get(&url).await.with_context(|| format!("Failed to send request to {}", url))?;
 
 		if response.status != 200 {
 			let error_text = String::from_utf8(response.body.clone()).unwrap_or_else(|_| "Unknown error".to_string());
@@ -830,9 +832,10 @@ mod tests {
 		// Mock empty proposer duties response
 		let empty_duties = ProposerDutiesResponse { execution_optimistic: false, finalized: true, data: vec![] };
 
-		mock_client.expect_get().times(1).returning(move |_url| {
-			Ok(HttpResponse { status: 200, body: serde_json::to_vec(&empty_duties).unwrap() })
-		});
+		mock_client
+			.expect_get()
+			.times(1)
+			.returning(move |_url| Ok(HttpResponse { status: 200, body: serde_json::to_vec(&empty_duties).unwrap() }));
 
 		let config = create_test_config();
 		let client = BeaconApiClient::new(config, mock_client).unwrap();
@@ -856,7 +859,9 @@ mod tests {
 			finalized: true,
 			data: vec![ValidatorDuty {
 				validator_index: "100".to_string(),
-				pubkey: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+				pubkey:
+					"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+						.to_string(),
 				slot: "12346".to_string(), // Different slot
 			}],
 		};
@@ -1436,9 +1441,10 @@ mod tests {
 	async fn test_http_404_error() {
 		let mut mock_client = MockHttpClient::new();
 
-		mock_client.expect_get().times(1).returning(|_url| {
-			Ok(HttpResponse { status: 404, body: b"Not Found".to_vec() })
-		});
+		mock_client
+			.expect_get()
+			.times(1)
+			.returning(|_url| Ok(HttpResponse { status: 404, body: b"Not Found".to_vec() }));
 
 		let config = create_test_config_no_fallbacks();
 		let client = BeaconApiClient::new(config, mock_client).unwrap();
@@ -1454,9 +1460,10 @@ mod tests {
 	async fn test_http_500_error() {
 		let mut mock_client = MockHttpClient::new();
 
-		mock_client.expect_get().times(1).returning(|_url| {
-			Ok(HttpResponse { status: 500, body: b"Internal Server Error".to_vec() })
-		});
+		mock_client
+			.expect_get()
+			.times(1)
+			.returning(|_url| Ok(HttpResponse { status: 500, body: b"Internal Server Error".to_vec() }));
 
 		let config = create_test_config_no_fallbacks();
 		let client = BeaconApiClient::new(config, mock_client).unwrap();
@@ -1472,10 +1479,7 @@ mod tests {
 	async fn test_network_timeout_simulation() {
 		let mut mock_client = MockHttpClient::new();
 
-		mock_client
-			.expect_get()
-			.times(1)
-			.returning(|_url| Err(anyhow::anyhow!("Request timeout after 30 seconds")));
+		mock_client.expect_get().times(1).returning(|_url| Err(anyhow::anyhow!("Request timeout after 30 seconds")));
 
 		let config = create_test_config_no_fallbacks();
 		let client = BeaconApiClient::new(config, mock_client).unwrap();
@@ -1495,9 +1499,10 @@ mod tests {
 	async fn test_invalid_json_response() {
 		let mut mock_client = MockHttpClient::new();
 
-		mock_client.expect_get().times(1).returning(|_url| {
-			Ok(HttpResponse { status: 200, body: b"Invalid JSON {{{".to_vec() })
-		});
+		mock_client
+			.expect_get()
+			.times(1)
+			.returning(|_url| Ok(HttpResponse { status: 200, body: b"Invalid JSON {{{".to_vec() }));
 
 		let config = create_test_config_no_fallbacks();
 		let client = BeaconApiClient::new(config, mock_client).unwrap();
@@ -1526,9 +1531,10 @@ mod tests {
 	async fn test_http_403_forbidden() {
 		let mut mock_client = MockHttpClient::new();
 
-		mock_client.expect_get().times(1).returning(|_url| {
-			Ok(HttpResponse { status: 403, body: b"Forbidden - Rate limit exceeded".to_vec() })
-		});
+		mock_client
+			.expect_get()
+			.times(1)
+			.returning(|_url| Ok(HttpResponse { status: 403, body: b"Forbidden - Rate limit exceeded".to_vec() }));
 
 		let config = create_test_config_no_fallbacks();
 		let client = BeaconApiClient::new(config, mock_client).unwrap();

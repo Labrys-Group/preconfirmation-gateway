@@ -68,7 +68,8 @@ impl TestHelpers {
 		));
 
 		// Create beacon API client for testing
-		let beacon_client = Arc::new(crate::api::beacon::BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
+		let beacon_client =
+			Arc::new(crate::api::beacon::BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 
 		Arc::new(RpcContext::new(database, (*config).clone(), fee_engine, beacon_client))
 	}
