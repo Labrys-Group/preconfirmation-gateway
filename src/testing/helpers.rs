@@ -11,11 +11,11 @@ use crate::types::{CommitmentRequest, RpcContext, SignedCommitment};
 /// Test helper utilities
 pub struct TestHelpers;
 
+#[cfg(not(tarpaulin_include))]
 impl TestHelpers {
 	/// Creates a TestEnvironment populated with mock services for testing.
 	///
-	/// The returned TestEnvironment contains an Arc-wrapped test Config and mock
-	/// implementations for the database, constraints API client, and beacon API
+	/// The returned TestEnvironment contains an Arc-wrapped test Config and mock implementations for the database, constraints API client, and beacon API
 	/// client, suitable for use in unit and integration tests.
 	///
 	/// # Examples
@@ -374,6 +374,7 @@ pub struct DatabaseStressTestResults {
 	pub operations_per_task: usize,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl DatabaseStressTestResults {
 	/// Returns the total number of operations executed across all tasks.
 	///
@@ -429,6 +430,7 @@ pub struct LoadTestResults {
 	pub actual_tps: f64,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl LoadTestResults {
 	/// Calculates the fraction of requests that succeeded.
 	///

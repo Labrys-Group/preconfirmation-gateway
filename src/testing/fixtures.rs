@@ -9,6 +9,7 @@ use std::collections::HashMap;
 /// Test fixtures for various scenarios
 pub struct TestFixtures;
 
+#[cfg(not(tarpaulin_include))]
 impl TestFixtures {
 	/// Constructs a CommitmentRequest containing an inclusion payload for the given slot and committer address.
 	///
@@ -260,6 +261,7 @@ pub struct PerformanceTestConfig {
 	pub expected_tps: f64, // Transactions per second
 }
 
+#[cfg(not(tarpaulin_include))]
 impl PerformanceTestConfig {
 	/// Provides three preset performance test configurations for common load scenarios.
 	///
@@ -307,6 +309,7 @@ impl PerformanceTestConfig {
 /// Timing test helpers
 pub struct TimingTestHelpers;
 
+#[cfg(not(tarpaulin_include))]
 impl TimingTestHelpers {
 	/// Produces a set of slots around the current slot to exercise submission timing windows.
 	///

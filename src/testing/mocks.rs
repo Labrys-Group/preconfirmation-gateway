@@ -11,6 +11,7 @@ use crate::types::beacon::ProposerDutiesResponse;
 use crate::types::delegation::{SignedConstraints, SignedDelegation};
 
 /// Mock beacon API client for testing
+#[cfg(not(tarpaulin_include))]
 pub struct MockBeaconApiClient {
 	/// Predefined responses for proposer duties by epoch
 	pub proposer_duties: Arc<RwLock<HashMap<u64, ProposerDutiesResponse>>>,
@@ -19,7 +20,7 @@ pub struct MockBeaconApiClient {
 	/// Whether to simulate failures
 	pub should_fail: bool,
 }
-
+#[cfg(not(tarpaulin_include))]
 impl Default for MockBeaconApiClient {
 	/// Create a default instance of this type.
 	///
@@ -29,7 +30,7 @@ impl Default for MockBeaconApiClient {
 		Self::new()
 	}
 }
-
+#[cfg(not(tarpaulin_include))]
 impl MockBeaconApiClient {
 	/// Creates a new in-memory MockBeaconApiClient with default test settings.
 	///
@@ -77,7 +78,7 @@ impl MockBeaconApiClient {
 		self.should_fail = should_fail;
 	}
 }
-
+#[cfg(not(tarpaulin_include))]
 impl BeaconApiClient {
 	/// Constructs a MockBeaconApiClient preconfigured for testing.
 	///
@@ -92,6 +93,7 @@ impl BeaconApiClient {
 }
 
 /// Mock constraints API client for testing
+#[cfg(not(tarpaulin_include))]
 pub struct MockConstraintsApiClient {
 	/// Stored delegations by slot
 	pub delegations: Arc<RwLock<HashMap<u64, Vec<SignedDelegation>>>>,
@@ -105,6 +107,7 @@ pub struct MockConstraintsApiClient {
 	pub submission_responses: Arc<RwLock<Vec<ConstraintSubmissionResponse>>>,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl Default for MockConstraintsApiClient {
 	/// Create a default instance of this type.
 	///
@@ -114,7 +117,7 @@ impl Default for MockConstraintsApiClient {
 		Self::new()
 	}
 }
-
+#[cfg(not(tarpaulin_include))]
 impl MockConstraintsApiClient {
 	/// Create a new MockConstraintsApiClient initialized for tests.
 	///
@@ -259,7 +262,7 @@ impl MockConstraintsApiClient {
 		Ok(delegations.get(&slot).cloned().unwrap_or_default())
 	}
 }
-
+#[cfg(not(tarpaulin_include))]
 impl ConstraintsApiClient {
 	/// Create a mock Constraints API client for testing.
 	///
@@ -273,6 +276,7 @@ impl ConstraintsApiClient {
 }
 
 /// Mock database for testing
+#[cfg(not(tarpaulin_include))]
 pub struct MockDatabase {
 	/// In-memory storage for testing
 	pub commitments: Arc<RwLock<HashMap<String, crate::types::SignedCommitment>>>,
@@ -282,7 +286,7 @@ pub struct MockDatabase {
 	/// Simulate database failures
 	pub should_fail: bool,
 }
-
+#[cfg(not(tarpaulin_include))]
 impl Default for MockDatabase {
 	/// Create a default instance of this type.
 	///
@@ -292,7 +296,7 @@ impl Default for MockDatabase {
 		Self::new()
 	}
 }
-
+#[cfg(not(tarpaulin_include))]
 impl MockDatabase {
 	/// Create a new in-memory MockDatabase with empty storage, a 10ms simulated latency, and failure mode disabled.
 	///
@@ -459,6 +463,7 @@ impl MockDatabase {
 ///
 /// # Examples
 ///
+#[cfg(not(tarpaulin_include))]
 pub fn create_test_config() -> Config {
 	Config {
 		server: crate::config::ServerConfig {
@@ -504,6 +509,7 @@ pub fn create_test_config() -> Config {
 ///
 /// # Examples
 ///
+#[cfg(not(tarpaulin_include))]
 pub fn create_test_bls_keypair() -> (blst::min_pk::SecretKey, crate::types::delegation::BlsPublicKey) {
 	use blst::min_pk::SecretKey;
 	let mut rng = rand::thread_rng();
@@ -521,6 +527,7 @@ pub fn create_test_bls_keypair() -> (blst::min_pk::SecretKey, crate::types::dele
 ///
 /// # Examples
 ///
+#[cfg(not(tarpaulin_include))]
 pub fn create_test_ecdsa_keypair() -> (secp256k1::SecretKey, String) {
 	let secret_key = secp256k1::SecretKey::from_slice(&[2u8; 32]).unwrap();
 	let public_key = secp256k1::PublicKey::from_secret_key(&secp256k1::Secp256k1::new(), &secret_key);

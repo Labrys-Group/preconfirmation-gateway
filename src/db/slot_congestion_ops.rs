@@ -449,6 +449,9 @@ pub async fn get_congestion_stats(pool: &PgPool) -> Result<CongestionStats> {
 }
 
 #[cfg(test)]
+mod slot_congestion_tests;
+
+#[cfg(test)]
 mod tests {
 	use super::*;
 	use sqlx::PgPool;

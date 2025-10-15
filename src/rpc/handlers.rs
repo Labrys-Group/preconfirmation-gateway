@@ -405,6 +405,9 @@ pub async fn fee_handler(
 }
 
 #[cfg(test)]
+mod handlers_integration_tests;
+
+#[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::config::Config;
