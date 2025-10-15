@@ -79,7 +79,7 @@ impl MockBeaconApiClient {
 	}
 }
 #[cfg(not(tarpaulin_include))]
-impl BeaconApiClient {
+impl<H: crate::api::beacon::HttpClient> crate::api::beacon::BeaconApiClient<H> {
 	/// Constructs a MockBeaconApiClient preconfigured for testing.
 	///
 	/// The returned mock simulates the Beacon API and exposes controls for network delay,

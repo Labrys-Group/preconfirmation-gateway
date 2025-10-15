@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.99"
+async-trait = "0.1.89"
 blst = "0.3.12"
 config = "0.15.15"
 deadpool-postgres = "0.14.1"

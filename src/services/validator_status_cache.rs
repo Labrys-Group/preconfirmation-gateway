@@ -18,7 +18,7 @@ use crate::types::delegation::BlsPublicKey;
 #[derive(Debug, Clone)]
 pub struct ValidatorStatusCache {
 	cache: Cache<BlsPublicKey, ValidatorInfo>,
-	beacon_client: Arc<BeaconApiClient>,
+	beacon_client: Arc<BeaconApiClient<crate::api::beacon::ReqwestClient>>,
 }
 
 impl ValidatorStatusCache {
@@ -31,7 +31,7 @@ impl ValidatorStatusCache {
 	///
 	/// # Examples
 	///
-	pub fn new(ttl: Duration, beacon_client: Arc<BeaconApiClient>) -> Self {
+	pub fn new(ttl: Duration, beacon_client: Arc<BeaconApiClient<crate::api::beacon::ReqwestClient>>) -> Self {
 		let cache = Cache::builder().time_to_live(ttl).build();
 
 		Self { cache, beacon_client }
@@ -108,7 +108,7 @@ mod tests {
 	use super::*;
 	use crate::config::BeaconApiConfig;
 
-	fn create_test_beacon_client() -> Arc<BeaconApiClient> {
+	fn create_test_beacon_client() -> Arc<BeaconApiClient<crate::api::beacon::ReqwestClient>> {
 		let config = BeaconApiConfig {
 			primary_endpoint: "https://test-beacon.example.com".to_string(),
 			fallback_endpoints: vec![],
@@ -116,7 +116,7 @@ mod tests {
 			genesis_time: 1606824023,
 		};
 
-		Arc::new(BeaconApiClient::new(config).unwrap())
+		Arc::new(BeaconApiClient::with_default_client(config).unwrap())
 	}
 
 	#[tokio::test]

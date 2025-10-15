@@ -5,8 +5,10 @@
 //! beacon node endpoint.
 
 use anyhow::{Context, Result};
-use reqwest::{Client, RequestBuilder};
+use async_trait::async_trait;
+use reqwest::Client;
 use serde::Deserialize;
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, warn};
 
@@ -16,30 +18,91 @@ use crate::types::beacon::{
 };
 use crate::types::delegation::BlsPublicKey;
 
-/// Beacon API client for retrieving chain state and proposer information
+/// HTTP response containing status code and body
 #[derive(Debug, Clone)]
-pub struct BeaconApiClient {
+pub struct HttpResponse {
+	pub status: u16,
+	pub body: Vec<u8>,
+}
+
+/// Trait for making HTTP requests (mockable for testing)
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait HttpClient: Send + Sync {
+	/// Perform an HTTP GET request to the given URL
+	async fn get(&self, url: &str) -> Result<HttpResponse>;
+}
+
+/// Production HTTP client implementation using reqwest
+pub struct ReqwestClient {
 	client: Client,
+}
+
+impl ReqwestClient {
+	/// Create a new ReqwestClient with the given timeout
+	pub fn new(timeout_secs: u64) -> Result<Self> {
+		let client = Client::builder()
+			.timeout(Duration::from_secs(timeout_secs))
+			.build()
+			.context("Failed to create HTTP client")?;
+		Ok(Self { client })
+	}
+}
+
+#[async_trait]
+impl HttpClient for ReqwestClient {
+	async fn get(&self, url: &str) -> Result<HttpResponse> {
+		let response = self
+			.client
+			.get(url)
+			.header("Content-Type", "application/json")
+			.header("User-Agent", "preconfirmation-gateway/0.1.0")
+			.send()
+			.await
+			.with_context(|| format!("Failed to send request to {}", url))?;
+
+		let status = response.status().as_u16();
+		let body = response.bytes().await.with_context(|| format!("Failed to read response body from {}", url))?.to_vec();
+
+		Ok(HttpResponse { status, body })
+	}
+}
+
+/// Beacon API client for retrieving chain state and proposer information
+pub struct BeaconApiClient<H: HttpClient> {
+	http_client: Arc<H>,
 	config: BeaconApiConfig,
 }
 
-impl BeaconApiClient {
-	/// Creates a new BeaconApiClient configured with the provided BeaconApiConfig.
+// Manual Debug implementation since H might not implement Debug
+impl<H: HttpClient> std::fmt::Debug for BeaconApiClient<H> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("BeaconApiClient").field("config", &self.config).finish()
+	}
+}
+
+// Manual Clone implementation since H might not implement Clone
+impl<H: HttpClient> Clone for BeaconApiClient<H> {
+	fn clone(&self) -> Self {
+		Self { http_client: Arc::clone(&self.http_client), config: self.config.clone() }
+	}
+}
+
+impl<H: HttpClient> BeaconApiClient<H> {
+	/// Creates a new BeaconApiClient configured with the provided BeaconApiConfig and HTTP client.
 	///
-	/// The created client uses the config's `request_timeout_secs` to set the HTTP client timeout.
-	/// Returns an error if the underlying HTTP client cannot be constructed or if the configuration
-	/// is invalid (e.g., empty primary endpoint or zero timeout).
+	/// The created client uses the provided HTTP client for making requests.
+	/// Returns an error if the configuration is invalid (e.g., empty primary endpoint or zero timeout).
 	///
 	/// # Errors
 	///
 	/// Returns an error if:
 	/// - The primary endpoint is empty
 	/// - The request timeout is zero (would cause immediate timeouts)
-	/// - The underlying HTTP client cannot be constructed
 	///
 	/// # Examples
 	///
-	pub fn new(config: BeaconApiConfig) -> Result<Self> {
+	pub fn new(config: BeaconApiConfig, http_client: H) -> Result<Self> {
 		// Validate configuration
 		if config.primary_endpoint.trim().is_empty() {
 			anyhow::bail!("Primary endpoint cannot be empty");
@@ -49,12 +112,7 @@ impl BeaconApiClient {
 			anyhow::bail!("Request timeout must be greater than zero");
 		}
 
-		let client = Client::builder()
-			.timeout(Duration::from_secs(config.request_timeout_secs))
-			.build()
-			.context("Failed to create HTTP client")?;
-
-		Ok(Self { client, config })
+		Ok(Self { http_client: Arc::new(http_client), config })
 	}
 
 	/// Fetches proposer duties for the given epoch from the configured beacon endpoints.
@@ -262,36 +320,39 @@ impl BeaconApiClient {
 
 		debug!(url = %url, "Making beacon API request");
 
-		let request = self.client.get(&url);
-		let response =
-			self.add_headers(request).send().await.with_context(|| format!("Failed to send request to {}", url))?;
+		let response = self.http_client.get(&url).await.with_context(|| format!("Failed to send request to {}", url))?;
 
-		if !response.status().is_success() {
-			let status = response.status();
-			let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-			anyhow::bail!("Beacon API request failed with status {}: {}", status, error_text);
+		if response.status != 200 {
+			let error_text = String::from_utf8(response.body.clone()).unwrap_or_else(|_| "Unknown error".to_string());
+			anyhow::bail!("Beacon API request failed with status {}: {}", response.status, error_text);
 		}
 
-		let result: T = response.json().await.with_context(|| format!("Failed to parse response from {}", url))?;
+		let result: T =
+			serde_json::from_slice(&response.body).with_context(|| format!("Failed to parse response from {}", url))?;
 
 		Ok(result)
 	}
+}
 
-	/// Attach required HTTP headers to a request builder.
+// Convenience constructor for production use with ReqwestClient
+impl BeaconApiClient<ReqwestClient> {
+	/// Creates a new BeaconApiClient with the default ReqwestClient HTTP client.
 	///
-	/// Adds the following headers:
-	/// - `Content-Type: application/json`
-	/// - `User-Agent: preconfirmation-gateway/0.1.0`
+	/// This is the standard constructor for production use. For testing, use
+	/// `BeaconApiClient::with_default_client()` with a mock HTTP client.
 	///
-	/// # Parameters
+	/// # Errors
 	///
-	/// - `request`: The `reqwest::RequestBuilder` to which headers will be applied.
+	/// Returns an error if:
+	/// - The primary endpoint is empty
+	/// - The request timeout is zero
+	/// - The underlying HTTP client cannot be constructed
 	///
-	/// # Returns
+	/// # Examples
 	///
-	/// The modified `RequestBuilder` with the headers set.
-	fn add_headers(&self, request: RequestBuilder) -> RequestBuilder {
-		request.header("Content-Type", "application/json").header("User-Agent", "preconfirmation-gateway/0.1.0")
+	pub fn with_default_client(config: BeaconApiConfig) -> Result<Self> {
+		let http_client = ReqwestClient::new(config.request_timeout_secs)?;
+		Self::new(config, http_client)
 	}
 }
 
@@ -338,7 +399,7 @@ mod tests {
 	#[test]
 	fn test_client_creation() {
 		let config = create_test_config();
-		let client = BeaconApiClient::new(config);
+		let client = BeaconApiClient::with_default_client(config);
 		assert!(client.is_ok(), "Should be able to create beacon API client");
 
 		let client = client.unwrap();
@@ -349,7 +410,7 @@ mod tests {
 	#[test]
 	fn test_client_creation_with_short_timeout() {
 		let config = create_test_config_with_short_timeout();
-		let client = BeaconApiClient::new(config);
+		let client = BeaconApiClient::with_default_client(config);
 		assert!(client.is_ok(), "Should create client even with short timeout");
 
 		let client = client.unwrap();
@@ -359,7 +420,7 @@ mod tests {
 	#[test]
 	fn test_client_creation_with_no_fallbacks() {
 		let config = create_test_config_no_fallbacks();
-		let client = BeaconApiClient::new(config);
+		let client = BeaconApiClient::with_default_client(config);
 		assert!(client.is_ok(), "Should create client even with no fallbacks");
 
 		let client = client.unwrap();
@@ -369,7 +430,7 @@ mod tests {
 	#[test]
 	fn test_epoch_calculation() {
 		let config = create_test_config();
-		let _client = BeaconApiClient::new(config).unwrap();
+		let _client = BeaconApiClient::with_default_client(config).unwrap();
 
 		// Test beacon timing utilities that the client uses
 		let slot = 12345u64;
@@ -381,26 +442,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_add_headers() {
-		let config = create_test_config();
-		let client = BeaconApiClient::new(config).unwrap();
-
-		// Create a mock request builder to test header addition
-		let http_client = reqwest::Client::new();
-		let request = http_client.get("https://example.com");
-
-		let request_with_headers = client.add_headers(request);
-
-		// We can't easily inspect the headers without sending the request,
-		// but we can verify the method doesn't panic and returns a valid RequestBuilder
-		// This test ensures the add_headers method works without errors
-		let _final_request = request_with_headers;
-	}
-
-	#[test]
 	fn test_make_request_url_building() {
 		let config = create_test_config();
-		let _client = BeaconApiClient::new(config).unwrap();
+		let _client = BeaconApiClient::with_default_client(config).unwrap();
 
 		// Test URL building logic
 		let base_with_slash = "https://example.com/";
@@ -422,20 +466,20 @@ mod tests {
 
 		// Test with empty primary endpoint
 		config.primary_endpoint = "".to_string();
-		let client = BeaconApiClient::new(config.clone());
+		let client = BeaconApiClient::with_default_client(config.clone());
 		assert!(client.is_err(), "Should reject empty primary endpoint");
 		let error_msg = format!("{}", client.unwrap_err());
 		assert!(error_msg.contains("Primary endpoint cannot be empty"), "Error should mention empty endpoint");
 
 		// Test with whitespace-only primary endpoint
 		config.primary_endpoint = "   ".to_string();
-		let client = BeaconApiClient::new(config.clone());
+		let client = BeaconApiClient::with_default_client(config.clone());
 		assert!(client.is_err(), "Should reject whitespace-only primary endpoint");
 
 		// Test with zero timeout
 		config.primary_endpoint = "https://valid-endpoint.com".to_string();
 		config.request_timeout_secs = 0;
-		let client = BeaconApiClient::new(config);
+		let client = BeaconApiClient::with_default_client(config);
 		assert!(client.is_err(), "Should reject zero timeout");
 		let error_msg = format!("{}", client.unwrap_err());
 		assert!(error_msg.contains("Request timeout must be greater than zero"), "Error should mention zero timeout");
@@ -451,7 +495,7 @@ mod tests {
 			genesis_time: 0,            // Any genesis time should be fine
 		};
 
-		let client = BeaconApiClient::new(config);
+		let client = BeaconApiClient::with_default_client(config);
 		assert!(client.is_ok(), "Should accept minimal valid configuration");
 
 		let client = client.unwrap();
@@ -472,7 +516,7 @@ mod tests {
 			genesis_time: 1606824023,
 		};
 
-		let client = BeaconApiClient::new(config).unwrap();
+		let client = BeaconApiClient::with_default_client(config).unwrap();
 
 		// Verify fallback endpoints are preserved in order
 		assert_eq!(client.config.fallback_endpoints.len(), 3);
@@ -484,7 +528,7 @@ mod tests {
 	#[test]
 	fn test_client_clone() {
 		let config = create_test_config();
-		let client = BeaconApiClient::new(config).unwrap();
+		let client = BeaconApiClient::with_default_client(config).unwrap();
 
 		// Test that client can be cloned
 		let cloned_client = client.clone();
@@ -509,7 +553,7 @@ mod tests {
 			genesis_time: 1606824023,
 		};
 
-		let client = BeaconApiClient::new(config).unwrap();
+		let client = BeaconApiClient::with_default_client(config).unwrap();
 
 		// Test with a recent epoch
 		let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
@@ -537,12 +581,14 @@ mod tests {
 			index: "123456".to_string(),
 			status: "active_ongoing".to_string(),
 			validator: ValidatorDetails {
-				pubkey: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+				pubkey:
+					"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+						.to_string(),
 				slashed: false,
 			},
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok(), "Should successfully parse active_ongoing validator");
 
 		let info = result.unwrap();
@@ -558,13 +604,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "789".to_string(),
 			status: "active_exiting".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok());
 
 		let info = result.unwrap();
@@ -580,13 +623,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "999".to_string(),
 			status: "active_slashed".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: true,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: true },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok());
 
 		let info = result.unwrap();
@@ -602,13 +642,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "1000".to_string(),
 			status: "pending_initialized".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok());
 
 		let info = result.unwrap();
@@ -624,13 +661,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "2000".to_string(),
 			status: "exited_unslashed".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok());
 
 		let info = result.unwrap();
@@ -646,13 +680,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "3000".to_string(),
 			status: "exited_slashed".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: true,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: true },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok());
 
 		let info = result.unwrap();
@@ -668,13 +699,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "4000".to_string(),
 			status: "withdrawal_possible".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok());
 
 		let info = result.unwrap();
@@ -690,13 +718,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "not_a_number".to_string(),
 			status: "active_ongoing".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_err(), "Should fail to parse invalid validator index");
 
 		let error_msg = format!("{}", result.unwrap_err());
@@ -710,13 +735,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "0".to_string(),
 			status: "active_ongoing".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok(), "Should accept validator index 0");
 
 		let info = result.unwrap();
@@ -730,13 +752,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "18446744073709551615".to_string(), // u64::MAX
 			status: "active_ongoing".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok(), "Should accept max u64 validator index");
 
 		let info = result.unwrap();
@@ -750,69 +769,110 @@ mod tests {
 		let data = ValidatorData {
 			index: "-1".to_string(),
 			status: "active_ongoing".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_err(), "Should reject negative validator index");
 	}
 
 	// ========================================
-	// Tests for get_proposer_for_slot
+	// Tests for get_proposer_for_slot with mocked HTTP
 	// ========================================
-	// Note: These are integration-style tests that require network access
-	// In production, we would use a mock HTTP server (e.g., wiremock)
 
 	#[tokio::test]
-	#[ignore = "Requires network access to beacon API"]
 	async fn test_get_proposer_for_slot_found() {
+		use crate::types::beacon::ValidatorDuty;
+
+		let mut mock_client = MockHttpClient::new();
+
+		// Mock the HTTP response for proposer duties
+		let duties_response = ProposerDutiesResponse {
+			execution_optimistic: false,
+			finalized: true,
+			data: vec![
+				ValidatorDuty {
+					validator_index: "100".to_string(),
+					pubkey: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+					slot: "12345".to_string(),
+				},
+				ValidatorDuty {
+					validator_index: "101".to_string(),
+					pubkey: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12345678".to_string(),
+					slot: "12346".to_string(),
+				},
+			],
+		};
+
+		mock_client.expect_get().times(1).returning(move |url| {
+			assert!(url.contains("eth/v1/validator/duties/proposer/385")); // slot 12345 is in epoch 385
+			Ok(HttpResponse { status: 200, body: serde_json::to_vec(&duties_response).unwrap() })
+		});
+
 		let config = create_test_config();
-		let client = BeaconApiClient::new(config).unwrap();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
 
-		// Use a recent slot number
-		let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-		let genesis_time = 1606824023u64; // Ethereum mainnet genesis
-		let current_slot = (current_time - genesis_time) / 12;
+		let result = client.get_proposer_for_slot(12345).await;
+		assert!(result.is_ok(), "Should successfully get proposer for slot");
 
-		// This test requires actual network connectivity
-		match client.get_proposer_for_slot(current_slot).await {
-			Ok(Some(duty)) => {
-				// Verify the duty is for the correct slot
-				let duty_slot = duty.parse_slot().unwrap();
-				assert_eq!(duty_slot, current_slot);
-			}
-			Ok(None) => {
-				// This is also valid - there might not be a duty for this specific slot
-				println!("No duty found for slot {}", current_slot);
-			}
-			Err(e) => {
-				println!("Network error (expected in test environment): {}", e);
-			}
-		}
+		let duty = result.unwrap();
+		assert!(duty.is_some(), "Should find duty for the slot");
+
+		let duty = duty.unwrap();
+		assert_eq!(duty.parse_slot().unwrap(), 12345);
+		assert_eq!(duty.validator_index, "100");
 	}
 
 	#[tokio::test]
-	#[ignore = "Requires network access to beacon API"]
 	async fn test_get_proposer_for_slot_not_found() {
+		let mut mock_client = MockHttpClient::new();
+
+		// Mock empty proposer duties response
+		let empty_duties = ProposerDutiesResponse { execution_optimistic: false, finalized: true, data: vec![] };
+
+		mock_client.expect_get().times(1).returning(move |_url| {
+			Ok(HttpResponse { status: 200, body: serde_json::to_vec(&empty_duties).unwrap() })
+		});
+
 		let config = create_test_config();
-		let client = BeaconApiClient::new(config).unwrap();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
 
-		// Use a future slot that's very unlikely to have a proposer duty yet
-		let far_future_slot = 99999999999u64;
+		let result = client.get_proposer_for_slot(12345).await;
+		assert!(result.is_ok(), "Should successfully query even if no duty found");
 
-		match client.get_proposer_for_slot(far_future_slot).await {
-			Ok(result) => {
-				// Should either be None or fail to fetch
-				println!("Result for far future slot: {:?}", result.is_some());
-			}
-			Err(e) => {
-				// Network errors are expected in test environments
-				println!("Network error (expected): {}", e);
-			}
-		}
+		let duty = result.unwrap();
+		assert!(duty.is_none(), "Should return None when no duty exists for the slot");
+	}
+
+	#[tokio::test]
+	async fn test_get_proposer_for_slot_wrong_slot_in_epoch() {
+		use crate::types::beacon::ValidatorDuty;
+
+		let mut mock_client = MockHttpClient::new();
+
+		// Mock proposer duties with a different slot than requested
+		let duties_response = ProposerDutiesResponse {
+			execution_optimistic: false,
+			finalized: true,
+			data: vec![ValidatorDuty {
+				validator_index: "100".to_string(),
+				pubkey: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+				slot: "12346".to_string(), // Different slot
+			}],
+		};
+
+		mock_client.expect_get().times(1).returning(move |_url| {
+			Ok(HttpResponse { status: 200, body: serde_json::to_vec(&duties_response).unwrap() })
+		});
+
+		let config = create_test_config();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
+
+		let result = client.get_proposer_for_slot(12345).await;
+		assert!(result.is_ok());
+
+		let duty = result.unwrap();
+		assert!(duty.is_none(), "Should return None when requested slot doesn't match any duty");
 	}
 
 	#[test]
@@ -924,7 +984,7 @@ mod tests {
 	fn test_client_debug_impl() {
 		// Verify that BeaconApiClient implements Debug properly
 		let config = create_test_config();
-		let client = BeaconApiClient::new(config).unwrap();
+		let client = BeaconApiClient::with_default_client(config).unwrap();
 
 		let debug_str = format!("{:?}", client);
 		assert!(debug_str.contains("BeaconApiClient"));
@@ -945,7 +1005,7 @@ mod tests {
 			genesis_time: 1606824023,
 		};
 
-		let client = BeaconApiClient::new(config).unwrap();
+		let client = BeaconApiClient::with_default_client(config).unwrap();
 		assert_eq!(client.config.fallback_endpoints.len(), 5);
 	}
 
@@ -958,7 +1018,7 @@ mod tests {
 			genesis_time: 1606824023,
 		};
 
-		let client = BeaconApiClient::new(config);
+		let client = BeaconApiClient::with_default_client(config);
 		assert!(client.is_ok());
 		assert_eq!(client.unwrap().config.request_timeout_secs, 300);
 	}
@@ -980,7 +1040,7 @@ mod tests {
 				genesis_time: genesis,
 			};
 
-			let client = BeaconApiClient::new(config);
+			let client = BeaconApiClient::with_default_client(config);
 			assert!(client.is_ok(), "Should accept genesis time {}", genesis);
 		}
 	}
@@ -995,7 +1055,9 @@ mod tests {
 
 		let duty = ValidatorDuty {
 			validator_index: "100".to_string(),
-			pubkey: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+			pubkey:
+				"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+					.to_string(),
 			slot: "200".to_string(),
 		};
 
@@ -1010,7 +1072,8 @@ mod tests {
 
 		let duty = ValidatorDuty {
 			validator_index: "100".to_string(),
-			pubkey: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+			pubkey: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+				.to_string(),
 			slot: "200".to_string(),
 		};
 
@@ -1024,11 +1087,8 @@ mod tests {
 		use crate::types::beacon::ValidatorDuty;
 
 		// Too short pubkey
-		let duty = ValidatorDuty {
-			validator_index: "100".to_string(),
-			pubkey: "0x1234".to_string(),
-			slot: "200".to_string(),
-		};
+		let duty =
+			ValidatorDuty { validator_index: "100".to_string(), pubkey: "0x1234".to_string(), slot: "200".to_string() };
 
 		let result = duty.parse_pubkey();
 		assert!(result.is_err(), "Should reject pubkey with invalid length");
@@ -1041,7 +1101,9 @@ mod tests {
 		// Invalid hex characters
 		let duty = ValidatorDuty {
 			validator_index: "100".to_string(),
-			pubkey: "0xZZZZ567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef".to_string(),
+			pubkey:
+				"0xZZZZ567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+					.to_string(),
 			slot: "200".to_string(),
 		};
 
@@ -1082,11 +1144,8 @@ mod tests {
 	fn test_validator_duty_index_parsing_zero() {
 		use crate::types::beacon::ValidatorDuty;
 
-		let duty = ValidatorDuty {
-			validator_index: "0".to_string(),
-			pubkey: "0xabcd".to_string(),
-			slot: "100".to_string(),
-		};
+		let duty =
+			ValidatorDuty { validator_index: "0".to_string(), pubkey: "0xabcd".to_string(), slot: "100".to_string() };
 
 		let result = duty.parse_validator_index();
 		assert!(result.is_ok());
@@ -1100,13 +1159,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "100".to_string(),
 			status: "".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok());
 		let info = result.unwrap();
 		// Empty status should be treated as inactive
@@ -1120,13 +1176,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "100".to_string(),
 			status: "unknown_status_type".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok());
 		let info = result.unwrap();
 		// Unknown status should be treated as inactive
@@ -1141,13 +1194,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "100".to_string(),
 			status: "ACTIVE_ONGOING".to_string(), // Uppercase should not match
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok());
 		let info = result.unwrap();
 		// Uppercase should not be recognized as active
@@ -1161,13 +1211,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "5000".to_string(),
 			status: "pending_queued".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok());
 		let info = result.unwrap();
 		assert!(!info.is_active);
@@ -1181,13 +1228,10 @@ mod tests {
 		let data = ValidatorData {
 			index: "6000".to_string(),
 			status: "withdrawal_done".to_string(),
-			validator: ValidatorDetails {
-				pubkey: "0xabcd".to_string(),
-				slashed: false,
-			},
+			validator: ValidatorDetails { pubkey: "0xabcd".to_string(), slashed: false },
 		};
 
-		let result = BeaconApiClient::parse_validator_info(&data);
+		let result = BeaconApiClient::<ReqwestClient>::parse_validator_info(&data);
 		assert!(result.is_ok());
 		let info = result.unwrap();
 		assert!(!info.is_active);
@@ -1226,11 +1270,7 @@ mod tests {
 		use crate::types::beacon::ProposerDutiesResponse;
 
 		// Test handling of empty duties list
-		let response = ProposerDutiesResponse {
-			execution_optimistic: false,
-			finalized: true,
-			data: vec![],
-		};
+		let response = ProposerDutiesResponse { execution_optimistic: false, finalized: true, data: vec![] };
 
 		assert_eq!(response.data.len(), 0);
 	}
@@ -1249,7 +1289,7 @@ mod tests {
 			genesis_time: 1606824023,
 		};
 
-		let client = BeaconApiClient::new(config).unwrap();
+		let client = BeaconApiClient::with_default_client(config).unwrap();
 
 		assert_eq!(client.config.primary_endpoint, primary);
 		assert_eq!(client.config.fallback_endpoints[0], fallback1);
@@ -1275,11 +1315,8 @@ mod tests {
 		use crate::types::beacon::ValidatorDuty;
 
 		// Test slot 0
-		let duty_zero = ValidatorDuty {
-			validator_index: "0".to_string(),
-			pubkey: "0xabcd".to_string(),
-			slot: "0".to_string(),
-		};
+		let duty_zero =
+			ValidatorDuty { validator_index: "0".to_string(), pubkey: "0xabcd".to_string(), slot: "0".to_string() };
 		assert_eq!(duty_zero.parse_slot().unwrap(), 0);
 
 		// Test very large slot number
@@ -1289,5 +1326,217 @@ mod tests {
 			slot: "18446744073709551615".to_string(), // u64::MAX
 		};
 		assert_eq!(duty_large.parse_slot().unwrap(), u64::MAX);
+	}
+
+	// ========================================
+	// Tests for fallback endpoint logic with mocked HTTP
+	// ========================================
+
+	#[tokio::test]
+	async fn test_primary_endpoint_success_no_fallback() {
+		let mut mock_client = MockHttpClient::new();
+
+		let duties_response = ProposerDutiesResponse { execution_optimistic: false, finalized: true, data: vec![] };
+
+		// Primary endpoint succeeds, so fallback should never be tried
+		mock_client.expect_get().times(1).returning(move |url| {
+			assert!(url.contains("eth-mainnet.g.alchemy.com")); // Primary endpoint
+			Ok(HttpResponse { status: 200, body: serde_json::to_vec(&duties_response).unwrap() })
+		});
+
+		let config = create_test_config();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
+
+		let result = client.get_proposer_duties(385).await;
+		assert!(result.is_ok(), "Should succeed with primary endpoint");
+	}
+
+	#[tokio::test]
+	async fn test_primary_fails_fallback_succeeds() {
+		let mut mock_client = MockHttpClient::new();
+
+		let duties_response = ProposerDutiesResponse { execution_optimistic: false, finalized: true, data: vec![] };
+
+		let mut call_count = 0;
+		mock_client.expect_get().times(2).returning(move |url| {
+			call_count += 1;
+			if call_count == 1 {
+				// First call to primary endpoint fails
+				assert!(url.contains("eth-mainnet.g.alchemy.com"));
+				Err(anyhow::anyhow!("Primary endpoint failed"))
+			} else {
+				// Second call to fallback endpoint succeeds
+				assert!(url.contains("beacon-nd-123-456-789.p2pify.com"));
+				Ok(HttpResponse { status: 200, body: serde_json::to_vec(&duties_response).unwrap() })
+			}
+		});
+
+		let config = create_test_config();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
+
+		let result = client.get_proposer_duties(385).await;
+		assert!(result.is_ok(), "Should succeed with fallback endpoint after primary fails");
+	}
+
+	#[tokio::test]
+	async fn test_all_endpoints_fail() {
+		let mut mock_client = MockHttpClient::new();
+
+		// All endpoints fail
+		mock_client.expect_get().times(2).returning(|_url| Err(anyhow::anyhow!("Network error")));
+
+		let config = create_test_config();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
+
+		let result = client.get_proposer_duties(385).await;
+		assert!(result.is_err(), "Should fail when all endpoints fail");
+	}
+
+	#[tokio::test]
+	async fn test_multiple_fallbacks() {
+		let mut mock_client = MockHttpClient::new();
+
+		let duties_response = ProposerDutiesResponse { execution_optimistic: false, finalized: true, data: vec![] };
+
+		let config = BeaconApiConfig {
+			primary_endpoint: "https://primary.test".to_string(),
+			fallback_endpoints: vec![
+				"https://fallback1.test".to_string(),
+				"https://fallback2.test".to_string(),
+				"https://fallback3.test".to_string(),
+			],
+			request_timeout_secs: 30,
+			genesis_time: 1606824023,
+		};
+
+		let mut call_count = 0;
+		mock_client.expect_get().times(3).returning(move |url| {
+			call_count += 1;
+			if call_count < 3 {
+				// First two calls fail
+				Err(anyhow::anyhow!("Endpoint failed"))
+			} else {
+				// Third call (second fallback) succeeds
+				assert!(url.contains("fallback2.test"));
+				Ok(HttpResponse { status: 200, body: serde_json::to_vec(&duties_response).unwrap() })
+			}
+		});
+
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
+
+		let result = client.get_proposer_duties(385).await;
+		assert!(result.is_ok(), "Should succeed with second fallback");
+	}
+
+	// ========================================
+	// Tests for HTTP error scenarios with mocked HTTP
+	// ========================================
+
+	#[tokio::test]
+	async fn test_http_404_error() {
+		let mut mock_client = MockHttpClient::new();
+
+		mock_client.expect_get().times(1).returning(|_url| {
+			Ok(HttpResponse { status: 404, body: b"Not Found".to_vec() })
+		});
+
+		let config = create_test_config_no_fallbacks();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
+
+		let result = client.get_proposer_duties(385).await;
+		assert!(result.is_err(), "Should fail with HTTP 404");
+
+		let error_msg = format!("{}", result.unwrap_err());
+		assert!(error_msg.contains("404"), "Error should mention status code");
+	}
+
+	#[tokio::test]
+	async fn test_http_500_error() {
+		let mut mock_client = MockHttpClient::new();
+
+		mock_client.expect_get().times(1).returning(|_url| {
+			Ok(HttpResponse { status: 500, body: b"Internal Server Error".to_vec() })
+		});
+
+		let config = create_test_config_no_fallbacks();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
+
+		let result = client.get_proposer_duties(385).await;
+		assert!(result.is_err(), "Should fail with HTTP 500");
+
+		let error_msg = format!("{}", result.unwrap_err());
+		assert!(error_msg.contains("500"), "Error should mention status code");
+	}
+
+	#[tokio::test]
+	async fn test_network_timeout_simulation() {
+		let mut mock_client = MockHttpClient::new();
+
+		mock_client
+			.expect_get()
+			.times(1)
+			.returning(|_url| Err(anyhow::anyhow!("Request timeout after 30 seconds")));
+
+		let config = create_test_config_no_fallbacks();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
+
+		let result = client.get_proposer_duties(385).await;
+		assert!(result.is_err(), "Should fail with timeout error");
+
+		let error_msg = format!("{:#}", result.unwrap_err());
+		assert!(
+			error_msg.to_lowercase().contains("timeout") || error_msg.contains("Request timeout"),
+			"Error should mention timeout, got: {}",
+			error_msg
+		);
+	}
+
+	#[tokio::test]
+	async fn test_invalid_json_response() {
+		let mut mock_client = MockHttpClient::new();
+
+		mock_client.expect_get().times(1).returning(|_url| {
+			Ok(HttpResponse { status: 200, body: b"Invalid JSON {{{".to_vec() })
+		});
+
+		let config = create_test_config_no_fallbacks();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
+
+		let result = client.get_proposer_duties(385).await;
+		assert!(result.is_err(), "Should fail with invalid JSON");
+
+		let error_msg = format!("{}", result.unwrap_err());
+		assert!(error_msg.contains("parse") || error_msg.contains("JSON"), "Error should mention parsing failure");
+	}
+
+	#[tokio::test]
+	async fn test_empty_response_body() {
+		let mut mock_client = MockHttpClient::new();
+
+		mock_client.expect_get().times(1).returning(|_url| Ok(HttpResponse { status: 200, body: vec![] }));
+
+		let config = create_test_config_no_fallbacks();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
+
+		let result = client.get_proposer_duties(385).await;
+		assert!(result.is_err(), "Should fail with empty response");
+	}
+
+	#[tokio::test]
+	async fn test_http_403_forbidden() {
+		let mut mock_client = MockHttpClient::new();
+
+		mock_client.expect_get().times(1).returning(|_url| {
+			Ok(HttpResponse { status: 403, body: b"Forbidden - Rate limit exceeded".to_vec() })
+		});
+
+		let config = create_test_config_no_fallbacks();
+		let client = BeaconApiClient::new(config, mock_client).unwrap();
+
+		let result = client.get_proposer_duties(385).await;
+		assert!(result.is_err(), "Should fail with HTTP 403");
+
+		let error_msg = format!("{}", result.unwrap_err());
+		assert!(error_msg.contains("403"), "Error should mention status code");
 	}
 }

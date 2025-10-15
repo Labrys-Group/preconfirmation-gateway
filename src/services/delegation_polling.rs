@@ -17,7 +17,7 @@ use crate::types::delegation::SignedDelegation;
 
 /// Service that proactively polls for delegation data and maintains the database
 pub struct DelegationPollingService {
-	beacon_client: Arc<BeaconApiClient>,
+	beacon_client: Arc<BeaconApiClient<crate::api::beacon::ReqwestClient>>,
 	constraints_client: Arc<ConstraintsApiClient>,
 	db_pool: Arc<PgPool>,
 	config: Arc<Config>,
@@ -29,7 +29,7 @@ pub struct DelegationPollingService {
 impl DelegationPollingService {
 	/// Create a new delegation polling service
 	pub async fn new(
-		beacon_client: Arc<BeaconApiClient>,
+		beacon_client: Arc<BeaconApiClient<crate::api::beacon::ReqwestClient>>,
 		constraints_client: Arc<ConstraintsApiClient>,
 		db_pool: Arc<PgPool>,
 		config: Arc<Config>,
@@ -129,7 +129,7 @@ impl DelegationPollingService {
 
 /// Core delegation polling logic
 async fn poll_delegations(
-	_beacon_client: Arc<BeaconApiClient>,
+	_beacon_client: Arc<BeaconApiClient<crate::api::beacon::ReqwestClient>>,
 	constraints_client: Arc<ConstraintsApiClient>,
 	db_pool: Arc<PgPool>,
 	config: Arc<Config>,
@@ -481,7 +481,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_delegation_polling_service_creation() {
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 
 		// Create a test database pool (this would need a real database in integration tests)
@@ -505,7 +505,7 @@ mod tests {
 	async fn test_delegation_polling_service_creation_without_db() {
 		// Test service creation without requiring a real database connection
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 
 		// Use lazy connection pool that doesn't actually connect
@@ -519,7 +519,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_delegation_polling_service_lifecycle() {
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 
 		// Skip test without database
@@ -549,7 +549,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_delegation_polling_service_lifecycle_without_db() {
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 
@@ -569,7 +569,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_poll_once_without_error() {
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 
 		// Skip test without database
@@ -595,7 +595,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_poll_once_without_db() {
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 
@@ -612,7 +612,7 @@ mod tests {
 	async fn test_poll_delegations_error_handling() {
 		// Test error handling in the main polling logic
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
@@ -635,7 +635,7 @@ mod tests {
 	async fn test_poll_delegations_for_slot_error_handling() {
 		// Test error handling for single slot polling
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let constraints_client = ConstraintsApiClient::new(config.constraints_api.clone()).unwrap();
 		let db_pool = sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap();
 		let (_sk, pk) = create_test_bls_keypair();
@@ -656,7 +656,7 @@ mod tests {
 	async fn test_cleanup_expired_delegations_error_handling() {
 		// Test error handling for delegation cleanup
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 		let validator_cache = ValidatorStatusCache::new(Duration::from_secs(30), Arc::clone(&beacon_client));
 
@@ -752,7 +752,7 @@ mod tests {
 	async fn test_concurrent_delegation_polling() {
 		// Test concurrent polling operations
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
@@ -817,7 +817,7 @@ mod tests {
 	async fn test_delegation_polling_timing() {
 		// Test that polling operations complete within reasonable time bounds
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 		let bls_manager = BlsManager::new(&config.delegation.domain_application_gateway).unwrap();
@@ -885,7 +885,7 @@ mod tests {
 	async fn test_service_error_recovery() {
 		// Test that the service can recover from errors during operation
 		let config = create_mock_config();
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 		let constraints_client = Arc::new(ConstraintsApiClient::new(config.constraints_api.clone()).unwrap());
 		let db_pool = Arc::new(sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap());
 

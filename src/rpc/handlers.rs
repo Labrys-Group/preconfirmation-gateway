@@ -476,7 +476,7 @@ mod tests {
 		let fee_engine = Arc::new(FeePricingEngine::new(reth_client, database_arc, config_arc.clone()));
 
 		// Create beacon API client for testing
-		let beacon_client = Arc::new(BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client = Arc::new(BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 
 		Arc::new(RpcContext::new(database, config, fee_engine, beacon_client))
 	}

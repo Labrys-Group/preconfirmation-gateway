@@ -46,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
 	tracing::info!("Fee pricing cache refresh service started");
 
 	// Initialize beacon API client (needed for RPC context and background services)
-	let beacon_client = std::sync::Arc::new(api::beacon::BeaconApiClient::new(config.beacon_api.clone())?);
+	let beacon_client = std::sync::Arc::new(api::beacon::BeaconApiClient::with_default_client(config.beacon_api.clone())?);
 
 	// Create RPC context with database context, config, fee engine, and beacon client
 	let rpc_context =
