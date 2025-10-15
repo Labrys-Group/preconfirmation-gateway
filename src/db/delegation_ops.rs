@@ -758,7 +758,7 @@ mod tests {
 		use crate::crypto::bls::BlsManager;
 
 		// This test would require a real PostgreSQL database
-		let db_url = std::env::var("DATABASE_URL").unwrap();
+		let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set to run integration tests");
 
 		let pool_result = PgPool::connect_lazy(&db_url);
 
@@ -808,7 +808,7 @@ mod tests {
 		use crate::crypto::bls::BlsManager;
 
 		// This test would require a real PostgreSQL database
-		let db_url = std::env::var("DATABASE_URL").unwrap();
+		let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set to run integration tests");
 
 		let pool_result = PgPool::connect_lazy(&db_url);
 
@@ -840,7 +840,7 @@ mod tests {
 		use crate::crypto::bls::BlsManager;
 
 		// This test would require a real PostgreSQL database
-		let db_url = std::env::var("DATABASE_URL").unwrap();
+		let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set to run integration tests");
 
 		let pool_result = PgPool::connect_lazy(&db_url);
 
