@@ -21,6 +21,7 @@ target
 #.idea/
 
 .env
+.env.*
 
 plan.md
 scratch.md
