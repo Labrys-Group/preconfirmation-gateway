@@ -185,7 +185,8 @@ mod tests {
 
 		// Create mock services
 		let beacon_config = config.beacon_api.clone();
-		let beacon_client = BeaconApiClient::new(beacon_config).expect("Failed to create beacon client");
+		let beacon_client =
+			BeaconApiClient::with_default_client(beacon_config).expect("Failed to create beacon client");
 
 		let reth_config = crate::api::reth::RethApiConfig {
 			endpoint: config.reth.endpoint.clone(),

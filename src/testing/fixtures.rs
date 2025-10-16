@@ -9,6 +9,7 @@ use std::collections::HashMap;
 /// Test fixtures for various scenarios
 pub struct TestFixtures;
 
+#[cfg(not(tarpaulin_include))]
 impl TestFixtures {
 	/// Constructs a CommitmentRequest containing an inclusion payload for the given slot and committer address.
 	///
@@ -109,13 +110,17 @@ impl TestFixtures {
 	///
 	/// Returns a HashMap mapping scenario names to their TestScenario definitions.
 	///
+	/// # Parameters
+	///
+	/// - `genesis_time`: The beacon chain genesis time in seconds since UNIX epoch
+	///
 	/// # Examples
 	///
-	pub fn create_test_scenarios() -> HashMap<String, TestScenario> {
+	pub fn create_test_scenarios(genesis_time: u64) -> HashMap<String, TestScenario> {
 		let mut scenarios = HashMap::new();
 
-		// Use current slot numbers for realistic testing
-		let current_slot = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() / 12;
+		// Use current slot numbers for realistic testing with BeaconTiming
+		let current_slot = crate::types::beacon::BeaconTiming::current_slot_estimate(genesis_time);
 
 		// Scenario 1: Happy path - valid delegation and commitment
 		scenarios.insert(
@@ -260,6 +265,7 @@ pub struct PerformanceTestConfig {
 	pub expected_tps: f64, // Transactions per second
 }
 
+#[cfg(not(tarpaulin_include))]
 impl PerformanceTestConfig {
 	/// Provides three preset performance test configurations for common load scenarios.
 	///
@@ -307,6 +313,7 @@ impl PerformanceTestConfig {
 /// Timing test helpers
 pub struct TimingTestHelpers;
 
+#[cfg(not(tarpaulin_include))]
 impl TimingTestHelpers {
 	/// Produces a set of slots around the current slot to exercise submission timing windows.
 	///
@@ -314,12 +321,15 @@ impl TimingTestHelpers {
 	/// a near future slot, and a far future slot. These are useful for testing acceptance/rejection
 	/// based on timing constraints.
 	///
+	/// # Parameters
+	///
+	/// - `genesis_time`: The beacon chain genesis time in seconds since UNIX epoch
+	///
 	/// # Examples
 	///
-	pub fn create_timing_test_slots() -> Vec<u64> {
-		let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-
-		let current_slot = current_time / 12;
+	pub fn create_timing_test_slots(genesis_time: u64) -> Vec<u64> {
+		// Use BeaconTiming to get the current slot
+		let current_slot = crate::types::beacon::BeaconTiming::current_slot_estimate(genesis_time);
 
 		// Create slots that are in different timing windows
 		vec![
@@ -338,7 +348,7 @@ impl TimingTestHelpers {
 	///
 	/// # Parameters
 	///
-	/// - `_genesis_time`: currently unused; retained for API compatibility.
+	/// - `genesis_time`: The beacon chain genesis time in seconds since UNIX epoch
 	/// - `slot`: the slot to evaluate.
 	///
 	/// # Returns
@@ -347,10 +357,9 @@ impl TimingTestHelpers {
 	///
 	/// # Examples
 	///
-	pub fn is_within_submission_window(_genesis_time: u64, slot: u64) -> bool {
-		let current_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-
-		let current_slot = current_time / 12;
+	pub fn is_within_submission_window(genesis_time: u64, slot: u64) -> bool {
+		// Use BeaconTiming to get the current slot
+		let current_slot = crate::types::beacon::BeaconTiming::current_slot_estimate(genesis_time);
 		let slot_diff = slot.abs_diff(current_slot);
 
 		// Allow slots within 10 slots of current (reasonable constraint submission window)

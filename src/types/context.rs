@@ -13,7 +13,7 @@ pub struct RpcContext {
 	/// Fee pricing engine for dynamic fee calculation
 	pub fee_engine: Arc<FeePricingEngine>,
 	/// Beacon API client for validator duty verification
-	pub beacon_client: Arc<BeaconApiClient>,
+	pub beacon_client: Arc<BeaconApiClient<crate::api::beacon::ReqwestClient>>,
 }
 
 impl RpcContext {
@@ -25,7 +25,7 @@ impl RpcContext {
 		database: DatabaseContext,
 		config: Config,
 		fee_engine: Arc<FeePricingEngine>,
-		beacon_client: Arc<BeaconApiClient>,
+		beacon_client: Arc<BeaconApiClient<crate::api::beacon::ReqwestClient>>,
 	) -> Self {
 		Self { database, config, fee_engine, beacon_client }
 	}
@@ -44,11 +44,11 @@ impl RpcContext {
 	///
 	/// # Returns
 	///
-	/// A reference to the `Arc<BeaconApiClient>` stored in the context.
+	/// A reference to the `Arc<BeaconApiClient<crate::api::beacon::ReqwestClient>>` stored in the context.
 	///
 	/// # Examples
 	///
-	pub fn beacon_client(&self) -> &Arc<BeaconApiClient> {
+	pub fn beacon_client(&self) -> &Arc<BeaconApiClient<crate::api::beacon::ReqwestClient>> {
 		&self.beacon_client
 	}
 }

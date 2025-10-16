@@ -11,11 +11,11 @@ use crate::types::{CommitmentRequest, RpcContext, SignedCommitment};
 /// Test helper utilities
 pub struct TestHelpers;
 
+#[cfg(not(tarpaulin_include))]
 impl TestHelpers {
 	/// Creates a TestEnvironment populated with mock services for testing.
 	///
-	/// The returned TestEnvironment contains an Arc-wrapped test Config and mock
-	/// implementations for the database, constraints API client, and beacon API
+	/// The returned TestEnvironment contains an Arc-wrapped test Config and mock implementations for the database, constraints API client, and beacon API
 	/// client, suitable for use in unit and integration tests.
 	///
 	/// # Examples
@@ -68,7 +68,8 @@ impl TestHelpers {
 		));
 
 		// Create beacon API client for testing
-		let beacon_client = Arc::new(crate::api::beacon::BeaconApiClient::new(config.beacon_api.clone()).unwrap());
+		let beacon_client =
+			Arc::new(crate::api::beacon::BeaconApiClient::with_default_client(config.beacon_api.clone()).unwrap());
 
 		Arc::new(RpcContext::new(database, (*config).clone(), fee_engine, beacon_client))
 	}
@@ -247,8 +248,9 @@ impl TestHelpers {
 				.as_secs()
 		};
 
-		let slot_start_time = genesis_time + (commitment_slot * 12);
-		let submission_deadline = slot_start_time + 8; // 8-second deadline
+		// Use BeaconTiming to calculate the 8-second deadline from slot start
+		let submission_deadline =
+			crate::types::beacon::BeaconTiming::constraint_deadline_for_slot(genesis_time, commitment_slot);
 
 		if submission_unix > submission_deadline {
 			return Err(anyhow::anyhow!(
@@ -281,8 +283,9 @@ impl TestHelpers {
 		while start.elapsed() < duration {
 			let request_start = Instant::now();
 
-			// Create a realistic commitment request
-			let slot = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() / 12; // Current slot
+			// Create a realistic commitment request using current slot from BeaconTiming
+			let slot =
+				crate::types::beacon::BeaconTiming::current_slot_estimate(context.config.beacon_api.genesis_time);
 
 			let commitment_request = crate::testing::fixtures::TestFixtures::create_inclusion_commitment_request(
 				slot,
@@ -374,6 +377,7 @@ pub struct DatabaseStressTestResults {
 	pub operations_per_task: usize,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl DatabaseStressTestResults {
 	/// Returns the total number of operations executed across all tasks.
 	///
@@ -429,6 +433,7 @@ pub struct LoadTestResults {
 	pub actual_tps: f64,
 }
 
+#[cfg(not(tarpaulin_include))]
 impl LoadTestResults {
 	/// Calculates the fraction of requests that succeeded.
 	///
@@ -474,7 +479,9 @@ impl LoadTestResults {
 		let mut sorted_times = self.response_times.clone();
 		sorted_times.sort();
 
-		let index = (sorted_times.len() as f64 * percentile / 100.0) as usize;
+		// Clamp percentile to valid range [0, 100] to prevent unexpected index calculations
+		let clamped_percentile = percentile.clamp(0.0, 100.0);
+		let index = (sorted_times.len() as f64 * clamped_percentile / 100.0) as usize;
 		sorted_times.get(index.min(sorted_times.len() - 1)).copied().unwrap_or_default()
 	}
 }

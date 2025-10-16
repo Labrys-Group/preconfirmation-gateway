@@ -305,7 +305,9 @@ async fn process_delegation_constraints(
 
 	// Query the database for pending commitments that need constraint submission
 	// Returns both the constraints and the hashes of commitments that were converted
-	let (constraints, processed_hashes) = create_constraints_from_commitments(_db_pool, slot).await?;
+	// Filter by committer to ensure we only process commitments for this delegation
+	let (constraints, processed_hashes) =
+		create_constraints_from_commitments(_db_pool, slot, &delegation.message.committer).await?;
 
 	if constraints.is_empty() {
 		debug!("No constraints to submit for slot {}", slot);
@@ -424,14 +426,24 @@ async fn submit_constraint(
 	let signed_constraints =
 		SignedConstraints { message: constraints_message, signature: BlsSignature(signature_bytes) };
 
-	// Submit with timeout to ensure we don't exceed the 8-second deadline
-	let submission_result = timeout(
-		Duration::from_secs(5), // Give ourselves 5 seconds to submit
-		constraints_client.submit_constraints(&signed_constraints),
-	)
-	.await
-	.context("Constraint submission timed out")?
-	.context("Failed to submit constraint to API")?;
+	// Calculate remaining time to 8-second deadline from slot start
+	let deadline_secs = BeaconTiming::constraint_deadline_for_slot(config.beacon_api.genesis_time, slot);
+	let now_secs =
+		SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| anyhow::anyhow!("System clock error"))?.as_secs();
+
+	// Check if we've already exceeded the deadline
+	if now_secs >= deadline_secs {
+		return Err(anyhow::anyhow!("Constraint submission deadline elapsed for slot {}", slot));
+	}
+
+	// Calculate remaining budget for submission
+	let remaining = Duration::from_secs(deadline_secs - now_secs);
+
+	// Submit with dynamic timeout bounded by the remaining time to deadline
+	let submission_result = timeout(remaining, constraints_client.submit_constraints(&signed_constraints))
+		.await
+		.context("Constraint submission timed out")?
+		.context("Failed to submit constraint to API")?;
 
 	info!("Successfully submitted constraint for slot {} with response: {:?}", slot, submission_result);
 
@@ -439,11 +451,18 @@ async fn submit_constraint(
 	Ok(format!("{:?}", submission_result))
 }
 
-/// Build constraint objects from unprocessed commitments for a slot.
+/// Build constraint objects from unprocessed commitments for a slot and committer.
 ///
-/// Queries the database for unprocessed commitments at the given slot, converts inclusion
-/// commitments (commitment_type == 1) into `Constraint` values, and returns those constraints
-/// along with the request hashes of commitments that were successfully converted.
+/// Queries the database for unprocessed commitments at the given slot, filters them by the
+/// specified committer address, converts inclusion commitments (commitment_type == 1) into
+/// `Constraint` values, and returns those constraints along with the request hashes of
+/// commitments that were successfully converted.
+///
+/// # Parameters
+///
+/// - `db_pool`: Database connection pool
+/// - `slot`: The slot number to query commitments for
+/// - `committer_address`: Only process commitments where slasher matches this address
 ///
 /// # Returns
 ///
@@ -453,7 +472,11 @@ async fn submit_constraint(
 ///
 /// # Examples
 ///
-async fn create_constraints_from_commitments(db_pool: &PgPool, slot: u64) -> Result<(Vec<Constraint>, Vec<String>)> {
+async fn create_constraints_from_commitments(
+	db_pool: &PgPool,
+	slot: u64,
+	committer_address: &str,
+) -> Result<(Vec<Constraint>, Vec<String>)> {
 	debug!("Creating constraints from commitments for slot {}", slot);
 
 	// Query the database for unprocessed commitments for this slot
@@ -469,11 +492,21 @@ async fn create_constraints_from_commitments(db_pool: &PgPool, slot: u64) -> Res
 	debug!("Found {} unprocessed commitments for slot {}", commitments.len(), slot);
 
 	// Convert commitments to constraints, tracking which ones were converted
+	// Filter by committer address to ensure we only process commitments for this delegation
 	let mut constraints = Vec::new();
 	let mut processed_hashes = Vec::new();
 
 	for signed_commitment in &commitments {
 		let commitment = &signed_commitment.commitment;
+
+		// Only process commitments that match the committer address
+		if commitment.slasher != committer_address {
+			debug!(
+				"Skipping commitment with slasher {} (does not match committer {}) for slot {}",
+				commitment.slasher, committer_address, slot
+			);
+			continue;
+		}
 
 		// Only process inclusion commitments (type 1)
 		if commitment.commitment_type == 1 {
@@ -718,9 +751,10 @@ mod tests {
 		// Test constraint creation with no commitments
 		let db_pool = sqlx::PgPool::connect_lazy("postgresql://test:test@localhost/test_db").unwrap();
 		let slot = 12345u64;
+		let committer = "0x1234567890123456789012345678901234567890";
 
 		// This will fail due to database connectivity, but we can test the error handling
-		let result = create_constraints_from_commitments(&db_pool, slot).await;
+		let result = create_constraints_from_commitments(&db_pool, slot, committer).await;
 		assert!(result.is_err(), "Should fail due to no database connection");
 	}
 

@@ -367,6 +367,9 @@ pub struct PricingStats {
 }
 
 #[cfg(test)]
+mod fee_pricing_tests;
+
+#[cfg(test)]
 mod tests {
 	use super::*;
 	use crate::api::reth::RethApiConfig;
