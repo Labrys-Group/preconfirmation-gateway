@@ -53,3 +53,60 @@ tasks:
     desc: "Wipes and migrates the database"
     cmds:
       - cargo sqlx database reset -yf
+
+  docker:build:
+    desc: "Build Docker image"
+    cmds:
+      - docker build -t preconfirmation-gateway:latest .
+
+  docker:run:
+    desc: "Run Docker container with environment variables from .env"
+    cmds:
+      - |
+        docker run -p 8080:8080 -p 9090:9090 \
+          -e DATABASE_URL="${DATABASE_URL}" \
+          -e BEACON_API_ENDPOINT="${BEACON_API_ENDPOINT}" \
+          -e COMMITTER_PRIVATE_KEY="${COMMITTER_PRIVATE_KEY}" \
+          -e BLS_PRIVATE_KEY="${BLS_PRIVATE_KEY}" \
+          -e RUST_LOG="${RUST_LOG:-info}" \
+          preconfirmation-gateway:latest
+
+  docker:compose:up:
+    desc: "Start all services with docker-compose"
+    cmds:
+      - docker-compose up -d
+
+  docker:compose:down:
+    desc: "Stop all services"
+    cmds:
+      - docker-compose down
+
+  docker:compose:logs:
+    desc: "View logs from all services"
+    cmds:
+      - docker-compose logs -f
+
+  docker:compose:logs:gateway:
+    desc: "View logs from gateway service only"
+    cmds:
+      - docker-compose logs -f gateway
+
+  docker:compose:restart:
+    desc: "Restart all services"
+    cmds:
+      - docker-compose restart
+
+  docker:compose:restart:gateway:
+    desc: "Restart gateway service only"
+    cmds:
+      - docker-compose restart gateway
+
+  docker:compose:rebuild:
+    desc: "Rebuild and restart gateway service"
+    cmds:
+      - docker-compose up -d --build gateway
+
+  docker:compose:ps:
+    desc: "Show status of all services"
+    cmds:
+      - docker-compose ps

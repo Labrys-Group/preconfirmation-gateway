@@ -28,11 +28,33 @@ services:
       PGADMIN_DEFAULT_EMAIL: admin@preconf.local
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
-      - "8080:80"
+      - "8081:80"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     volumes:
       - pgadmin_data:/var/lib/pgadmin
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: preconf_gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"  # JSON-RPC API
+      - "9090:9090"  # Prometheus metrics
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/preconfirmation_gateway
+      BEACON_API_ENDPOINT: ${BEACON_API_ENDPOINT}
+      COMMITTER_PRIVATE_KEY: ${COMMITTER_PRIVATE_KEY}
+      BLS_PRIVATE_KEY: ${BLS_PRIVATE_KEY}
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./config.toml:/app/config.toml:ro
 
 volumes:
   postgres_data:
