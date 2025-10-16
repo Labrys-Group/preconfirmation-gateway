@@ -4,7 +4,7 @@
 //! overflow handling, and other edge cases.
 
 #[cfg(test)]
-mod fee_pricing_tests {
+mod tests {
 	use super::super::*;
 	use crate::api::reth::{RethApiClient, RethApiConfig};
 	use crate::config::Config;
@@ -184,10 +184,8 @@ mod fee_pricing_tests {
 		congestion.current_tx_price = u64::MAX; // Already at max
 
 		// Project with large gas usage
-		let projected = engine.calculate_projected_congestion(&congestion, 1_000_000).unwrap();
 
-		// Should not panic and should clamp to reasonable values
-		assert!(projected.current_tx_price <= u64::MAX);
+		engine.calculate_projected_congestion(&congestion, 1_000_000).expect("Should clamp value within range");
 	}
 
 	#[tokio::test]
