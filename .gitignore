@@ -21,7 +21,7 @@ target
 #.idea/
 
 .env
-.env.docker
+.env.*
 
 plan.md
 scratch.md

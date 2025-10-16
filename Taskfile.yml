@@ -20,6 +20,10 @@ tasks:
   format:
     cmds:
       - cargo fmt --all
+  
+  lint:
+    cmds:
+      - cargo clippy
 
   test:
     cmds:
