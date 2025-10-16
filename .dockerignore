@@ -1,0 +1,63 @@
+# Build artifacts
+target/
+*.profraw
+coverage/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+!README.md
+spec/
+docs/
+
+# Test files
+tests/
+mock-relay/
+mock-services/
+
+# Environment and secrets (NEVER include in Docker image)
+.env
+.env.example
+*.pem
+*.key
+test-keys.sh
+test-keys.sh.example
+
+# SQLx offline query cache (built during compile)
+.sqlx/
+
+# Cargo Husky git hooks
+.cargo-husky/
+
+# CI/CD
+.github/
+
+# Claude AI
+.claude/
+
+# Docker files (no need to copy into image)
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Task runner
+Taskfile.yml
+
+# Development scripts
+scripts/
+
+# Misc
+*.log
+*.bak
+plan.md
