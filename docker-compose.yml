@@ -44,7 +44,13 @@ services:
     ports:
       - "8080:8080"  # JSON-RPC API
       - "9090:9090"  # Prometheus metrics
+    # Load environment variables from .env.docker file
+    # Variables can still be overridden by explicit environment entries below
+    env_file:
+      - .env.docker
     environment:
+      # Override specific variables if needed
+      # These take precedence over .env.docker values
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/preconfirmation_gateway
       BEACON_API_ENDPOINT: ${BEACON_API_ENDPOINT}
       COMMITTER_PRIVATE_KEY: ${COMMITTER_PRIVATE_KEY}

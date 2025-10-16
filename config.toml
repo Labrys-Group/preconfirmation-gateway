@@ -3,8 +3,10 @@
 
 [server]
 # Server binding configuration
-host = "127.0.0.1"  # IP address to bind the server to
-port = 8080         # Port number for the JSON-RPC server
+# Use 0.0.0.0 to bind to all network interfaces (required for Docker/container deployments)
+# Use 127.0.0.1 for local-only access
+host = "0.0.0.0"  # IP address to bind the server to
+port = 8080       # Port number for the JSON-RPC server
 
 [database]
 # Database connection configuration
