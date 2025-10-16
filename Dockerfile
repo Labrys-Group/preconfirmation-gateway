@@ -24,6 +24,9 @@ COPY src ./src
 COPY migrations ./migrations
 COPY rustfmt.toml ./
 
+# Copy the slqx query cache
+COPY .sqlx .sqlx
+
 # Build the application in release mode
 # --locked ensures Cargo.lock is used exactly as specified
 # --release enables optimizations for production

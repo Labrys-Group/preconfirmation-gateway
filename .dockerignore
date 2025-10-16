@@ -35,7 +35,7 @@ test-keys.sh
 test-keys.sh.example
 
 # SQLx offline query cache (built during compile)
-.sqlx/
+#.sqlx/
 
 # Cargo Husky git hooks
 .cargo-husky/
