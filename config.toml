@@ -72,7 +72,8 @@ domain_application_gateway = "0x00000001"
 # Can also point to Helios light node for local trustless Ethereum access
 # For Docker: use "http://helios:8545" to connect to Helios container
 # For local: use "http://localhost:8545" for Helios or external RPC
-endpoint = "http://localhost:8545"  # Reth/Helios node RPC endpoint
+# IMPORTANT: Set RETH_ENDPOINT environment variable or this will fail validation
+endpoint = "${RETH_ENDPOINT}"  # Reth/Helios node RPC endpoint
 request_timeout_secs = 10
 max_retries = 3
 

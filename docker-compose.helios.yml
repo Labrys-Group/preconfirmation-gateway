@@ -7,7 +7,7 @@
 #
 # After starting, Helios will be available at: http://localhost:8545
 
-version: '3.8'
+version: "3.8"
 
 services:
   helios:
@@ -21,13 +21,13 @@ services:
     environment:
       # Load from .env file or set these directly
       HELIOS_EXECUTION_RPC: ${HELIOS_EXECUTION_RPC}
-      HELIOS_CONSENSUS_RPC: ${HELIOS_CONSENSUS_RPC:-https://www.lightclientdata.org}
+      HELIOS_CONSENSUS_RPC: ${HELIOS_CONSENSUS_RPC:-https://ethereum.operationsolarstorm.org}
       HELIOS_NETWORK: ${HELIOS_NETWORK:-mainnet}
       HELIOS_CHECKPOINT: ${HELIOS_CHECKPOINT:-}
     command: >
-      ethereum
+      helios ethereum
       --execution-rpc ${HELIOS_EXECUTION_RPC}
-      --consensus-rpc ${HELIOS_CONSENSUS_RPC:-https://www.lightclientdata.org}
+      --consensus-rpc ${HELIOS_CONSENSUS_RPC:-https://ethereum.operationsolarstorm.org}
       --network ${HELIOS_NETWORK:-mainnet}
       --rpc-bind-ip 0.0.0.0
       --rpc-port 8545
@@ -36,7 +36,11 @@ services:
     volumes:
       - helios_data_standalone:/data/helios
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8545 -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}' || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          'curl -f http://localhost:8545 -X POST -H "Content-Type: application/json" -d ''{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'' || exit 1',
+        ]
       interval: 30s
       timeout: 10s
       retries: 3

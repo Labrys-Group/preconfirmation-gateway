@@ -25,6 +25,7 @@ FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the heliosup-installed binary from builder
@@ -43,18 +44,22 @@ RUN useradd -m -u 1000 helios && \
 USER helios
 WORKDIR /data/helios
 
+# Health check (optional but recommended)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8545 -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' || exit 1
+
 # Default command using environment variables
 # This runs Helios with:
 # - Ethereum network (or custom network via HELIOS_NETWORK)
 # - Execution RPC from HELIOS_EXECUTION_RPC (required)
-# - Consensus RPC from HELIOS_CONSENSUS_RPC (optional, defaults to lightclientdata.org)
+# - Consensus RPC from HELIOS_CONSENSUS_RPC (optional, defaults to https://ethereum.operationsolarstorm.org)
 # - Bind to all interfaces for container access
 # - Custom RPC port 8545
 # - Data directory for checkpoints
 # - Optional checkpoint via HELIOS_CHECKPOINT
 CMD ["sh", "-c", "helios ethereum \
   --execution-rpc ${HELIOS_EXECUTION_RPC} \
-  --consensus-rpc ${HELIOS_CONSENSUS_RPC:-https://www.lightclientdata.org} \
+  --consensus-rpc ${HELIOS_CONSENSUS_RPC:-https://ethereum.operationsolarstorm.org} \
   --network ${HELIOS_NETWORK:-mainnet} \
   --rpc-bind-ip 0.0.0.0 \
   --rpc-port 8545 \

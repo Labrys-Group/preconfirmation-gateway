@@ -90,6 +90,7 @@ tasks:
 
   docker:compose:up:
     desc: "Start all services with docker-compose"
+    dotenv: [".env.docker"]
     cmds:
       - docker-compose up -d
 
