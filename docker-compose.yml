@@ -90,7 +90,7 @@ services:
     environment:
       # Override specific variables if needed
       # These take precedence over .env.docker values
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/preconfirmation_gateway
+      DATABASE_URL: ${DATABASE_URL}
       BEACON_API_ENDPOINT: ${BEACON_API_ENDPOINT}
       COMMITTER_PRIVATE_KEY: ${COMMITTER_PRIVATE_KEY}
       BLS_PRIVATE_KEY: ${BLS_PRIVATE_KEY}
