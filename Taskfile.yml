@@ -62,7 +62,10 @@ tasks:
     desc: "Build Docker image"
     cmds:
       - docker build -t preconfirmation-gateway:latest .
-
+      
+  docker:build:helios:
+    cmds:
+      - docker build -t helios:latest --file Dockerfile.helios .
   docker:run:
     desc: "Run Docker container with environment variables from .env"
     cmds:
@@ -74,6 +77,15 @@ tasks:
           -e BLS_PRIVATE_KEY="${BLS_PRIVATE_KEY}" \
           -e RUST_LOG="${RUST_LOG:-info}" \
           preconfirmation-gateway:latest
+          
+  docker:run:helios:
+    cmds:
+      - |
+        docker run -p 8545:8545 \
+          -e HELIOS_EXECUTION_RPC="${HELIOS_EXECUTION_RPC}" \
+          -e HELIOS_CONSENSUS_RPC="${HELIOS_CONSENSUS_RPC}" \
+          -e HELIOS_CHECKPOINT="${HELIOS_CHECKPOINT}" \
+          helios:latest
 
   docker:compose:up:
     desc: "Start all services with docker-compose"

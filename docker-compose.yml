@@ -33,6 +33,47 @@ services:
     volumes:
       - pgadmin_data:/var/lib/pgadmin
 
+  helios:
+    build:
+      context: .
+      dockerfile: Dockerfile.helios
+    container_name: preconf_helios
+    restart: unless-stopped
+    ports:
+      - "8545:8545" # Ethereum JSON-RPC
+    environment:
+      # Execution RPC endpoint - REQUIRED
+      # Must support eth_getProof (Alchemy and Infura recommended)
+      HELIOS_EXECUTION_RPC: ${HELIOS_EXECUTION_RPC}
+      # Consensus RPC endpoint - OPTIONAL
+      HELIOS_CONSENSUS_RPC: ${HELIOS_CONSENSUS_RPC}
+      # Network selection - mainnet, sepolia, or holesky
+      HELIOS_NETWORK: ${HELIOS_NETWORK:-mainnet}
+      # Weak subjectivity checkpoint - OPTIONAL
+      # Uses cached checkpoint if not specified
+      HELIOS_CHECKPOINT: ${HELIOS_CHECKPOINT:-}
+    command: >
+      ethereum
+      --execution-rpc ${HELIOS_EXECUTION_RPC}
+      --consensus-rpc ${HELIOS_CONSENSUS_RPC:-https://www.lightclientdata.org}
+      --network ${HELIOS_NETWORK:-mainnet}
+      --rpc-bind-ip 0.0.0.0
+      --rpc-port 8545
+      --data-dir /data/helios
+      ${HELIOS_CHECKPOINT:+--checkpoint ${HELIOS_CHECKPOINT}}
+    volumes:
+      - helios_data:/data/helios
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'curl -f http://localhost:8545 -X POST -H ''Content-Type: application/json'' -d ''{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'' || exit 1',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   gateway:
     build:
       context: .
@@ -57,9 +98,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      helios:
+        condition: service_healthy
     volumes:
       - ./config.toml:/app/config.toml:ro
 
 volumes:
   postgres_data:
   pgadmin_data:
+  helios_data:
