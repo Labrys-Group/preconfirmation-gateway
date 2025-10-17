@@ -1,0 +1,50 @@
+# Docker Compose file for running ONLY Helios Ethereum Light Node
+# This is useful for testing Helios independently or running it alongside
+# a locally-running gateway (not in Docker)
+#
+# Usage:
+#   docker-compose -f docker-compose.helios.yml up -d
+#
+# After starting, Helios will be available at: http://localhost:8545
+
+version: "3.8"
+
+services:
+  helios:
+    build:
+      context: .
+      dockerfile: Dockerfile.helios
+    container_name: preconf_helios_standalone
+    restart: unless-stopped
+    ports:
+      - "8545:8545" # Ethereum JSON-RPC
+    environment:
+      # Load from .env file or set these directly
+      HELIOS_EXECUTION_RPC: ${HELIOS_EXECUTION_RPC}
+      HELIOS_CONSENSUS_RPC: ${HELIOS_CONSENSUS_RPC:-https://ethereum.operationsolarstorm.org}
+      HELIOS_NETWORK: ${HELIOS_NETWORK:-mainnet}
+      HELIOS_CHECKPOINT: ${HELIOS_CHECKPOINT:-}
+    command: >
+      helios ethereum
+      --execution-rpc ${HELIOS_EXECUTION_RPC}
+      --consensus-rpc ${HELIOS_CONSENSUS_RPC:-https://ethereum.operationsolarstorm.org}
+      --network ${HELIOS_NETWORK:-mainnet}
+      --rpc-bind-ip 0.0.0.0
+      --rpc-port 8545
+      --data-dir /data/helios
+      ${HELIOS_CHECKPOINT:+--checkpoint ${HELIOS_CHECKPOINT}}
+    volumes:
+      - helios_data_standalone:/data/helios
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'curl -f http://localhost:8545 -X POST -H "Content-Type: application/json" -d ''{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'' || exit 1',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  helios_data_standalone:

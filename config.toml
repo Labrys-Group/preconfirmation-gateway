@@ -3,8 +3,10 @@
 
 [server]
 # Server binding configuration
-host = "127.0.0.1"  # IP address to bind the server to
-port = 8080         # Port number for the JSON-RPC server
+# Use 0.0.0.0 to bind to all network interfaces (required for Docker/container deployments)
+# Use 127.0.0.1 for local-only access
+host = "0.0.0.0"  # IP address to bind the server to
+port = 8080       # Port number for the JSON-RPC server
 
 [database]
 # Database connection configuration
@@ -67,7 +69,11 @@ domain_application_gateway = "0x00000001"
 
 [reth]
 # Reth node configuration for gas price oracle
-endpoint = "http://localhost:8545"  # Reth node RPC endpoint
+# Can also point to Helios light node for local trustless Ethereum access
+# For Docker: use "http://helios:8545" to connect to Helios container
+# For local: use "http://localhost:8545" for Helios or external RPC
+# IMPORTANT: Set RETH_ENDPOINT environment variable or this will fail validation
+endpoint = "${RETH_ENDPOINT}"  # Reth/Helios node RPC endpoint
 request_timeout_secs = 10
 max_retries = 3
 

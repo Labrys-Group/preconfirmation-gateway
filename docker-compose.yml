@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -20,20 +18,77 @@ services:
       timeout: 5s
       retries: 5
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: preconf_pgadmin
+  helios:
+    build:
+      context: .
+      dockerfile: Dockerfile.helios
+    container_name: preconf_helios
     restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@preconf.local
-      PGADMIN_DEFAULT_PASSWORD: admin
     ports:
-      - "8080:80"
-    depends_on:
-      - postgres
+      - "8545:8545" # Ethereum JSON-RPC
+    environment:
+      # Execution RPC endpoint - REQUIRED
+      # Must support eth_getProof (Alchemy and Infura recommended)
+      HELIOS_EXECUTION_RPC: ${HELIOS_EXECUTION_RPC}
+      # Consensus RPC endpoint - OPTIONAL
+      HELIOS_CONSENSUS_RPC: ${HELIOS_CONSENSUS_RPC}
+      # Network selection - mainnet, sepolia, or holesky
+      HELIOS_NETWORK: ${HELIOS_NETWORK:-mainnet}
+      # Weak subjectivity checkpoint - OPTIONAL
+      # Uses cached checkpoint if not specified
+      HELIOS_CHECKPOINT: ${HELIOS_CHECKPOINT:-}
+    command: >
+      helios ethereum
+      --execution-rpc ${HELIOS_EXECUTION_RPC}
+      --consensus-rpc ${HELIOS_CONSENSUS_RPC:-https://ethereum.operationsolarstorm.org}
+      --network ${HELIOS_NETWORK:-mainnet}
+      --rpc-bind-ip 0.0.0.0
+      --rpc-port 8545
+      --data-dir /data/helios
+      ${HELIOS_CHECKPOINT:+--checkpoint ${HELIOS_CHECKPOINT}}
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
+      - helios_data:/data/helios
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'curl -f http://localhost:8545 -X POST -H ''Content-Type: application/json'' -d ''{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'' || exit 1',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: preconf_gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080" # JSON-RPC API
+      - "9090:9090" # Prometheus metrics
+    # Load environment variables from .env.docker file
+    # Variables can still be overridden by explicit environment entries below
+    env_file:
+      - .env.docker
+    environment:
+      # Override specific variables if needed
+      # These take precedence over .env.docker values
+      DATABASE_URL: ${DATABASE_URL}
+      BEACON_API_ENDPOINT: ${BEACON_API_ENDPOINT}
+      COMMITTER_PRIVATE_KEY: ${COMMITTER_PRIVATE_KEY}
+      BLS_PRIVATE_KEY: ${BLS_PRIVATE_KEY}
+      RUST_LOG: ${RUST_LOG:-info}
+      RETH_ENDPOINT: ${RETH_ENDPOINT:-http://preconf_helios:8545}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      helios:
+        condition: service_healthy
+    volumes:
+      - ./config.toml:/app/config.toml:ro
 
 volumes:
   postgres_data:
-  pgadmin_data:
+  helios_data:

@@ -137,12 +137,13 @@ impl std::fmt::Debug for SigningConfig {
 }
 
 impl Default for ServerConfig {
-	/// Creates a default ServerConfig with host "127.0.0.1" and port 8080.
+	/// Creates a default ServerConfig with host "0.0.0.0" and port 8080.
+	/// Binds to all network interfaces by default (required for container deployments).
 	///
 	/// # Examples
 	///
 	fn default() -> Self {
-		Self { host: "127.0.0.1".to_string(), port: 8080 }
+		Self { host: "0.0.0.0".to_string(), port: 8080 }
 	}
 }
 
@@ -669,7 +670,7 @@ mod tests {
 	#[test]
 	fn test_server_config_default() {
 		let config = ServerConfig::default();
-		assert_eq!(config.host, "127.0.0.1");
+		assert_eq!(config.host, "0.0.0.0");
 		assert_eq!(config.port, 8080);
 	}
 
@@ -755,7 +756,7 @@ mod tests {
 		assert!(result.is_ok());
 		let config = result.unwrap();
 		// Should return default config
-		assert_eq!(config.server.host, "127.0.0.1");
+		assert_eq!(config.server.host, "0.0.0.0");
 	}
 
 	#[test]
@@ -1168,6 +1169,7 @@ cache_ttl_secs = 60
 		let config = create_test_config();
 		let debug_str = format!("{:?}", config);
 		assert!(debug_str.contains("Config"));
+		// Note: create_test_config uses "127.0.0.1" for test isolation
 		assert!(debug_str.contains("127.0.0.1"));
 		assert!(debug_str.contains("8080"));
 	}
