@@ -44,13 +44,16 @@ RUN set -eux; \
 COPY provisioning/protoc.sh /tmp/protoc.sh
 RUN bash /tmp/protoc.sh && rm -f /tmp/protoc.sh
 
-RUN set -eux; if [ -f /tmp/env.sh ]; then . /tmp/env.sh; fi; \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    set -eux; if [ -f /tmp/env.sh ]; then . /tmp/env.sh; fi; \
     cargo chef cook ${TARGET_FLAG:-} --release --recipe-path recipe.json
 
 # Build requested binary from the workspace
 COPY . .
-ENV CARGO_BUILD_JOBS=2
-RUN set -eux; if [ -f /tmp/env.sh ]; then . /tmp/env.sh; fi; \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    set -eux; if [ -f /tmp/env.sh ]; then . /tmp/env.sh; fi; \
     if [ -n "${TARGET_CRATE:-}" ]; then PKG_FLAG="-p ${TARGET_CRATE}"; else PKG_FLAG=""; fi; \
     cargo build ${TARGET_FLAG:-} --release ${PKG_FLAG} --bins; \
     OUTDIR="target/release"; if [ -n "${TARGET:-}" ]; then OUTDIR="target/${TARGET}/release"; fi; \

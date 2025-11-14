@@ -141,13 +141,29 @@ build-spammer version: (_docker-build-binary version "spammer") (_docker-build-i
 build-signer version:  (_docker-build-binary version "local-signer-module") (_docker-build-image version "signer")
 build-beacon-mock version: (_docker-build-binary version "beacon-mock") (_docker-build-image version "beacon-mock")
 
-build-all version:
-	just build-gateway {{version}} && \
-	just build-relay {{version}} && \
-	just build-proposer {{version}} && \
-	just build-spammer {{version}} && \
-	just build-signer {{version}} && \
-	just build-beacon-mock {{version}}
+build-all version: _create-docker-builder
+	#!/usr/bin/env bash
+	set -e
+	echo "🚀 Building all binaries in a single optimized Docker build..."
+	PLATFORM=`just _platform`
+	# Build ALL binaries in one Docker build (MUCH faster than 6 separate builds)
+	docker buildx build --rm --platform=local \
+	  -f provisioning/build.Dockerfile \
+	  --output "build/{{version}}/$PLATFORM" \
+	  --target output \
+	  --build-arg TARGET_CRATE=preconfirmation-gateway \
+	  --build-arg BINARIES="gateway relay proposer spammer local-signer-module beacon-mock" \
+	  .
+	echo "✅ All binaries built successfully!"
+	echo "📦 Creating runtime Docker images..."
+	# Now create individual runtime images from the pre-built binaries
+	just _docker-build-image {{version}} gateway
+	just _docker-build-image {{version}} relay
+	just _docker-build-image {{version}} proposer
+	just _docker-build-image {{version}} spammer
+	just _docker-build-image {{version}} signer
+	just _docker-build-image {{version}} beacon-mock
+	echo "✅ All Docker images created successfully!"
 
 # ===============================
 # Local binary execution (without Docker)
