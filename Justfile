@@ -147,13 +147,22 @@ build-signer version:  (_docker-build-binary version "local-signer-module") (_do
 build-beacon-mock version: (_docker-build-binary version "beacon-mock") (_docker-build-image version "beacon-mock")
 
 build-all version:
-	just _docker-build-artifacts {{version}} && \
-	just _docker-build-image {{version}} "gateway" && \
-	just _docker-build-image {{version}} "relay" && \
-	just _docker-build-image {{version}} "proposer" && \
-	just _docker-build-image {{version}} "spammer" && \
-	just _docker-build-image {{version}} "signer" && \
-	just _docker-build-image {{version}} "beacon-mock"
+	#!/usr/bin/env bash
+	set -e
+	echo "Building all artifacts for version {{version}}..."
+	just _docker-build-artifacts {{version}}
+	echo "Building all images in parallel..."
+	pids=()
+	for service in gateway relay proposer spammer signer beacon-mock; do \
+		echo "Starting build for $service..."; \
+		just _docker-build-image {{version}} "$service" & \
+		pids+=($!); \
+	done
+	echo "Waiting for all image builds to complete..."
+	for pid in "${pids[@]}"; do \
+		wait "$pid" || exit 1; \
+	done
+	echo "All images built successfully!"
 
 # ===============================
 # Local binary execution (without Docker)
