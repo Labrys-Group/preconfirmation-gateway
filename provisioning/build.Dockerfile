@@ -4,13 +4,14 @@ ARG BINARIES="gateway relay proposer spammer local-signer-module beacon-mock"
 FROM --platform=${BUILDPLATFORM} rust:1.89-slim-bookworm AS chef
 ARG TARGETOS TARGETARCH BUILDPLATFORM TARGET_CRATE BINARY_NAME BINARIES
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse \
-    CARGO_NET_GIT_FETCH_WITH_CLI=true \
-    RUSTC_WRAPPER=/usr/local/bin/sccache \
-    SCCACHE_DIR=/sccache
+    CARGO_NET_GIT_FETCH_WITH_CLI=true
 WORKDIR /app
 RUN cargo install cargo-chef --locked && \
     cargo install sccache --locked && \
     rm -rf $CARGO_HOME/registry/
+# Set sccache wrapper AFTER installation
+ENV RUSTC_WRAPPER=/usr/local/bin/sccache \
+    SCCACHE_DIR=/sccache
 
 FROM --platform=${BUILDPLATFORM} chef AS planner
 ARG TARGETOS TARGETARCH BUILDPLATFORM TARGET_CRATE BINARY_NAME BINARIES
