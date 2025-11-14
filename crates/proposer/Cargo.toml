@@ -13,6 +13,7 @@ hex = { workspace = true }
 commit-boost = { workspace = true }
 cb-common = { workspace = true }
 alloy = { workspace = true }
+alloy-signer-local = { version = "^1.0.37", features = ["keystore"] }
 common = { path = "../common" }
 constraints = { path = "../constraints" }
 urc = { workspace = true }
