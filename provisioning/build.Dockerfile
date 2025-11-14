@@ -1,19 +1,20 @@
 # syntax=docker/dockerfile:1.7-labs
+ARG BINARIES="gateway relay proposer spammer local-signer-module beacon-mock"
 
 FROM --platform=${BUILDPLATFORM} rust:1.89-slim-bookworm AS chef
-ARG TARGETOS TARGETARCH BUILDPLATFORM TARGET_CRATE BINARY_NAME
+ARG TARGETOS TARGETARCH BUILDPLATFORM TARGET_CRATE BINARY_NAME BINARIES
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse \
     CARGO_NET_GIT_FETCH_WITH_CLI=true
 WORKDIR /app
 RUN cargo install cargo-chef --locked && rm -rf $CARGO_HOME/registry/
 
 FROM --platform=${BUILDPLATFORM} chef AS planner
-ARG TARGETOS TARGETARCH BUILDPLATFORM TARGET_CRATE BINARY_NAME
+ARG TARGETOS TARGETARCH BUILDPLATFORM TARGET_CRATE BINARY_NAME BINARIES
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM --platform=${BUILDPLATFORM} chef AS builder
-ARG TARGETOS TARGETARCH BUILDPLATFORM TARGET_CRATE BINARY_NAME
+ARG TARGETOS TARGETARCH BUILDPLATFORM TARGET_CRATE BINARY_NAME BINARIES
 ENV DEBIAN_FRONTEND=noninteractive \
     RUSTFLAGS="-C target-cpu=native"
 COPY --from=planner /app/recipe.json recipe.json
@@ -51,12 +52,23 @@ COPY . .
 ENV CARGO_BUILD_JOBS=2
 RUN set -eux; if [ -f /tmp/env.sh ]; then . /tmp/env.sh; fi; \
     if [ -n "${TARGET_CRATE:-}" ]; then PKG_FLAG="-p ${TARGET_CRATE}"; else PKG_FLAG=""; fi; \
-    cargo build ${TARGET_FLAG:-} --release ${PKG_FLAG} --bin ${BINARY_NAME}; \
+    cargo build ${TARGET_FLAG:-} --release ${PKG_FLAG} --bins; \
     OUTDIR="target/release"; if [ -n "${TARGET:-}" ]; then OUTDIR="target/${TARGET}/release"; fi; \
-    mkdir -p /artifacts; cp "${OUTDIR}/${BINARY_NAME}" "/artifacts/${BINARY_NAME}"
+    mkdir -p /artifacts; \
+    BIN_SELECTION="${BINARIES:-${BINARY_NAME}}"; \
+    if [ -z "${BIN_SELECTION}" ]; then \
+      echo "No binaries specified via BINARIES or BINARY_NAME" >&2; \
+      exit 1; \
+    fi; \
+    for bin in ${BIN_SELECTION}; do \
+      if [ ! -f "${OUTDIR}/${bin}" ]; then \
+        echo "Expected binary ${bin} not found in ${OUTDIR}" >&2; \
+        exit 1; \
+      fi; \
+      cp "${OUTDIR}/${bin}" "/artifacts/${bin}"; \
+    done
 
 FROM scratch AS output
-ARG BINARY_NAME
-COPY --from=builder /artifacts/${BINARY_NAME} /${BINARY_NAME}
+COPY --from=builder /artifacts/ /
 
 
