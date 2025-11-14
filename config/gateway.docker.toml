@@ -49,11 +49,11 @@ traced_methods = ["commitmentRequest", "commitmentResult", "slots", "fee"]
 # Gateway orchestration configuration
 relay_url = "http://relay:9999"
 constraints_api_key = ""
-genesis_timestamp = 1606824023 # mainnet
+genesis_timestamp = 1762833460 # Kurtosis testnet
 delegation_database_path = "./data/delegations-rocksdb"
 
 # Execution client configuration
-execution_endpoint_url = "http://localhost:8545"
+execution_endpoint_url = "http://host.docker.internal:32769"
 execution_request_timeout_secs = 10
 execution_max_retries = 3
 

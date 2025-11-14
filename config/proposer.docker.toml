@@ -23,11 +23,11 @@ port = 20000
 
 [signer.local.loader]
 format = "lighthouse"
-keys_path = "./tests/data/keystores/keys"
-secrets_path = "./tests/data/keystores/secrets"
+keys_path = "/app/keys"
+secrets_path = "/app/secrets"
 
 [signer.local.store]
-proxy_dir = "./tests/data/proxy"
+proxy_dir = "/app/proxy"
 
 # Proposer Module configuration
 [[modules]]
@@ -45,14 +45,14 @@ delegate_bls_public_key = "0xa6bf34f124537d044446171c7ad042eab8c605bdce05cdf161c
 committer_address = "0x73892d18EACa21E8C1Aca89c147069C9D9f6625D"
 relay_url = "http://relay:9999"
 relay_api_key = ""
-beacon_api_url = "http://beacon-mock:5052"
-beacon_genesis_timestamp = 1606824023 # mainnet
+beacon_api_url = "http://host.docker.internal:32779"
+beacon_genesis_timestamp = 1762833460 # Kurtosis testnet
 poll_interval_seconds = 12
 module_signing_id = "0x2222222222222222222222222222222222222222222222222222222222222222"
 
 # URC Registration Configuration
 urc_owner = "0xBB771250f7CA20123AA4c4175a49fdD8774838F3"
-execution_rpc_url = "http://localhost:8545"
+execution_rpc_url = "http://host.docker.internal:32769"
 registration_collateral_wei = "1000000000000000000"
 
 # Database Configuration

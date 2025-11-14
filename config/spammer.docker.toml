@@ -25,13 +25,14 @@ sender_private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7b
 slasher_address = "0x1234567890123456789012345678901234567890"
 
 # Chain ID for transactions
-# 1 = Ethereum mainnet, 11155111 = Sepolia, 31337 = Local/Anvil
-chain_id = 31337
+# 1 = Ethereum mainnet, 11155111 = Sepolia, 31337 = Local/Anvil, 3151908 = Kurtosis Testnet
+chain_id = 3151908
 
 # Genesis timestamp for slot calculation
 # Ethereum mainnet: 1606824023
+# Kurtosis testnet: 1762833460
 # This is used to calculate the current slot number for commitment requests
-genesis_timestamp = 1606824023
+genesis_timestamp = 1762833460
 
 # Transaction parameters
 # These control the gas and value parameters of the generated transactions

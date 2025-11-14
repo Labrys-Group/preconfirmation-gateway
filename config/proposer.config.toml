@@ -45,14 +45,14 @@ delegate_bls_public_key = "0xa6bf34f124537d044446171c7ad042eab8c605bdce05cdf161c
 committer_address = "0x73892d18EACa21E8C1Aca89c147069C9D9f6625D"
 relay_url = "http://localhost:9999"
 relay_api_key = ""
-beacon_api_url = "http://localhost:5052"
-beacon_genesis_timestamp = 1606824023 # mainnet
+beacon_api_url = "http://localhost:32779"
+beacon_genesis_timestamp = 1762833460 # Kurtosis testnet
 poll_interval_seconds = 12
 module_signing_id = "0x2222222222222222222222222222222222222222222222222222222222222222"
 
 # URC Registration Configuration
-urc_owner = "0xBB771250f7CA20123AA4c4175a49fdD8774838F3"
-execution_rpc_url = "http://localhost:8545"
+urc_owner = "0x8943545177806ED17B9F23F0a21ee5948eCaa776"
+execution_rpc_url = "http://localhost:32769"
 registration_collateral_wei = "1000000000000000000"
 
 # Database Configuration

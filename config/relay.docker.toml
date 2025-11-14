@@ -4,8 +4,8 @@ database_path = "./data/relay-rocksdb"
 log_level = "info"
 constraint_capabilities = [1]
 chain = "Hoodi"
-genesis_timestamp = 1606824023 # mainnet
-beacon_api_url = "http://beacon-mock:5052"
+genesis_timestamp = 1762833460 # Kurtosis testnet
+beacon_api_url = "http://host.docker.internal:32779"
 lookahead_window = 64
 lookahead_update_interval = 10
 # Optional: proxy unhandled requests to upstream relay
