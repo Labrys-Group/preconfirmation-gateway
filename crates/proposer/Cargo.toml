@@ -13,7 +13,6 @@ hex = { workspace = true }
 commit-boost = { workspace = true }
 cb-common = { workspace = true }
 alloy = { workspace = true }
-eth-keystore = "0.5"
 common = { path = "../common" }
 constraints = { path = "../constraints" }
 urc = { workspace = true }

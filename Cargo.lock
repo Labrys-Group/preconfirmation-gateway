@@ -5378,7 +5378,6 @@ dependencies = [
  "commit-boost",
  "common",
  "constraints",
- "eth-keystore",
  "eyre",
  "hex",
  "lazy_static",

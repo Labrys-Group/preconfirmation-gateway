@@ -2,7 +2,7 @@ use alloy::network::{EthereumWallet, TransactionBuilder};
 use alloy::primitives::{Address, Bytes, B256, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::TransactionRequest;
-use alloy::signers::local::PrivateKeySigner;
+use alloy::signers::local::LocalSigner;
 use alloy::sol_types::SolCall;
 use cb_common::types::BlsPublicKey;
 use commit_boost::prelude::StartCommitModuleConfig;
@@ -71,12 +71,8 @@ pub async fn send_registration_transaction(
 	collateral: U256,
 ) -> Result<B256> {
 	// 1. Load keystore and create signer
-	// Decrypt the keystore using eth-keystore crate
-	let private_key = eth_keystore::decrypt_key(keystore_path, password)?;
-
-	// Create signer from the private key bytes
-	let signer = PrivateKeySigner::from_bytes(&B256::from_slice(&private_key))
-		.context("Failed to create signer from private key")?;
+	let signer = LocalSigner::decrypt_keystore(keystore_path, password)
+		.context("Failed to decrypt keystore")?;
 
 	let wallet = EthereumWallet::from(signer);
 
@@ -120,11 +116,8 @@ pub async fn send_opt_in_to_slasher_transaction(
 	password: &str,
 ) -> Result<B256> {
 	// 1. Load keystore and create signer
-	let private_key = eth_keystore::decrypt_key(keystore_path, password)?;
-
-	// Create signer from the private key bytes
-	let signer = PrivateKeySigner::from_bytes(&B256::from_slice(&private_key))
-		.context("Failed to create signer from private key")?;
+	let signer = LocalSigner::decrypt_keystore(keystore_path, password)
+		.context("Failed to decrypt keystore")?;
 
 	let wallet = EthereumWallet::from(signer);
 
@@ -168,11 +161,8 @@ pub async fn send_opt_out_of_slasher_transaction(
 	password: &str,
 ) -> Result<B256> {
 	// 1. Load keystore and create signer
-	let private_key = eth_keystore::decrypt_key(keystore_path, password)?;
-
-	// Create signer from the private key bytes
-	let signer = PrivateKeySigner::from_bytes(&B256::from_slice(&private_key))
-		.context("Failed to create signer from private key")?;
+	let signer = LocalSigner::decrypt_keystore(keystore_path, password)
+		.context("Failed to decrypt keystore")?;
 
 	let wallet = EthereumWallet::from(signer);
 
@@ -214,9 +204,8 @@ pub async fn send_unregister_transaction(
 	keystore_path: &str,
 	password: &str,
 ) -> Result<B256> {
-	let private_key = eth_keystore::decrypt_key(keystore_path, password)?;
-	let signer = PrivateKeySigner::from_bytes(&B256::from_slice(&private_key))
-		.context("Failed to create signer from private key")?;
+	let signer = LocalSigner::decrypt_keystore(keystore_path, password)
+		.context("Failed to decrypt keystore")?;
 	let wallet = EthereumWallet::from(signer);
 	info!("Loaded wallet from keystore: {:?}", wallet.default_signer().address());
 	let provider =
@@ -244,9 +233,8 @@ pub async fn send_add_collateral_transaction(
 	keystore_path: &str,
 	password: &str,
 ) -> Result<B256> {
-	let private_key = eth_keystore::decrypt_key(keystore_path, password)?;
-	let signer = PrivateKeySigner::from_bytes(&B256::from_slice(&private_key))
-		.context("Failed to create signer from private key")?;
+	let signer = LocalSigner::decrypt_keystore(keystore_path, password)
+		.context("Failed to decrypt keystore")?;
 	let wallet = EthereumWallet::from(signer);
 	info!("Loaded wallet from keystore: {:?}", wallet.default_signer().address());
 	let provider =
@@ -286,9 +274,8 @@ pub async fn send_claim_collateral_transaction(
 	keystore_path: &str,
 	password: &str,
 ) -> Result<B256> {
-	let private_key = eth_keystore::decrypt_key(keystore_path, password)?;
-	let signer = PrivateKeySigner::from_bytes(&B256::from_slice(&private_key))
-		.context("Failed to create signer from private key")?;
+	let signer = LocalSigner::decrypt_keystore(keystore_path, password)
+		.context("Failed to decrypt keystore")?;
 	let wallet = EthereumWallet::from(signer);
 	info!("Loaded wallet from keystore: {:?}", wallet.default_signer().address());
 	let provider =
@@ -315,9 +302,8 @@ pub async fn send_claim_slashed_collateral_transaction(
 	keystore_path: &str,
 	password: &str,
 ) -> Result<B256> {
-	let private_key = eth_keystore::decrypt_key(keystore_path, password)?;
-	let signer = PrivateKeySigner::from_bytes(&B256::from_slice(&private_key))
-		.context("Failed to create signer from private key")?;
+	let signer = LocalSigner::decrypt_keystore(keystore_path, password)
+		.context("Failed to decrypt keystore")?;
 	let wallet = EthereumWallet::from(signer);
 	info!("Loaded wallet from keystore: {:?}", wallet.default_signer().address());
 	let provider =

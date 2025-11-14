@@ -178,9 +178,8 @@ async fn handle_opt_in_to_slasher_command(
 	};
 
 	// Build wallet+provider to use for both checks and sending
-	let private_key = eth_keystore::decrypt_key(&keystore_path, &password)?;
-	let signer = alloy::signers::local::PrivateKeySigner::from_bytes(&B256::from_slice(&private_key))
-		.context("Failed to create signer from private key")?;
+	let signer = alloy::signers::local::LocalSigner::decrypt_keystore(&keystore_path, &password)
+		.context("Failed to decrypt keystore")?;
 	let wallet = alloy::network::EthereumWallet::from(signer);
 	let provider = ProviderBuilder::new()
 		.wallet(wallet.clone())
