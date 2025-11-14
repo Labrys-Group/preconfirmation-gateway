@@ -1,11 +1,14 @@
 # Build artifacts
 target/
+**/target
 *.profraw
 coverage/
+**/*.rs.bk
 
-# Git
+# Git and version control
 .git/
 .gitignore
+.gitattributes
 .github/
 
 # IDE and editor files
@@ -14,6 +17,7 @@ coverage/
 *.swp
 *.swo
 *~
+**/.DS_Store
 
 # Documentation
 *.md
@@ -25,10 +29,14 @@ docs/
 tests/
 mock-relay/
 mock-services/
+**/test-results
 
 # Environment and secrets (NEVER include in Docker image)
 .env
 .env.example
+.env.*
+**/.env
+**/.env.*
 *.pem
 *.key
 test-keys.sh
@@ -42,22 +50,38 @@ test-keys.sh.example
 
 # CI/CD
 .github/
+.gitlab-ci.yml
+.travis.yml
 
 # Claude AI
 .claude/
 
 # Docker files (no need to copy into image)
 docker-compose.yml
+docker-compose*.yml
 Dockerfile
+Dockerfile*
 .dockerignore
 
 # Task runner
 Taskfile.yml
 
-# Development scripts
-scripts/
+# Development scripts (commented out - needed for comparison script)
+# scripts/
+
+# Node.js (if any)
+**/node_modules
+**/dist
+**/package-lock.json
+
+# Logs and temporary files
+*.log
+*.tmp
+**/tmp
+**/*.log
 
 # Misc
-*.log
 *.bak
+*.orig
+*.rej
 plan.md
