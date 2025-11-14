@@ -105,6 +105,8 @@ logs SERVICE:
 # Commit-boost style builders
 # ===============================
 
+all_bins := "gateway relay proposer spammer local-signer-module beacon-mock"
+
 _create-docker-builder:
 	docker buildx create --name multiarch-builder --driver docker-container --use > /dev/null 2>&1 || true
 
@@ -114,14 +116,17 @@ _platform:
 
 # Build binary artifact for a workspace bin into ./build/<version>/<platform>
 
-_docker-build-binary version bin: _create-docker-builder
+_docker-build-artifacts version bins="{{all_bins}}": _create-docker-builder
 	PLATFORM=`just _platform`; \
 	docker buildx build --rm --platform=local \
 	  -f provisioning/build.Dockerfile \
 	  --output "build/{{version}}/$PLATFORM" \
 	  --target output \
 	  --build-arg TARGET_CRATE=preconfirmation-gateway \
-	  --build-arg BINARY_NAME={{bin}} .
+	  --build-arg BINARIES='{{bins}}' .
+
+_docker-build-binary version bin:
+	just _docker-build-artifacts {{version}}
 
 # Build runtime image for a bin using prebuilt artifacts
 _docker-build-image version bin: _create-docker-builder
@@ -142,12 +147,13 @@ build-signer version:  (_docker-build-binary version "local-signer-module") (_do
 build-beacon-mock version: (_docker-build-binary version "beacon-mock") (_docker-build-image version "beacon-mock")
 
 build-all version:
-	just build-gateway {{version}} && \
-	just build-relay {{version}} && \
-	just build-proposer {{version}} && \
-	just build-spammer {{version}} && \
-	just build-signer {{version}} && \
-	just build-beacon-mock {{version}}
+	just _docker-build-artifacts {{version}} && \
+	just _docker-build-image {{version}} "gateway" && \
+	just _docker-build-image {{version}} "relay" && \
+	just _docker-build-image {{version}} "proposer" && \
+	just _docker-build-image {{version}} "spammer" && \
+	just _docker-build-image {{version}} "signer" && \
+	just _docker-build-image {{version}} "beacon-mock"
 
 # ===============================
 # Local binary execution (without Docker)
